@@ -1,0 +1,153 @@
+# Task 40: API deployment (prod: 3 replicas) + ClusterIP Service.
+# Image org/tag are pinned per environment by the kustomize overlays
+# (deploy/k8s/overlays/*/kustomization.yaml `images:`); replace CHANGE_ME.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: api
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: dubbing-platform
+        app.kubernetes.io/component: api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        # Migration gate: block API rollout until pending EF migrations are
+        # applied. Runs the same idempotent EF bundle as the migration Job
+        # (migration-job.yaml) via the maintenance image: concurrent runners
+        # serialize on __EFMigrationsHistory, an up-to-date database exits 0
+        # immediately, and a broken migration exits non-zero so the pod never
+        # starts and the rollout blocks. Deploy order still runs the migration
+        # Job first (see deploy/README.md); this is defense-in-depth for
+        # out-of-band applies. Uses the maintenance-role connection string
+        # (BYPASSRLS), never the app role, per
+        # src/DubbingPlatform.Infrastructure/Persistence/MIGRATION_NOTES.md.
+        - name: wait-for-migrations
+          image: ghcr.io/CHANGE_ME/dubbing-maintenance:latest
+          imagePullPolicy: Always
+          env:
+            # The EF bundle is built from the Api startup project, so it reads
+            # the same ConnectionStrings__Default key as the app. Wired to the
+            # maintenance-role string (BYPASSRLS); the bundle redacts it from
+            # logs.
+            - name: ConnectionStrings__Default
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: maintenance-connection}}
+            - name: DOTNET_BUNDLE_EXTRACT_BASE_DIR
+              value: /tmp/bundle
+          command: [/app/efbundle]
+          args: [--verbose]
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      containers:
+        - name: api
+          image: ghcr.io/CHANGE_ME/dubbing-api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef: {name: dubbing-config}
+          env:
+            - name: ConnectionStrings__Default
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: connection-string}}
+            - name: RabbitMq__Host
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-host}}
+            - name: RabbitMq__Port
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-port}}
+            - name: RabbitMq__VirtualHost
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-vhost}}
+            - name: RabbitMq__Username
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-username}}
+            - name: RabbitMq__Password
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-password}}
+            - name: Redis__Connection
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: redis-connection}}
+            - name: Storage__Endpoint
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-endpoint}}
+            - name: Storage__Bucket
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-bucket}}
+            - name: Storage__AccessKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-access-key}}
+            - name: Storage__SecretKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-secret-key}}
+            - name: Auth__SigningKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: auth-signing-key}}
+            - name: Providers__AzureApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: providers-azure-api-key}}
+            - name: Azure__SpeechKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: azure-speech-key}}
+            - name: Azure__TranslatorKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: azure-translator-key}}
+            - name: OpenAI__ApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: openai-api-key}}
+            - name: Providers__OpenAIApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: openai-api-key}}
+            - name: Google__ApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: google-api-key}}
+            - name: Providers__GoogleApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: google-api-key}}
+          livenessProbe:
+            httpGet: {path: /health/live, port: 8080}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /health/ready, port: 8080}
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "2", memory: 4Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

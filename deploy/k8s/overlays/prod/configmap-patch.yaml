@@ -1,0 +1,11 @@
+# Production non-secret config: real OTLP endpoint + region.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dubbing-config
+data:
+  DOTNET_ENVIRONMENT: Production
+  Providers__DefaultProvider: azure
+  Observability__OtlpEndpoint: https://otlp.CHANGE_ME:4317
+  Deployment__Environment: Production
+  Deployment__Region: CHANGE_ME

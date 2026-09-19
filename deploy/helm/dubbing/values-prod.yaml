@@ -1,0 +1,25 @@
+# Production values: helm upgrade --install dubbing deploy/helm/dubbing
+#   -f deploy/helm/dubbing/values.yaml -f deploy/helm/dubbing/values-prod.yaml
+# Mirrors the deploy/k8s base manifests (prod defaults).
+global:
+  imageRegistry: ghcr.io/CHANGE_ME
+  imageTag: v1.0.0
+namespace: dubbing-prod
+apiHost: api.dubbing.example.com
+clusterIssuer: letsencrypt-prod
+observability:
+  otlpEndpoint: https://otlp.CHANGE_ME:4317
+providers:
+  defaultProvider: azure
+media:
+  maxConcurrentMediaJobs: 2
+  storageClass: managed-high-iops
+replicas:
+  api: 3
+  control: 2
+  mediaPrep: 3
+  mediaRender: 2
+  ai: 3
+  gpu: 0
+  export: 2
+  maintenance: 1

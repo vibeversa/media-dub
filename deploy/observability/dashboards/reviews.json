@@ -1,0 +1,40 @@
+{
+  "title": "Reviews",
+  "tags": ["dubbing-platform", "reviews"],
+  "timezone": "utc",
+  "panels": [
+    {
+      "title": "Reviews opened vs resolved",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "rate(reviews_opened_total[15m])" },
+        { "expr": "rate(reviews_resolved_total[15m])" }
+      ]
+    },
+    {
+      "title": "Exports generated vs failed",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "rate(exports_generated_total[15m])" },
+        { "expr": "rate(exports_failed_total[15m])" }
+      ]
+    },
+    {
+      "title": "Storage orphans",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "rate(storage_orphans_total[1h])" },
+        { "expr": "rate(storage_orphans_detected_total[1h])" }
+      ]
+    },
+    {
+      "title": "Tenant usage (projects started by tenant)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (tenant) (rate(projects_started_total[15m]))" }]
+    }
+  ]
+}

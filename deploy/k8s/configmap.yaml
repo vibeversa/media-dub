@@ -1,0 +1,36 @@
+# Task 40: non-secret configuration shared by API and workers (prod defaults).
+# Secrets (connection strings, provider keys, signing keys) live in the
+# external secret manager and are projected via secrets.yaml (ExternalSecret
+# dubbing-secrets). Never add secret material here.
+#
+# Env-var mapping uses __ for section nesting, e.g. Transport__Provider binds
+# Transport:Provider (see DubbingPlatform.Application/Options/*, each with a
+# SectionName constant + startup validator that fails fast on bad values).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dubbing-config
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+data:
+  DOTNET_ENVIRONMENT: Production
+  # Messaging transport. Prod uses durable RabbitMQ queues; staging overlay
+  # keeps RabbitMq as well (Testcontainers compose profile is local-only).
+  Transport__Provider: RabbitMq
+  # Default provider family. Prod default is azure; every cloud call fails fast
+  # at startup when its key is absent (provider fail-fast, Task 14). The
+  # staging overlay overrides this to mock for deterministic runs.
+  Providers__DefaultProvider: azure
+  # Media bounded concurrency: at most 2 concurrent FFmpeg jobs per
+  # media-prep pod (task-text "concurrency:2" maps to this key; see
+  # MediaOptions.MaxConcurrentMediaJobs, range 1..64, default 2).
+  Media__MaxConcurrentMediaJobs: "2"
+  Media__CpuThreads: "4"
+  # Observability: OTLP endpoint is env-specific; overlays override.
+  Observability__ServiceName: dubbing-platform
+  Observability__OtlpEndpoint: https://otlp.CHANGE_ME:4317
+  Observability__EnableTracing: "true"
+  Observability__EnableMetrics: "true"
+  Deployment__Environment: Production
+  Deployment__Region: CHANGE_ME

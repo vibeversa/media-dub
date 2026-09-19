@@ -1,0 +1,183 @@
+# Task 40: KEDA autoscaling (keda.sh/v1alpha1).
+# Queue taxonomy matches src/DubbingPlatform.Contracts/Messages/QueueNames.cs.
+#
+# RabbitMQ-down behavior (documented fallback, two layers):
+#   1. Every rabbitmq-scaled object also carries a cpu trigger (70%), so CPU
+#      pressure still scales the workload while the broker scaler errors.
+#   2. `fallback.replicas` pins a safe static size after 3 consecutive scaler
+#      failures (KEDA fallback feature).
+# GPU utilization uses the DCGM exporter Prometheus metric
+# (task-text "nvidia.com/gpu.utilization" concept; metricName must be a valid
+# Prometheus name, hence dcgm_gpu_utilization). Requires the NVIDIA DCGM
+# exporter + Prometheus in-cluster; without them the prometheus trigger stays
+# in error and the rabbitmq trigger alone drives scaling.
+#
+# Credentials: the TriggerAuthentications below read keda-rabbitmq-host and
+# keda-postgres-conn from the dubbing-secrets ExternalSecret (secrets.yaml).
+# This file intentionally contains no credential material.
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-rabbit-auth
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: dubbing-secrets
+      key: keda-rabbitmq-host
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-postgres-auth
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  secretTargetRef:
+    - parameter: connection
+      name: dubbing-secrets
+      key: keda-postgres-conn
+---
+# AI provider work: ai.provider queue depth 100, CPU fallback.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-ai
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  scaleTargetRef: {name: worker-ai}
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  fallback: {failureThreshold: 3, replicas: 2}
+  triggers:
+    - type: rabbitmq
+      metadata: {queueName: ai.provider, mode: QueueLength, value: "100"}
+      authenticationRef: {name: keda-rabbit-auth}
+    - type: cpu
+      metadata: {type: Utilization, value: "70"}
+---
+# GPU work: ai.gpu queue depth 100 + DCGM GPU-utilization; 0..4 replicas.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-gpu
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  scaleTargetRef: {name: worker-gpu}
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 0
+  maxReplicaCount: 4
+  fallback: {failureThreshold: 3, replicas: 0}
+  advanced:
+    restoreToOriginalReplicaCount: true
+  triggers:
+    - type: rabbitmq
+      metadata: {queueName: ai.gpu, mode: QueueLength, value: "100"}
+      authenticationRef: {name: keda-rabbit-auth}
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc:9090
+        metricName: dcgm_gpu_utilization
+        query: avg(DCGM_FI_DEV_GPU_UTIL)
+        threshold: "70"
+---
+# Export jobs: export queue depth 100, CPU fallback.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-export
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  scaleTargetRef: {name: worker-export}
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  fallback: {failureThreshold: 3, replicas: 1}
+  triggers:
+    - type: rabbitmq
+      metadata: {queueName: export, mode: QueueLength, value: "100"}
+      authenticationRef: {name: keda-rabbit-auth}
+    - type: cpu
+      metadata: {type: Utilization, value: "70"}
+---
+# Media preparation: CPU 70% + memory 80% (bounded per-pod concurrency in the
+# Deployment keeps FFmpeg from oversubscribing the node).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-media-prep
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  scaleTargetRef: {name: worker-media-prep}
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 2
+  maxReplicaCount: 8
+  fallback: {failureThreshold: 3, replicas: 2}
+  triggers:
+    - type: cpu
+      metadata: {type: Utilization, value: "70"}
+    - type: memory
+      metadata: {type: Utilization, value: "80"}
+---
+# Media render: CPU 70% + memory 80%.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-media-render
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  scaleTargetRef: {name: worker-media-render}
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 6
+  fallback: {failureThreshold: 3, replicas: 1}
+  triggers:
+    - type: cpu
+      metadata: {type: Utilization, value: "70"}
+    - type: memory
+      metadata: {type: Utilization, value: "80"}
+---
+# Control plane: active lease count from Postgres (saga/dispatcher pressure),
+# CPU fallback. Threshold 10 active leases per replica.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-control
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  scaleTargetRef: {name: worker-control}
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: 1
+  maxReplicaCount: 6
+  fallback: {failureThreshold: 3, replicas: 2}
+  triggers:
+    - type: postgresql
+      metadata:
+        query: SELECT COUNT(*) FROM stage_executions WHERE status = 'Running' AND lease_expires_at > NOW()
+        targetQueryValue: "10"
+      authenticationRef: {name: keda-postgres-auth}
+    - type: cpu
+      metadata: {type: Utilization, value: "70"}

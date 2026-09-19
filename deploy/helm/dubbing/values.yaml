@@ -1,0 +1,25 @@
+# Default values for the dubbing chart (Task 40).
+# Choice: raw YAML in deploy/k8s is PRIMARY (kubectl/kustomize path); this
+# chart is a minimal wrapper so Helm users get pre-upgrade migration hooks
+# and per-env value files. The chart installs the same objects via the
+# kustomize overlays (see templates/NOTES.txt for the two supported flows).
+global:
+  # CHANGE_ME: container registry org, e.g. ghcr.io/my-org
+  imageRegistry: ghcr.io/CHANGE_ME
+  imageTag: latest
+namespace: dubbing-prod
+apiHost: api.dubbing.example.com
+clusterIssuer: letsencrypt-prod
+observability:
+  otlpEndpoint: https://otlp.CHANGE_ME:4317
+providers:
+  defaultProvider: azure
+media:
+  maxConcurrentMediaJobs: 2
+  storageClass: managed-high-iops
+migration:
+  # ArgoCD PreSync + Helm pre-upgrade hooks are annotated on the Job itself
+  # (deploy/k8s/migration-job.yaml); this flag only gates chart-managed flow.
+  enabled: true
+keda:
+  enabled: true

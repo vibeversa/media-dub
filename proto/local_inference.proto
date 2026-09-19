@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package dubbing.localinference.v1;
+
+option csharp_namespace = "DubbingPlatform.Contracts.LocalInference";
+
+// Optional local/GPU inference sidecar boundary (Task 043).
+// Disabled by default (Features:LocalInferenceEnabled=false).
+// HTTP fallback POST /infer carries the same JSON shape; default HTTP,
+// gRPC optional via LocalInference:Protocol=http|grpc (default http).
+service LocalInference {
+  rpc Infer(InferRequest) returns (InferResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Warmup(WarmupRequest) returns (WarmupResponse);
+}
+
+// Inference request. artifact_hash is the 64-hex model hash from the
+// registry; device_profile is cpu|cuda|cuda:N.
+message InferRequest {
+  string model_name = 1;
+  string model_version = 2;
+  string artifact_hash = 3;
+  string capability = 4;
+  string payload_json = 5;
+  string device_profile = 6;
+}
+
+message InferResponse {
+  string output_json = 1;
+  double confidence = 2;
+  string model_name = 3;
+  string model_version = 4;
+  string model_hash = 5;
+  string device_profile = 6;
+}
+
+message HealthRequest {
+}
+
+message HealthResponse {
+  string status = 1;
+  string model_name = 2;
+  string model_version = 3;
+  string device_profile = 4;
+}
+
+message WarmupRequest {
+  string model_name = 1;
+  string model_version = 2;
+  string artifact_hash = 3;
+  string device_profile = 4;
+}
+
+message WarmupResponse {
+  string status = 1;
+  string model_name = 2;
+  string model_version = 3;
+  string device_profile = 4;
+}

@@ -1,0 +1,17 @@
+-- Append-only audit storage (Task 37).
+--
+-- Audit events are written exclusively by AuditService (INSERT only); no API,
+-- service, or worker ever updates or deletes audit rows. Retention-owned
+-- deletion after Retention:AuditDays (default 365) is the sole remover and
+-- runs under the maintenance role. Apply the REVOKE below on production
+-- databases so the application role cannot modify history even with SQL
+-- access:
+--
+--   REVOKE UPDATE, DELETE ON audit_events FROM app_role;
+--
+-- Row-level security (see rls_policies.sql) additionally scopes reads and
+-- writes to the session tenant via app.tenant_id; the maintenance role with
+-- BYPASSRLS owns retention deletes. Connection strings: the application uses
+-- ConnectionStrings:Default (role app_role, no bypass); maintenance jobs and
+-- migrations use Maintenance__Connection (role maintenance, BYPASSRLS).
+REVOKE UPDATE, DELETE ON audit_events FROM app_role;

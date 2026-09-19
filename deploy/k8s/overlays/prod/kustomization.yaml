@@ -1,0 +1,43 @@
+# Production overlay (Task 40). Mirrors the base manifests (prod defaults)
+# with release image tags pinned. Build with:
+#   kubectl apply -k deploy/k8s/overlays/prod
+# CI sets newTag to the release tag on every promotion.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: dubbing-prod
+resources:
+  - ../../namespace.yaml
+  - ../../configmap.yaml
+  - ../../secrets.yaml
+  - ../../api-deployment.yaml
+  - ../../workers-control.yaml
+  - ../../workers-media-prep.yaml
+  - ../../workers-media-render.yaml
+  - ../../workers-ai.yaml
+  - ../../workers-gpu.yaml
+  - ../../workers-export.yaml
+  - ../../workers-maintenance.yaml
+  - ../../ingress.yaml
+  - ../../networkpolicies.yaml
+  - ../../pdb.yaml
+  - ../../migration-job.yaml
+  - ../../keda-scalers.yaml
+images:
+  - {name: ghcr.io/CHANGE_ME/dubbing-api, newTag: v1.0.0}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-control, newTag: v1.0.0}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-media-preparation, newTag: v1.0.0}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-media-render, newTag: v1.0.0}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-ai, newTag: v1.0.0}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-gpu, newTag: v1.0.0}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-export, newTag: v1.0.0}
+  - {name: ghcr.io/CHANGE_ME/dubbing-maintenance, newTag: v1.0.0}
+replicas:
+  - {name: api, count: 3}
+  - {name: worker-control, count: 2}
+  - {name: worker-media-prep, count: 3}
+  - {name: worker-media-render, count: 2}
+  - {name: worker-ai, count: 3}
+  - {name: worker-export, count: 2}
+  - {name: worker-maintenance, count: 1}
+patches:
+  - path: configmap-patch.yaml

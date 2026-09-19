@@ -1,0 +1,39 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["src/DubbingPlatform.Workers/DubbingPlatform.Workers.csproj", "src/DubbingPlatform.Workers/"]
+COPY ["src/DubbingPlatform.Api/DubbingPlatform.Api.csproj", "src/DubbingPlatform.Api/"]
+COPY ["src/DubbingPlatform.Application/DubbingPlatform.Application.csproj", "src/DubbingPlatform.Application/"]
+COPY ["src/DubbingPlatform.Infrastructure/DubbingPlatform.Infrastructure.csproj", "src/DubbingPlatform.Infrastructure/"]
+COPY ["src/DubbingPlatform.Domain/DubbingPlatform.Domain.csproj", "src/DubbingPlatform.Domain/"]
+COPY ["src/DubbingPlatform.Contracts/DubbingPlatform.Contracts.csproj", "src/DubbingPlatform.Contracts/"]
+COPY ["Directory.Build.props", "./"]
+COPY ["global.json", "./"]
+COPY [".config/dotnet-tools.json", ".config/dotnet-tools.json"]
+RUN dotnet restore "src/DubbingPlatform.Workers/DubbingPlatform.Workers.csproj" && dotnet restore "src/DubbingPlatform.Api/DubbingPlatform.Api.csproj"
+COPY . .
+WORKDIR "/src/src/DubbingPlatform.Workers"
+RUN dotnet publish "DubbingPlatform.Workers.csproj" -c Release -o /app/publish /p:UseAppHost=false
+# EF migrations bundle (Task 40): self-contained applier consumed by the
+# migration Job and the API initContainer gate at /app/efbundle. Compiled form
+# of `dotnet ef database update --project src/DubbingPlatform.Infrastructure
+# --startup-project src/DubbingPlatform.Api --context AppDbContext`.
+WORKDIR /src
+# efbundle is code-gen only (no live DB); AppDbContext requires a
+# ConnectionStrings__Default value at design time, so supply a dummy.
+RUN dotnet tool restore && ConnectionStrings__Default="Host=localhost;Port=5432;Database=dubbing;Username=dubbing;Password=dubbing" dotnet ef migrations bundle --project src/DubbingPlatform.Infrastructure --startup-project src/DubbingPlatform.Api --configuration Release --self-contained -r linux-x64 --output /app/efbundle
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS final
+WORKDIR /app
+ENV DOTNET_WORKER_ROLE=maintenance \
+    DOTNET_EnableDiagnostics=0 \
+    TMPDIR=/tmp \
+    PATH="${PATH}:/home/app/.dotnet/tools"
+COPY --from=build /app/publish .
+COPY --from=build /app/efbundle /app/efbundle
+COPY .config/dotnet-tools.json ./.config/dotnet-tools.json
+# Restore dotnet-ef locally so `dotnet ef` works via `docker compose run maintenance`.
+USER app
+RUN dotnet tool restore
+# Read-only-root compatible: app writes only to /tmp.
+# Local dev defaults only; production secrets come from secret manager.
+ENTRYPOINT ["dotnet", "DubbingPlatform.Workers.dll"]

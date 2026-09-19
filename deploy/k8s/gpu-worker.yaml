@@ -1,0 +1,174 @@
+# Task 43: local-inference GPU boundary (OPTIONAL, disabled by default).
+# This file is the task-text path `deploy/k8s/gpu-worker.yaml`; the canonical
+# worker manifest is `deploy/k8s/workers-gpu.yaml` (same Deployment, kept in
+# sync). KEDA scaling for `ai.gpu` (queue + DCGM GPU util, 0-4 replicas) lives
+# in `deploy/k8s/keda-scalers.yaml`.
+# Worker: replicas 0-4, GPU nodeSelector + NoSchedule toleration,
+# nvidia.com/gpu:1 limit, DOTNET_WORKER_ROLE=gpu,
+# LocalInference__Endpoint=http://local-inference:8000,
+# LocalInference__MaxConcurrency=1 (GPU; CPU default 2, enforced in-adapter).
+# Warmup (POST /warmup, fallback GET /health) gates readiness via the
+# local-inference-warmup check when Features:LocalInferenceEnabled=true
+# (default false; core unaffected when disabled).
+# Sidecar: minimal Python FastAPI stub (services/local-inference/) for local
+# testing; production swaps real models without C# changes. mTLS where
+# configured; hashes verified before load; GPU isolation via nodeSelector.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-gpu
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: worker-gpu
+spec:
+  replicas: 0
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: worker-gpu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: dubbing-platform
+        app.kubernetes.io/component: worker-gpu
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: worker
+          image: ghcr.io/CHANGE_ME/dubbing-worker-gpu:latest
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef: {name: dubbing-config}
+          env:
+            - {name: DOTNET_WORKER_ROLE, value: gpu}
+            - {name: NVIDIA_VISIBLE_DEVICES, value: all}
+            - {name: LocalInference__Device, value: cuda}
+            - {name: LocalInference__Endpoint, value: "http://local-inference:8000"}
+            - {name: LocalInference__Protocol, value: http}
+            - {name: LocalInference__MaxConcurrency, value: "1"}
+            - name: ConnectionStrings__Default
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: connection-string}}
+            - name: RabbitMq__Host
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-host}}
+            - name: RabbitMq__Port
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-port}}
+            - name: RabbitMq__VirtualHost
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-vhost}}
+            - name: RabbitMq__Username
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-username}}
+            - name: RabbitMq__Password
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-password}}
+            - name: Redis__Connection
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: redis-connection}}
+            - name: Storage__Endpoint
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-endpoint}}
+            - name: Storage__Bucket
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-bucket}}
+            - name: Storage__AccessKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-access-key}}
+            - name: Storage__SecretKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-secret-key}}
+            - name: Providers__AzureApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: providers-azure-api-key}}
+            - name: OpenAI__ApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: openai-api-key}}
+            - name: Providers__OpenAIApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: openai-api-key}}
+            - name: Google__ApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: google-api-key}}
+            - name: Providers__GoogleApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: google-api-key}}
+          resources:
+            requests: {cpu: 500m, memory: 2Gi}
+            limits: {cpu: "2", memory: 8Gi, nvidia.com/gpu: "1"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-inference
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: local-inference
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: local-inference
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: dubbing-platform
+        app.kubernetes.io/component: local-inference
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: sidecar
+          image: ghcr.io/CHANGE_ME/dubbing-local-inference:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - {name: MODEL_NAME, value: local-small}
+            - {name: MODEL_VERSION, value: "1"}
+            - {name: DEVICE_PROFILE, value: cpu}
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "2", memory: 4Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-inference
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: local-inference
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: local-inference
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

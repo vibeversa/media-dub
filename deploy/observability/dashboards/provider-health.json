@@ -1,0 +1,37 @@
+{
+  "title": "Provider Health",
+  "tags": ["dubbing-platform", "providers"],
+  "timezone": "utc",
+  "panels": [
+    {
+      "title": "Provider calls vs errors",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum by (provider) (rate(provider_calls_total[15m]))" },
+        { "expr": "sum by (provider) (rate(provider_errors_total[15m]))" }
+      ]
+    },
+    {
+      "title": "Provider error rate",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "rate(provider_errors_total[15m]) / clamp_min(rate(provider_calls_total[15m]), 1)" }]
+    },
+    {
+      "title": "Provider p95 latency (ms)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (provider, le) (rate(provider_latency_bucket[15m])))" }]
+    },
+    {
+      "title": "Policy denials / route selections",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "rate(provider_policy_denied_total[15m])" },
+        { "expr": "rate(provider_route_selected_total[15m])" }
+      ]
+    }
+  ]
+}

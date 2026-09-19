@@ -1,0 +1,45 @@
+# Staging overlay (Task 40). Raw YAML in deploy/k8s is primary; this overlay
+# is the staging environment view. Build with:
+#   kubectl apply -k deploy/k8s/overlays/staging
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: dubbing-staging
+resources:
+  - ../../namespace.yaml
+  - ../../configmap.yaml
+  - ../../secrets.yaml
+  - ../../api-deployment.yaml
+  - ../../workers-control.yaml
+  - ../../workers-media-prep.yaml
+  - ../../workers-media-render.yaml
+  - ../../workers-ai.yaml
+  - ../../workers-gpu.yaml
+  - ../../workers-export.yaml
+  - ../../workers-maintenance.yaml
+  - ../../ingress.yaml
+  - ../../networkpolicies.yaml
+  - ../../pdb.yaml
+  - ../../migration-job.yaml
+  - ../../keda-scalers.yaml
+# CI rewrites tags per build (kustomize edit set image); staging tracks main.
+images:
+  - {name: ghcr.io/CHANGE_ME/dubbing-api, newTag: main}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-control, newTag: main}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-media-preparation, newTag: main}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-media-render, newTag: main}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-ai, newTag: main}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-gpu, newTag: main}
+  - {name: ghcr.io/CHANGE_ME/dubbing-worker-export, newTag: main}
+  - {name: ghcr.io/CHANGE_ME/dubbing-maintenance, newTag: main}
+replicas:
+  - {name: api, count: 1}
+  - {name: worker-control, count: 1}
+  - {name: worker-media-prep, count: 1}
+  - {name: worker-media-render, count: 1}
+  - {name: worker-ai, count: 1}
+  - {name: worker-export, count: 1}
+  - {name: worker-maintenance, count: 1}
+patches:
+  - path: configmap-patch.yaml
+  - path: ingress-patch.yaml
+  - path: pvc-patch.yaml

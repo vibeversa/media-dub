@@ -1,0 +1,10 @@
+# Staging non-secret config: deterministic mock providers, staging OTLP.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dubbing-config
+data:
+  DOTNET_ENVIRONMENT: Staging
+  Providers__DefaultProvider: mock
+  Observability__OtlpEndpoint: http://otel-collector.observability.svc.cluster.local:4317
+  Deployment__Environment: Staging

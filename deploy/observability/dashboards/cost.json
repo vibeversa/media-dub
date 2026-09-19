@@ -1,0 +1,34 @@
+{
+  "title": "Cost",
+  "tags": ["dubbing-platform", "cost"],
+  "timezone": "utc",
+  "panels": [
+    {
+      "title": "Provider cost (USD/min)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (provider) (rate(provider_cost_total[15m]))" }]
+    },
+    {
+      "title": "Cost reserved vs reconciled",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "rate(cost_reserved_total[15m])" },
+        { "expr": "rate(cost_reconciled_total[15m])" }
+      ]
+    },
+    {
+      "title": "Quota rejections by dimension",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (dimension) (rate(quota_rejections_total[15m]))" }]
+    },
+    {
+      "title": "Rate-limit rejections by provider/dimension",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum by (provider, dimension) (rate(ratelimit_rejections_total[15m]))" }]
+    }
+  ]
+}

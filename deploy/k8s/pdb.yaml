@@ -1,0 +1,25 @@
+# Task 40: PodDisruptionBudgets keep at least one API and one control-plane
+# replica during voluntary disruptions (node drains, upgrades).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/component: api}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker-control
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/component: worker-control}

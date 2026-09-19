@@ -1,0 +1,31 @@
+# Task 40: external HTTPS entry to the API. TLS is terminated at ingress;
+# the certificate is provisioned by cert-manager from the annotated
+# ClusterIssuer (operator creates it once per cluster; staging uses the
+# staging issuer via the overlay). Replace the example hosts with real DNS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: api
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 5g
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [api.dubbing.example.com]
+      secretName: dubbing-api-tls
+  rules:
+    - host: api.dubbing.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: api, port: {number: 80}}

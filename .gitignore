@@ -1,0 +1,45 @@
+## .NET
+bin/
+obj/
+out/
+TestResults/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Build
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Secrets / env
+.env
+.env.*
+*.env
+appsettings.Production.json
+appsettings.*.Production.json
+secrets.json
+
+## OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+## Rider / VSCode / coverage
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.coverage
+*.coveragexml
+coverage*/

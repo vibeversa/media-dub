@@ -1,0 +1,76 @@
+# PrometheusRule for dubbing-platform SLOs (Task 38).
+# Datasource: Prometheus scraping /metrics (dots exported as underscores,
+# e.g. dlq.depth -> dlq_depth). All alerts route via escalation.md
+# (L1 on-call 15m, L2 platform 1h, L3 provider/DBA 4h).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: dubbing-platform-slos
+  labels:
+    app: dubbing-platform
+spec:
+  groups:
+    - name: dubbing-platform.slos
+      interval: 30s
+      rules:
+        - alert: DLQDepthNonZero
+          expr: dlq_depth > 0
+          for: 5m
+          labels:
+            severity: page
+            runbook: docs/runbooks/dlq.md
+          annotations:
+            summary: DLQ depth above zero (sustained)
+            description: dlq.depth > 0 for 5m. Inspect _skipped/_error queues, then GET /api/v1/admin/dlq/summary.
+        - alert: LeaseRecoveryRateHigh
+          expr: rate(leases_recovered_total[15m]) / clamp_min(rate(stages_started_total[15m]), 1) > 0.01
+          for: 10m
+          labels:
+            severity: ticket
+            runbook: docs/runbooks/lease.md
+          annotations:
+            summary: Lease recovery above 1% of stages
+            description: LeaseRecoveryRate > 1%. Check GET /api/v1/admin/leases/status.
+        - alert: ProviderErrorRateHigh
+          expr: rate(provider_errors_total[15m]) / clamp_min(rate(provider_calls_total[15m]), 1) > 0.05
+          for: 10m
+          labels:
+            severity: ticket
+            runbook: docs/runbooks/provider-outage.md
+          annotations:
+            summary: Provider error rate above 5%
+            description: provider.errors / provider.calls > 5%. Check provider-health dashboard + provider executions.
+        - alert: ApiP95LatencyHigh
+          expr: histogram_quantile(0.95, rate(api_latency_bucket[10m])) > 500
+          for: 10m
+          labels:
+            severity: ticket
+            runbook: docs/runbooks/quota-cost.md
+          annotations:
+            summary: API p95 latency above 500ms
+            description: api.latency p95 > 500ms for 10m. Check pipeline-health dashboard.
+        - alert: OrphanRateHigh
+          expr: increase(storage_orphans_total[1h]) > 10
+          for: 15m
+          labels:
+            severity: ticket
+            runbook: docs/runbooks/orphan.md
+          annotations:
+            summary: Storage orphan growth high
+            description: storage.orphans increasing. Run OrphanObjectReconciler + follow orphan runbook.
+        - alert: ExportSuccessLow
+          expr: rate(exports_generated_total[30m]) / clamp_min(rate(exports_generated_total[30m]) + rate(exports_failed_total[30m]), 1) < 0.99
+          for: 15m
+          labels:
+            severity: ticket
+            runbook: docs/runbooks/review-backlog.md
+          annotations:
+            summary: Export success below 99%
+        - alert: PipelineSuccessLow
+          expr: rate(projects_completed_total[30m]) / clamp_min(rate(projects_completed_total[30m]) + rate(projects_failed_total[30m]), 1) < 0.98
+          for: 15m
+          labels:
+            severity: page
+            runbook: docs/runbooks/dlq.md
+          annotations:
+            summary: Pipeline success below 98%

@@ -1,0 +1,6 @@
+@DubbingPlatform.Api_HostAddress = http://localhost:5168
+
+GET {{DubbingPlatform.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

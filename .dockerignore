@@ -1,0 +1,25 @@
+# 045 fix: exclude Windows build outputs from Linux image contexts.
+# Without this, COPY . . overwrites the container's clean restore with host
+# obj/project.assets.json containing
+# 'C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages'
+# fallback folders, failing Linux builds with MSB4018 (maintenance efbundle).
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/node_modules/
+**/out/
+**/TestResults/
+**/docker-compose*.yml
+**/Dockerfile*
+**/.git/
+.vs/
+.git/
+.github/
+docs/
+fixtures/
+tests/
+*.md
+!global.json
+!Directory.Build.props
+!.config/dotnet-tools.json

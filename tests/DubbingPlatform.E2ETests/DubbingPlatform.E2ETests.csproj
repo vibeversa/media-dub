@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <PackageReference Include="Testcontainers.Minio" Version="4.15.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0" />
+    <PackageReference Include="Testcontainers.RabbitMq" Version="4.15.0" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.15.0" />
+    <PackageReference Include="WireMock.Net" Version="2.15.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.3.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DubbingPlatform.Domain\DubbingPlatform.Domain.csproj" />
+    <ProjectReference Include="..\..\src\DubbingPlatform.Contracts\DubbingPlatform.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\DubbingPlatform.Application\DubbingPlatform.Application.csproj" />
+    <ProjectReference Include="..\..\src\DubbingPlatform.Infrastructure\DubbingPlatform.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\DubbingPlatform.Api\DubbingPlatform.Api.csproj" />
+    <ProjectReference Include="..\..\src\DubbingPlatform.Workers\DubbingPlatform.Workers.csproj" />
+  </ItemGroup>
+
+</Project>

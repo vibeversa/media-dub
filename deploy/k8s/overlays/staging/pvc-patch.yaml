@@ -1,0 +1,9 @@
+# Staging scratch: standard class (no high-IOPS guarantee needed).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-scratch
+spec:
+  storageClassName: standard
+  resources:
+    requests: {storage: 50Gi}

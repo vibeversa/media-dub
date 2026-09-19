@@ -1,0 +1,31 @@
+{
+  "title": "Queues",
+  "tags": ["dubbing-platform", "queues"],
+  "timezone": "utc",
+  "panels": [
+    {
+      "title": "DLQ depth",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "dlq_depth" }]
+    },
+    {
+      "title": "Lease recoveries",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "rate(leases_recovered_total[15m])" }]
+    },
+    {
+      "title": "Stage retries",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "rate(stages_retry_total[15m])" }]
+    },
+    {
+      "title": "Worker concurrency / queue depth (broker)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "rabbitmq_queue_messages" }]
+    }
+  ]
+}

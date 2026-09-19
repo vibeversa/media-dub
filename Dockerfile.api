@@ -1,0 +1,27 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["src/DubbingPlatform.Api/DubbingPlatform.Api.csproj", "src/DubbingPlatform.Api/"]
+COPY ["src/DubbingPlatform.Application/DubbingPlatform.Application.csproj", "src/DubbingPlatform.Application/"]
+COPY ["src/DubbingPlatform.Infrastructure/DubbingPlatform.Infrastructure.csproj", "src/DubbingPlatform.Infrastructure/"]
+COPY ["src/DubbingPlatform.Domain/DubbingPlatform.Domain.csproj", "src/DubbingPlatform.Domain/"]
+COPY ["src/DubbingPlatform.Contracts/DubbingPlatform.Contracts.csproj", "src/DubbingPlatform.Contracts/"]
+COPY ["Directory.Build.props", "./"]
+COPY ["global.json", "./"]
+RUN dotnet restore "src/DubbingPlatform.Api/DubbingPlatform.Api.csproj"
+COPY . .
+WORKDIR "/src/src/DubbingPlatform.Api"
+RUN dotnet publish "DubbingPlatform.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+# curl is required for the compose healthcheck (curl -f http://localhost:8080/health/live).
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+ENV ASPNETCORE_URLS=http://+:8080 \
+    DOTNET_EnableDiagnostics=0 \
+    TMPDIR=/tmp
+EXPOSE 8080
+COPY --from=build /app/publish .
+# Read-only-root compatible: app writes only to /tmp.
+# Local dev defaults only; production secrets come from secret manager.
+USER app
+ENTRYPOINT ["dotnet", "DubbingPlatform.Api.dll"]

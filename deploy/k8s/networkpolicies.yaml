@@ -1,0 +1,111 @@
+# Task 40: NetworkPolicies implementing the Task 37 / docs/security/mtls.md
+# spec: default deny-all + explicit allows. Workers accept no ingress.
+# Backend selectors below cover BOTH self-hosted staging statefulsets (labels
+# app=postgres|rabbitmq|redis|minio) and in-cluster proxies; managed prod
+# endpoints are reached via the documented ipBlock CIDRs (CHANGE_ME to the
+# real managed ranges) plus the provider-allowlist egress on 443.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Cluster DNS must work before anything else can resolve.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# api: served by ingress-nginx, scraped by monitoring, talks to backends.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-allow
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/component: api}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {name: ingress-nginx}}
+      ports:
+        - {protocol: TCP, port: 8080}
+    - from:
+        - namespaceSelector: {matchLabels: {name: monitoring}}
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress:
+    - to:
+        - podSelector: {matchLabels: {app: postgres}}
+        - podSelector: {matchLabels: {app: rabbitmq}}
+        - podSelector: {matchLabels: {app: redis}}
+        - podSelector: {matchLabels: {app: minio}}
+        - ipBlock: {cidr: 198.51.100.0/24} # CHANGE_ME: managed PG CIDR
+        - ipBlock: {cidr: 203.0.113.0/24} # CHANGE_ME: managed broker/Redis CIDR
+        - ipBlock: {cidr: 192.0.2.0/24} # CHANGE_ME: managed object-storage CIDR
+      ports:
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 5672}
+        - {protocol: TCP, port: 6379}
+        - {protocol: TCP, port: 9000}
+        - {protocol: TCP, port: 443}
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports:
+        - {protocol: TCP, port: 443} # provider allowlist (ProviderEndpointValidator hosts); clusters with Cilium should replace with toFQDNs rules
+---
+# Workers: no ingress (default-deny ingress stays); same backend egress as
+# the API. Selector excludes the api component (covered by api-allow above).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: workers-allow
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app.kubernetes.io/part-of, operator: In, values: [dubbing-platform]}
+      - {key: app.kubernetes.io/component, operator: NotIn, values: [api]}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: {matchLabels: {app: postgres}}
+        - podSelector: {matchLabels: {app: rabbitmq}}
+        - podSelector: {matchLabels: {app: redis}}
+        - podSelector: {matchLabels: {app: minio}}
+        - ipBlock: {cidr: 198.51.100.0/24} # CHANGE_ME: managed PG CIDR
+        - ipBlock: {cidr: 203.0.113.0/24} # CHANGE_ME: managed broker/Redis CIDR
+        - ipBlock: {cidr: 192.0.2.0/24} # CHANGE_ME: managed object-storage CIDR
+      ports:
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 5672}
+        - {protocol: TCP, port: 6379}
+        - {protocol: TCP, port: 9000}
+        - {protocol: TCP, port: 443}
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports:
+        - {protocol: TCP, port: 443} # provider allowlist; see note above

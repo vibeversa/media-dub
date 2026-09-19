@@ -1,0 +1,75 @@
+# Task 40: database migration Job. Runs BEFORE the API rollout:
+#   - ArgoCD: PreSync hook (annotations below).
+#   - Helm: pre-upgrade hook (annotations below).
+#   - Plain kubectl: apply this file first and wait
+#     (kubectl wait --for=condition=complete job/dubbing-migration -n <ns>),
+#     then roll out the API (see deploy/README.md deploy order).
+# A failed migration blocks the rollout: the hook/wait fails, and the API
+# initContainer gate (api-deployment.yaml) additionally refuses to start pods.
+#
+# Mechanism: the maintenance image ships a self-contained EF migrations
+# bundle at /app/efbundle (built in Dockerfile.maintenance via
+# `dotnet ef migrations bundle`, i.e. the compiled form of
+# `dotnet ef database update --project src/DubbingPlatform.Infrastructure
+# --startup-project src/DubbingPlatform.Api --context AppDbContext`).
+# The bundle is idempotent (concurrent runners serialize on
+# __EFMigrationsHistory) and uses the maintenance-role connection string
+# (BYPASSRLS), never the app role. Migrations are additive only
+# (expand/contract, see deploy/README.md).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dubbing-migration
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: migration
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    helm.sh/hook: pre-upgrade,pre-install
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: dubbing-platform
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: migrate
+          image: ghcr.io/CHANGE_ME/dubbing-maintenance:latest
+          imagePullPolicy: Always
+          env:
+            # Bundle is built from the Api startup project: same
+            # ConnectionStrings__Default key as the app, wired to the
+            # maintenance-role string. Redacted from bundle logs.
+            - name: ConnectionStrings__Default
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: maintenance-connection}}
+            - name: DOTNET_BUNDLE_EXTRACT_BASE_DIR
+              value: /tmp/bundle
+          command: [/app/efbundle]
+          args: [--verbose]
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "1", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

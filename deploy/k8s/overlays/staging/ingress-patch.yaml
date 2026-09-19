@@ -1,0 +1,19 @@
+# Staging ingress: staging host + staging issuer.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+spec:
+  tls:
+    - hosts: [api.staging.dubbing.example.com]
+      secretName: dubbing-api-tls
+  rules:
+    - host: api.staging.dubbing.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: api, port: {number: 80}}

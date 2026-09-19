@@ -1,0 +1,18 @@
+# Task 40: application namespaces. Base manifests default to dubbing-prod;
+# the staging overlay retargets them to dubbing-staging via the kustomize
+# namespace transformer (see deploy/k8s/overlays/staging/kustomization.yaml).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    environment: prod
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dubbing-staging
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    environment: staging

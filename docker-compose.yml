@@ -1,0 +1,319 @@
+name: dubbing-platform
+
+# Local-only compose. Production uses managed services; secrets come from secret manager.
+# Port overrides: POSTGRES_PORT, RABBITMQ_PORT, RABBITMQ_MANAGEMENT_PORT, REDIS_PORT,
+#   MINIO_PORT, MINIO_CONSOLE_PORT, API_PORT (e.g. POSTGRES_PORT=5433 docker compose --profile fast up).
+# `docker compose config` validates without a daemon; `up` requires a running daemon.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: dubbing
+      POSTGRES_USER: dubbing
+      POSTGRES_PASSWORD: dubbing # local dev default only
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dubbing"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - fast
+      - full
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - full
+
+  redis:
+    image: redis:7
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - full
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-02-06T21-36-22Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin # local dev default only
+      MINIO_ROOT_PASSWORD: minioadmin # local dev default only
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniadata:/data
+    healthcheck:
+      # Pinned Feb-2024 image ships no curl/wget/grep on the healthcheck PATH;
+      # builtins-only bash /dev/tcp HTTP probe instead.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9000; printf \"GET /minio/health/live HTTP/1.0\\r\\n\\r\\n\" >&3; IFS= read -r -t 5 line <&3; [[ \"$$line\" == *200* ]]'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - fast
+      - full
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=dubbing
+      RabbitMq__Host: rabbitmq # ignored in fast profile (in-memory transport + mock providers)
+      Redis__Connection: redis:6379 # ignored in fast profile
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: minioadmin # local dev default only
+      Storage__SecretKey: minioadmin # local dev default only
+      Providers__DefaultProvider: mock
+      Transport__Provider: "${TRANSPORT_PROVIDER:-InMemory}" # fast=InMemory, full sets RabbitMq
+      Messaging__Transport: "${MESSAGING_TRANSPORT:-inmemory}" # legacy alias, prefer Transport__Provider
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    profiles:
+      - fast
+      - full
+
+  control:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker.control
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+    environment:
+      DOTNET_WORKER_ROLE: control
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=dubbing
+      RabbitMq__Host: rabbitmq # ignored in fast profile
+      Redis__Connection: redis:6379 # ignored in fast profile
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: minioadmin # local dev default only
+      Storage__SecretKey: minioadmin # local dev default only
+      Providers__DefaultProvider: mock
+      Transport__Provider: "${TRANSPORT_PROVIDER:-InMemory}"
+      Messaging__Transport: "${MESSAGING_TRANSPORT:-inmemory}"
+    volumes:
+      - mediatmp:/tmp/media
+    profiles:
+      - fast
+      - full
+
+  media-preparation:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker.media.preparation
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DOTNET_WORKER_ROLE: media-preparation
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=dubbing
+      RabbitMq__Host: rabbitmq
+      Redis__Connection: redis:6379
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: minioadmin # local dev default only
+      Storage__SecretKey: minioadmin # local dev default only
+      Providers__DefaultProvider: mock
+      Transport__Provider: "${TRANSPORT_PROVIDER:-RabbitMq}"
+    volumes:
+      - mediatmp:/tmp/media
+    profiles:
+      - full
+
+  media-render:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker.media.render
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DOTNET_WORKER_ROLE: media-render
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=dubbing
+      RabbitMq__Host: rabbitmq
+      Redis__Connection: redis:6379
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: minioadmin # local dev default only
+      Storage__SecretKey: minioadmin # local dev default only
+      Providers__DefaultProvider: mock
+      Transport__Provider: "${TRANSPORT_PROVIDER:-RabbitMq}"
+    volumes:
+      - mediatmp:/tmp/media
+    profiles:
+      - full
+
+  ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker.ai
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DOTNET_WORKER_ROLE: ai
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=dubbing
+      RabbitMq__Host: rabbitmq
+      Redis__Connection: redis:6379
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: minioadmin # local dev default only
+      Storage__SecretKey: minioadmin # local dev default only
+      Providers__DefaultProvider: mock
+      Transport__Provider: "${TRANSPORT_PROVIDER:-RabbitMq}"
+    volumes:
+      - mediatmp:/tmp/media
+    profiles:
+      - full
+
+  gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker.gpu
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DOTNET_WORKER_ROLE: gpu
+      DOTNET_ENVIRONMENT: Development
+      NVIDIA_VISIBLE_DEVICES: all
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=dubbing
+      RabbitMq__Host: rabbitmq
+      Redis__Connection: redis:6379
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: minioadmin # local dev default only
+      Storage__SecretKey: minioadmin # local dev default only
+      Providers__DefaultProvider: mock
+      Transport__Provider: "${TRANSPORT_PROVIDER:-RabbitMq}"
+    volumes:
+      - mediatmp:/tmp/media
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - full
+
+  export:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker.export
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DOTNET_WORKER_ROLE: export
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=dubbing
+      RabbitMq__Host: rabbitmq
+      Redis__Connection: redis:6379
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: minioadmin # local dev default only
+      Storage__SecretKey: minioadmin # local dev default only
+      Providers__DefaultProvider: mock
+      Transport__Provider: "${TRANSPORT_PROVIDER:-RabbitMq}"
+    volumes:
+      - mediatmp:/tmp/media
+    profiles:
+      - full
+
+  maintenance:
+    build:
+      context: .
+      dockerfile: Dockerfile.maintenance
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DOTNET_WORKER_ROLE: maintenance
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=dubbing
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: minioadmin # local dev default only
+      Storage__SecretKey: minioadmin # local dev default only
+    volumes:
+      - mediatmp:/tmp/media
+    profiles:
+      - full
+      - tools
+
+volumes:
+  pgdata:
+  miniadata:
+  mediatmp:

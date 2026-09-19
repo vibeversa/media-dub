@@ -1,0 +1,26 @@
+# Staging values: helm upgrade --install dubbing deploy/helm/dubbing
+#   -f deploy/helm/dubbing/values.yaml -f deploy/helm/dubbing/values-staging.yaml
+# Mirrors deploy/k8s/overlays/staging (single source of intent is the overlay;
+# keep both in sync).
+global:
+  imageRegistry: ghcr.io/CHANGE_ME
+  imageTag: main
+namespace: dubbing-staging
+apiHost: api.staging.dubbing.example.com
+clusterIssuer: letsencrypt-staging
+observability:
+  otlpEndpoint: http://otel-collector.observability.svc.cluster.local:4317
+providers:
+  defaultProvider: mock
+media:
+  maxConcurrentMediaJobs: 2
+  storageClass: standard
+replicas:
+  api: 1
+  control: 1
+  mediaPrep: 1
+  mediaRender: 1
+  ai: 1
+  gpu: 0
+  export: 1
+  maintenance: 1

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: dubbing
+description: Dubbing platform — thin Helm wrapper over the raw K8s manifests (Task 40).
+type: application
+version: 0.1.0
+appVersion: main

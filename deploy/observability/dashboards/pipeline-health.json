@@ -1,0 +1,34 @@
+{
+  "title": "Pipeline Health",
+  "tags": ["dubbing-platform", "slo"],
+  "timezone": "utc",
+  "panels": [
+    {
+      "title": "Pipeline success rate",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "rate(projects_completed_total[30m]) / clamp_min(rate(projects_completed_total[30m]) + rate(projects_failed_total[30m]), 1)" }]
+    },
+    {
+      "title": "Stage failure rate",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "rate(stages_failed_total[15m]) / clamp_min(rate(stages_completed_total[15m]) + rate(stages_failed_total[15m]), 1)" }]
+    },
+    {
+      "title": "API p95 latency (ms)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "histogram_quantile(0.95, rate(api_latency_bucket[10m]))" }]
+    },
+    {
+      "title": "Segment duration p50/p95 (ms)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(segment_duration_bucket[15m]))" },
+        { "expr": "histogram_quantile(0.95, rate(segment_duration_bucket[15m]))" }
+      ]
+    }
+  ]
+}

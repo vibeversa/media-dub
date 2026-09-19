@@ -1,0 +1,109 @@
+# Task 40: media-preparation worker (ingestion, analysis, separation, VAD).
+# Prod: 3 replicas, bounded concurrency (Media__MaxConcurrentMediaJobs=2 per
+# pod), shared 50Gi high-IOPS scratch PVC (must be a ReadWriteMany class such
+# as Azure Files Premium / EFS so all replicas mount it; object storage
+# remains the source of truth, scratch is ephemeral). Scales on CPU 70% +
+# memory 80% (see keda-scalers.yaml).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-scratch
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+spec:
+  accessModes: [ReadWriteMany]
+  # CHANGE_ME: high-IOPS RWX class for your cloud (e.g. azurefile-csi-premium,
+  # efs-sc). Staging overlay may replace with a standard class.
+  storageClassName: managed-high-iops
+  resources:
+    requests: {storage: 50Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-media-prep
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: worker-media-prep
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: worker-media-prep
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: dubbing-platform
+        app.kubernetes.io/component: worker-media-prep
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: worker
+          image: ghcr.io/CHANGE_ME/dubbing-worker-media-preparation:latest
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef: {name: dubbing-config}
+          env:
+            - {name: DOTNET_WORKER_ROLE, value: media-preparation}
+            # Bounded media concurrency (task-text "concurrency:2"): at most 2
+            # concurrent FFmpeg jobs per pod (MediaOptions range 1..64).
+            - {name: Media__MaxConcurrentMediaJobs, value: "2"}
+            - name: ConnectionStrings__Default
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: connection-string}}
+            - name: RabbitMq__Host
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-host}}
+            - name: RabbitMq__Port
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-port}}
+            - name: RabbitMq__VirtualHost
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-vhost}}
+            - name: RabbitMq__Username
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-username}}
+            - name: RabbitMq__Password
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: rabbitmq-password}}
+            - name: Redis__Connection
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: redis-connection}}
+            - name: Storage__Endpoint
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-endpoint}}
+            - name: Storage__Bucket
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-bucket}}
+            - name: Storage__AccessKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-access-key}}
+            - name: Storage__SecretKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: storage-secret-key}}
+            - name: Providers__AzureApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: providers-azure-api-key}}
+            - name: OpenAI__ApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: openai-api-key}}
+            - name: Providers__OpenAIApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: openai-api-key}}
+            - name: Google__ApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: google-api-key}}
+            - name: Providers__GoogleApiKey
+              valueFrom: {secretKeyRef: {name: dubbing-secrets, key: google-api-key}}
+          resources:
+            requests: {cpu: "1", memory: 2Gi}
+            limits: {cpu: "4", memory: 8Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: media-scratch, mountPath: /tmp/media}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: media-scratch
+          persistentVolumeClaim: {claimName: media-scratch}

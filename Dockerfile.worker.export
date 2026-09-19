@@ -1,0 +1,24 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["src/DubbingPlatform.Workers/DubbingPlatform.Workers.csproj", "src/DubbingPlatform.Workers/"]
+COPY ["src/DubbingPlatform.Application/DubbingPlatform.Application.csproj", "src/DubbingPlatform.Application/"]
+COPY ["src/DubbingPlatform.Infrastructure/DubbingPlatform.Infrastructure.csproj", "src/DubbingPlatform.Infrastructure/"]
+COPY ["src/DubbingPlatform.Domain/DubbingPlatform.Domain.csproj", "src/DubbingPlatform.Domain/"]
+COPY ["src/DubbingPlatform.Contracts/DubbingPlatform.Contracts.csproj", "src/DubbingPlatform.Contracts/"]
+COPY ["Directory.Build.props", "./"]
+COPY ["global.json", "./"]
+RUN dotnet restore "src/DubbingPlatform.Workers/DubbingPlatform.Workers.csproj"
+COPY . .
+WORKDIR "/src/src/DubbingPlatform.Workers"
+RUN dotnet publish "DubbingPlatform.Workers.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+ENV DOTNET_WORKER_ROLE=export \
+    DOTNET_EnableDiagnostics=0 \
+    TMPDIR=/tmp
+COPY --from=build /app/publish .
+# Read-only-root compatible: app writes only to /tmp.
+# Local dev defaults only; production secrets come from secret manager.
+USER app
+ENTRYPOINT ["dotnet", "DubbingPlatform.Workers.dll"]

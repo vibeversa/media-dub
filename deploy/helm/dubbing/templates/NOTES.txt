@@ -1,0 +1,14 @@
+Dubbing platform (Task 40).
+
+Two supported deploy flows (raw YAML is primary):
+
+  kubectl/kustomize (primary):
+    kubectl apply -k deploy/k8s/overlays/staging   # or .../prod
+
+  Helm (wrapper):
+    helm upgrade --install dubbing deploy/helm/dubbing \
+      -f deploy/helm/dubbing/values.yaml \
+      -f deploy/helm/dubbing/values-prod.yaml     # or values-staging.yaml
+
+Deploy order: secrets -> migration-job -> api -> workers -> ingress -> keda.
+See deploy/README.md.

@@ -1,0 +1,9 @@
+# Trivy allowlist. Every entry MUST carry an expiry date (EXPIRY: YYYY-MM-DD) and
+# a justification. CI fails on HIGH/CRITICAL findings except IDs listed here.
+# Expired entries are dead: remove the CVE line once past EXPIRY or extend the
+# date with a new justification in the security review log.
+#
+# Format: one CVE per line, comment above with EXPIRY + reason.
+# Example:
+# # EXPIRY: 2026-12-31 - CVE-2026-12345 in base image, no fixed build yet; tracked in #42.
+# CVE-2026-12345
