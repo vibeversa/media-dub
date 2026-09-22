@@ -54,7 +54,7 @@ public sealed class ExceptionHandlingMiddleware
             case ValidationException validation:
                 return (400, ErrorCodes.ValidationFailed, RedactedOrCode(validation, ErrorCodes.ValidationFailed), ValidationDetails(validation));
             case AppException app:
-                return (app.StatusCode, app.ErrorCode, RedactedOrCode(app, app.ErrorCode), new Dictionary<string, object?>(StringComparer.Ordinal));
+                return (app.StatusCode, app.ErrorCode, RedactedOrCode(app, app.ErrorCode), ErrorDetails(app));
             case DomainException domain:
                 return (400, ErrorCodes.ValidationFailed, RedactedOrCode(domain, ErrorCodes.ValidationFailed), new Dictionary<string, object?>(StringComparer.Ordinal));
             case UnauthorizedAccessException unauthorized:
@@ -68,6 +68,35 @@ public sealed class ExceptionHandlingMiddleware
     {
         var redacted = SecretRedactor.Redact(exception.Message);
         return string.IsNullOrWhiteSpace(redacted) ? code : redacted;
+    }
+
+    private static Dictionary<string, object?> ErrorDetails(AppException app)
+    {
+        if (app is IErrorDetailsProvider provider)
+        {
+            try
+            {
+                var details = provider.GetErrorDetails();
+                var merged = new Dictionary<string, object?>(StringComparer.Ordinal);
+                if (details is not null)
+                {
+                    foreach (var entry in details)
+                    {
+                        merged[entry.Key] = entry.Value;
+                    }
+                }
+
+                return SecretRedactor.RedactDetails(merged);
+            }
+#pragma warning disable CA1031 // Details are best effort; envelope must never fail.
+            catch (Exception)
+            {
+                return new Dictionary<string, object?>(StringComparer.Ordinal);
+            }
+#pragma warning restore CA1031
+        }
+
+        return new Dictionary<string, object?>(StringComparer.Ordinal);
     }
 
     private static Dictionary<string, object?> ValidationDetails(ValidationException validation)

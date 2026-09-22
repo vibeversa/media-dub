@@ -54,9 +54,14 @@ public static class ErrorCodes
     public const string RunAlreadyTerminal = "RUN_ALREADY_TERMINAL";
     public const string RunAlreadyActive = "RUN_ALREADY_ACTIVE";
     public const string ConfigChangedSinceRun = "CONFIG_CHANGED_SINCE_RUN";
+    public const string SelectionConflict = "SELECTION_CONFLICT";
+    public const string VersionNotFound = "VERSION_NOT_FOUND";
+    public const string VersionSegmentMismatch = "VERSION_SEGMENT_MISMATCH";
+    public const string SegmentTextEmpty = "SEGMENT_TEXT_EMPTY";
+    public const string SegmentRetryActive = "SEGMENT_RETRY_ACTIVE";
 
     /// <summary>
-    /// All 47 public error codes.
+    /// All 52 public error codes.
     /// </summary>
     public static readonly string[] All =
     [
@@ -107,6 +112,11 @@ public static class ErrorCodes
         RunAlreadyTerminal,
         RunAlreadyActive,
         ConfigChangedSinceRun,
+        SelectionConflict,
+        VersionNotFound,
+        VersionSegmentMismatch,
+        SegmentTextEmpty,
+        SegmentRetryActive,
     ];
 
     /// <summary>
@@ -171,6 +181,11 @@ public static class ErrorCodes
             RunAlreadyTerminal => 409,
             RunAlreadyActive => 409,
             ConfigChangedSinceRun => 409,
+            SelectionConflict => 409,
+            VersionNotFound => 404,
+            VersionSegmentMismatch => 400,
+            SegmentTextEmpty => 400,
+            SegmentRetryActive => 409,
             _ => 500,
         };
     }

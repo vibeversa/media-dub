@@ -159,7 +159,8 @@ public sealed class SegmentSelectionService
     /// <summary>
     /// Validates manual edit text (non-empty, within length). Pure; throws
     /// <see cref="DomainException"/> (400 VALIDATION_FAILED) on empty or
-    /// over-long input.
+    /// over-long input. HTML tags are stripped so stored text is plain text;
+    /// empty-after-strip is treated as empty.
     /// </summary>
     public static string RequireManualText(string? text)
     {
@@ -168,8 +169,13 @@ public sealed class SegmentSelectionService
             throw new DomainException("Manual edit requires non-empty text.");
         }
 
-        var trimmed = text.Trim();
-        if (trimmed.Length > MaxManualTextLength)
+        var stripped = HtmlTagRegex.Replace(text, string.Empty).Trim();
+        if (stripped.Length == 0)
+        {
+            throw new DomainException("Manual edit requires non-empty text.");
+        }
+
+        if (stripped.Length > MaxManualTextLength)
         {
             throw new DomainException(string.Concat(
                 "Manual edit text must not exceed ",
@@ -177,7 +183,7 @@ public sealed class SegmentSelectionService
                 " characters."));
         }
 
-        return trimmed;
+        return stripped;
     }
 
     /// <summary>
@@ -254,12 +260,13 @@ public sealed class SegmentSelectionService
         int expectedSelectionVersion,
         Guid actorUserId,
         string? reason = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? correlationId = null)
     {
         return MutateAsync(new MutationSpec(
             tenantId, projectId, segmentId, expectedSelectionVersion,
             actorUserId, reason, MutationKind.SelectTranscript,
-            transcriptVersionId, null), cancellationToken);
+            transcriptVersionId, null, null, correlationId), cancellationToken);
     }
 
     public Task<SegmentSelectionResult> SelectTranslationAsync(
@@ -270,12 +277,13 @@ public sealed class SegmentSelectionService
         int expectedSelectionVersion,
         Guid actorUserId,
         string? reason = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? correlationId = null)
     {
         return MutateAsync(new MutationSpec(
             tenantId, projectId, segmentId, expectedSelectionVersion,
             actorUserId, reason, MutationKind.SelectTranslation,
-            null, translationVersionId), cancellationToken);
+            null, translationVersionId, null, correlationId), cancellationToken);
     }
 
     public Task<SegmentSelectionResult> CreateManualTranscriptVersionAsync(
@@ -286,13 +294,14 @@ public sealed class SegmentSelectionService
         string text,
         Guid actorUserId,
         string? reason = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? correlationId = null)
     {
         var cleaned = RequireManualText(text);
         return MutateAsync(new MutationSpec(
             tenantId, projectId, segmentId, expectedSelectionVersion,
             actorUserId, reason, MutationKind.ManualTranscript,
-            null, null, cleaned), cancellationToken);
+            null, null, cleaned, correlationId), cancellationToken);
     }
 
     public Task<SegmentSelectionResult> CreateManualTranslationVersionAsync(
@@ -303,13 +312,14 @@ public sealed class SegmentSelectionService
         string text,
         Guid actorUserId,
         string? reason = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? correlationId = null)
     {
         var cleaned = RequireManualText(text);
         return MutateAsync(new MutationSpec(
             tenantId, projectId, segmentId, expectedSelectionVersion,
             actorUserId, reason, MutationKind.ManualTranslation,
-            null, null, cleaned), cancellationToken);
+            null, null, cleaned, correlationId), cancellationToken);
     }
 
     private enum MutationKind
@@ -330,7 +340,8 @@ public sealed class SegmentSelectionService
         MutationKind Kind,
         Guid? TranscriptVersionId,
         Guid? TranslationVersionId,
-        string? ManualText = null);
+        string? ManualText = null,
+        string? CorrelationId = null);
 
     private async Task<SegmentSelectionResult> MutateAsync(
         MutationSpec spec,
@@ -380,6 +391,8 @@ public sealed class SegmentSelectionService
 
                 Guid? resultingTranscriptId;
                 Guid? resultingTranslationId;
+                Guid? oldTranscriptId = null;
+                Guid? oldTranslationId = null;
                 if (existing is null)
                 {
                     if (spec.ExpectedSelectionVersion != 0)
@@ -415,6 +428,9 @@ public sealed class SegmentSelectionService
                             existing.SelectedTranscriptVersionId,
                             existing.SelectedTranslationVersionId);
                     }
+
+                    oldTranscriptId = existing.SelectedTranscriptVersionId;
+                    oldTranslationId = existing.SelectedTranslationVersionId;
 
                     (resultingTranscriptId, resultingTranslationId, newVersionId) =
                         await ApplyContentChangeAsync(
@@ -455,11 +471,14 @@ public sealed class SegmentSelectionService
                 var details = SecretRedactor.Redact(JsonSerializer.Serialize(new
                 {
                     selectionVersion = newVersion,
+                    oldTranscriptVersionId = oldTranscriptId.HasValue ? oldTranscriptId.Value.ToString("N") : null,
+                    oldTranslationVersionId = oldTranslationId.HasValue ? oldTranslationId.Value.ToString("N") : null,
                     transcriptVersionId = currentTranscriptId.HasValue ? currentTranscriptId.Value.ToString("N") : null,
                     translationVersionId = currentTranslationId.HasValue ? currentTranslationId.Value.ToString("N") : null,
                     newVersionId = newVersionId.HasValue ? newVersionId.Value.ToString("N") : null,
                     reason,
                     outputStale,
+                    correlationId = string.IsNullOrWhiteSpace(spec.CorrelationId) ? null : spec.CorrelationId!.Trim(),
                 }, JsonOptions));
 
                 db.Set<AuditEvent>().Add(new AuditEvent(

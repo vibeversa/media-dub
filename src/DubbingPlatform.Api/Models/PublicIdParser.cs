@@ -141,4 +141,20 @@ public static class PublicIdParser
     {
         return PublicIdMapper.ToPublic(id, PublicIdMapper.SpeechSegmentPrefix);
     }
+
+    /// <summary>
+    /// Parses a speaker id (<c>spk_</c> or raw GUID).
+    /// </summary>
+    public static Guid ParseSpeakerId(string? raw)
+    {
+        return Parse(raw, PublicIdMapper.SpeakerPrefix, "speaker");
+    }
+
+    /// <summary>
+    /// Formats a speaker id as <c>spk_</c>.
+    /// </summary>
+    public static string ToSpeakerId(Guid id)
+    {
+        return PublicIdMapper.ToPublic(id, PublicIdMapper.SpeakerPrefix);
+    }
 }

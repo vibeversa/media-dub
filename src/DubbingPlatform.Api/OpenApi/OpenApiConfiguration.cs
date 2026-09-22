@@ -30,7 +30,7 @@ public static class OpenApiConfiguration
             {
                 document.Info.Title = "Dubbing Platform API";
                 document.Info.Version = "v1";
-                document.Info.Description = "Tenant-scoped dubbing pipeline. Auth: JWT bearer (tid/sub/roles) or ?access_token= on SSE /stream (same policy, never logged). Mutations accept Idempotency-Key. Errors use { error: { code, message, correlationId, details } } with codes including LANGUAGE_IMMUTABLE, SETTINGS_LOCKED_ACTIVE_RUN, PROJECT_NOT_FOUND, PROJECT_HAS_ACTIVE_RUN, SETTINGS_VERSION_CONFLICT, IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_REUSED, PROJECT_ARCHIVED, RUN_ALREADY_TERMINAL, RUN_ALREADY_ACTIVE, CONFIG_CHANGED_SINCE_RUN. Project lists use { items, page, pageSize, total, sort, sortDir, hasMore, clamped }; dashboard summary is GET /api/v1/dashboard/summary with seven sections; processing start returns 202 (replay 200 + Idempotent-Replayed:true) and run lists use { items, page, pageSize, total, hasMore }; workspace aggregate is GET /api/v1/projects/{projectId}/workspace (single call, ten sections); progress exposes percentApproximate (display-only) and SSE is GET .../progress/stream (text/event-stream, Last-Event-ID accepted, event freeze in Task 013).";
+                document.Info.Description = "Tenant-scoped dubbing pipeline. Auth: JWT bearer (tid/sub/roles) or ?access_token= on SSE /stream (same policy, never logged). Mutations accept Idempotency-Key. Errors use { error: { code, message, correlationId, details } } with codes including LANGUAGE_IMMUTABLE, SETTINGS_LOCKED_ACTIVE_RUN, PROJECT_NOT_FOUND, PROJECT_HAS_ACTIVE_RUN, SETTINGS_VERSION_CONFLICT, IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_REUSED, PROJECT_ARCHIVED, RUN_ALREADY_TERMINAL, RUN_ALREADY_ACTIVE, CONFIG_CHANGED_SINCE_RUN, SELECTION_CONFLICT, VERSION_NOT_FOUND, VERSION_SEGMENT_MISMATCH, SEGMENT_TEXT_EMPTY, SEGMENT_RETRY_ACTIVE. Project lists use { items, page, pageSize, total, sort, sortDir, hasMore, clamped }; dashboard summary is GET /api/v1/dashboard/summary with seven sections; processing start returns 202 (replay 200 + Idempotent-Replayed:true) and run lists use { items, page, pageSize, total, hasMore }; workspace aggregate is GET /api/v1/projects/{projectId}/workspace (single call, ten sections); progress exposes percentApproximate (display-only) and SSE is GET .../progress/stream (text/event-stream, Last-Event-ID accepted, event freeze in Task 013); segments support GET .../segments (filters speakerId/reviewStatus/qualityFlag/syncIssue/text/startMs/endMs, default 50/max 200, sort startMs) plus detail with versions and POST .../segments/{id}/retry|transcript-selection|translation-selection|transcript-edits|translation-edits (stale → 409 SELECTION_CONFLICT with { currentSelectionVersion, currentVersionIds }).";
 
                 document.Components ??= new OpenApiComponents();
                 if (document.Components.SecuritySchemes is null)
@@ -135,6 +135,9 @@ public static class OpenApiConfiguration
                 EnsureSchema(document, "ProcessingRunListResponse");
                 EnsureSchema(document, "WorkspaceDto");
                 EnsureSchema(document, "ProgressResponse");
+                EnsureSchema(document, "SegmentDetailResponse");
+                EnsureSchema(document, "SegmentSummaryResponse");
+                EnsureSchema(document, "SegmentMutationResponse");
 
                 return Task.CompletedTask;
             });
@@ -172,6 +175,9 @@ public static class OpenApiConfiguration
                 "ProcessingRunListResponse" => "Processing run list: { items[{ runId, status, retryOfRunId? }], page, pageSize, total, hasMore } (202 start, 200 replay + Idempotent-Replayed:true).",
                 "WorkspaceDto" => "Workspace aggregate: { project, media, run, phase, stage, progress{percentApproximate}, review, warnings[], output, cost, activity[<=10], permissions }.",
                 "ProgressResponse" => "Progress: { percentApproximate (display-only), currentStage, ... } plus SSE text/event-stream.",
+                "SegmentDetailResponse" => "Segment detail: { id, selectionVersion, transcriptVersions[], translationVersions[], reviewStatus?, qualityCodes[], syncStatus?, outputStale }.",
+                "SegmentSummaryResponse" => "Segment list row: { id, startMs, selectionVersion, reviewStatus?, qualityCodes[], syncStatus? } (filters speakerId/reviewStatus/qualityFlag/syncIssue/text/startMs/endMs, default 50/max 200).",
+                "SegmentMutationResponse" => "Segment mutation: { segmentId, selectionVersion, selectedVersionIds?, newVersionId?, outputStale, warningCode? } (stale → 409 SELECTION_CONFLICT with { currentSelectionVersion, currentVersionIds }).",
                 _ => "Pagination envelope: { items, page, pageSize, total, hasMore }.",
             };
             document.Components.Schemas[name] = new OpenApiSchema
