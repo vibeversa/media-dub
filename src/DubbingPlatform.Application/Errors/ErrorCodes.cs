@@ -36,9 +36,16 @@ public static class ErrorCodes
     public const string ConsentRequired = "CONSENT_REQUIRED";
     public const string PolicyDenied = "POLICY_DENIED";
     public const string InternalError = "INTERNAL_ERROR";
+    public const string InvalidCredentials = "INVALID_CREDENTIALS";
+    public const string TokenExpired = "TOKEN_EXPIRED";
+    public const string TokenReused = "TOKEN_REUSED";
+    public const string UserDisabled = "USER_DISABLED";
+    public const string PreferenceKeyUnknown = "PREFERENCE_KEY_UNKNOWN";
+    public const string PreferenceValueTooLarge = "PREFERENCE_VALUE_TOO_LARGE";
+    public const string TenantRequired = "TENANT_REQUIRED";
 
     /// <summary>
-    /// All 29 public error codes.
+    /// All 36 public error codes.
     /// </summary>
     public static readonly string[] All =
     [
@@ -71,6 +78,13 @@ public static class ErrorCodes
         ConsentRequired,
         PolicyDenied,
         InternalError,
+        InvalidCredentials,
+        TokenExpired,
+        TokenReused,
+        UserDisabled,
+        PreferenceKeyUnknown,
+        PreferenceValueTooLarge,
+        TenantRequired,
     ];
 
     /// <summary>
@@ -117,6 +131,13 @@ public static class ErrorCodes
             ConsentRequired => 403,
             PolicyDenied => 403,
             InternalError => 500,
+            InvalidCredentials => 401,
+            TokenExpired => 401,
+            TokenReused => 401,
+            UserDisabled => 403,
+            PreferenceKeyUnknown => 400,
+            PreferenceValueTooLarge => 413,
+            TenantRequired => 401,
             _ => 500,
         };
     }

@@ -143,7 +143,7 @@ public sealed class CoreEntitiesTests
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(52, entityTypes.Count);
+        Assert.Equal(53, entityTypes.Count);
 
         foreach (var type in entityTypes)
         {

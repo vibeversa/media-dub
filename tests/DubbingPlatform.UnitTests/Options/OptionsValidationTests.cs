@@ -26,6 +26,7 @@ public sealed class OptionsValidationTests
         Assert.False(new AuthOptionsValidator().Validate(Microsoft.Extensions.Options.Options.DefaultName, new AuthOptions()).Failed);
         Assert.False(new RetentionOptionsValidator().Validate(Microsoft.Extensions.Options.Options.DefaultName, new RetentionOptions()).Failed);
         Assert.False(new TransportOptionsValidator().Validate(Microsoft.Extensions.Options.Options.DefaultName, new TransportOptions()).Failed);
+        Assert.False(new AuthRateLimitOptionsValidator().Validate(Microsoft.Extensions.Options.Options.DefaultName, new AuthRateLimitOptions()).Failed);
     }
 
     [Fact]

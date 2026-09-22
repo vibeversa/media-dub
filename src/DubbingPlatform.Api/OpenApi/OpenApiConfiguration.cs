@@ -9,7 +9,11 @@ namespace DubbingPlatform.Api.OpenApi;
 /// and document metadata. Error-envelope (<c>ErrorResponse</c>) and pagination
 /// (<c>PaginatedResult</c>) schemas are emitted from controller
 /// <c>ProducesResponseType</c> references; this transformer only adds the
-/// cross-cutting security and header contracts.
+/// cross-cutting security and header contracts. Auth
+/// (<c>/api/v1/auth/*</c>) and identity (<c>/api/v1/me*</c>) routes are
+/// excluded from <c>Idempotency-Key</c>: login/refresh mint fresh secrets per
+/// call by design (replay must not return the same secret), and preference
+/// PUT is naturally idempotent with last-writer-wins per key.
 /// </summary>
 public static class OpenApiConfiguration
 {
@@ -60,9 +64,15 @@ public static class OpenApiConfiguration
 
                 if (document.Paths is not null)
                 {
-                    foreach (var path in document.Paths.Values)
+                    foreach (var pathEntry in document.Paths)
                     {
+                        var path = pathEntry.Value;
                         if (path?.Operations is null)
+                        {
+                            continue;
+                        }
+
+                        if (IsIdempotencyExempt(pathEntry.Key))
                         {
                             continue;
                         }
@@ -124,6 +134,15 @@ public static class OpenApiConfiguration
                 return Task.CompletedTask;
             });
         });
+    }
+
+    /// <summary>
+    /// Auth and identity routes never take Idempotency-Key (see class doc).
+    /// </summary>
+    private static bool IsIdempotencyExempt(string path)
+    {
+        return path.StartsWith("/api/v1/auth", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/v1/me", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void EnsureSchema(OpenApiDocument document, string name)

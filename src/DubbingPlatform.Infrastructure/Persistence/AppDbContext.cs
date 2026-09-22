@@ -46,6 +46,8 @@ public class AppDbContext : DbContext
 
     public DbSet<Notification> Notifications => Set<Notification>();
 
+    public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
+
     public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
 
     public DbSet<VoicePreviewJob> VoicePreviewJobs => Set<VoicePreviewJob>();

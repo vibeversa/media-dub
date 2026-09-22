@@ -169,3 +169,6 @@ CREATE POLICY tenant_isolation ON activity_events USING (tenant_id = current_set
 
 ALTER TABLE voice_preview_jobs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON voice_preview_jobs USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+ALTER TABLE refresh_sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON refresh_sessions USING (tenant_id = current_setting('app.tenant_id', true)::uuid);

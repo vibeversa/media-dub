@@ -2,6 +2,8 @@ using DubbingPlatform.Api.Auth;
 using DubbingPlatform.Api.Filters;
 using DubbingPlatform.Api.Middleware;
 using DubbingPlatform.Api.OpenApi;
+using DubbingPlatform.Application.Auth;
+using DubbingPlatform.Application.Authorization;
 using DubbingPlatform.Application.Diagnostics;
 using DubbingPlatform.Application.Options;
 using DubbingPlatform.Application.Services;
@@ -125,6 +127,10 @@ builder.Services.AddOptions<AuthOptions>()
     .BindConfiguration(AuthOptions.SectionName)
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services.AddOptions<AuthRateLimitOptions>()
+    .BindConfiguration(AuthRateLimitOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 builder.Services.AddOptions<RetentionOptions>()
     .BindConfiguration(RetentionOptions.SectionName)
     .ValidateDataAnnotations()
@@ -181,6 +187,7 @@ builder.Services.AddSingleton<IValidateOptions<PrivacyOptions>, PrivacyOptionsVa
 builder.Services.AddSingleton<IValidateOptions<FeatureOptions>, FeatureOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<DeploymentOptions>, DeploymentOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>();
+builder.Services.AddSingleton<IValidateOptions<AuthRateLimitOptions>, AuthRateLimitOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<RetentionOptions>, RetentionOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<SecurityOptions>, SecurityOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<TransportOptions>, TransportOptionsValidator>();
@@ -197,6 +204,8 @@ builder.Services.AddValidatorsFromAssembly(typeof(Program).Assembly);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IdempotencyService>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<IPermissionResolver, PermissionResolver>();
 builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<UploadService>();
 builder.Services.AddScoped<ProcessingStartService>();
@@ -231,6 +240,55 @@ builder.Services.AddSingleton<DubbingPlatform.Application.Abstractions.IMultipar
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 OpenApiConfiguration.AddDubbingOpenApi(builder.Services);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(
+        DubbingPlatform.Api.Controllers.AuthController.LoginPolicy,
+        context =>
+        {
+            var limits = context.RequestServices.GetRequiredService<IOptions<AuthRateLimitOptions>>().Value;
+            var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            if (!limits.Enabled)
+            {
+                return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter(ip);
+            }
+
+            return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                ip,
+                _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = limits.LoginPerMinutePerIp,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                });
+        });
+    options.AddPolicy(
+        DubbingPlatform.Api.Controllers.AuthController.RefreshPolicy,
+        context =>
+        {
+            var limits = context.RequestServices.GetRequiredService<IOptions<AuthRateLimitOptions>>().Value;
+            var subject = context.User.GetSubject();
+            var key = string.IsNullOrWhiteSpace(subject) || string.Equals(subject, "unknown", StringComparison.Ordinal)
+                ? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"
+                : subject;
+            if (!limits.Enabled)
+            {
+                return System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter(key);
+            }
+
+            return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                key,
+                _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = limits.RefreshPerMinutePerUser,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                });
+        });
+});
 
 var authConfig = builder.Configuration.GetSection(AuthOptions.SectionName).Get<AuthOptions>() ?? new AuthOptions();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -292,6 +350,7 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
