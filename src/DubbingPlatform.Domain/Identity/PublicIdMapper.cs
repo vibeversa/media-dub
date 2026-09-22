@@ -26,6 +26,11 @@ public static class PublicIdMapper
     public const string ReviewItemPrefix = "rev_";
     public const string ExportJobPrefix = "exp_";
     public const string JobPrefix = "job_";
+    public const string TenantUserPrefix = "usr_";
+    public const string ProjectMembershipPrefix = "mbr_";
+    public const string NotificationPrefix = "ntf_";
+    public const string ActivityEventPrefix = "act_";
+    public const string VoicePreviewPrefix = "vpv_";
 
     public static IReadOnlyList<string> AllPrefixes { get; } = new[]
     {
@@ -46,6 +51,11 @@ public static class PublicIdMapper
         ReviewItemPrefix,
         ExportJobPrefix,
         JobPrefix,
+        TenantUserPrefix,
+        ProjectMembershipPrefix,
+        NotificationPrefix,
+        ActivityEventPrefix,
+        VoicePreviewPrefix,
     };
 
     public static string ToPublic(Guid id, string prefix)
@@ -112,6 +122,11 @@ public static class PublicIdMapper
             "ReviewItem" => ReviewItemPrefix,
             "ExportJob" => ExportJobPrefix,
             "Job" => JobPrefix,
+            "TenantUser" => TenantUserPrefix,
+            "ProjectMembership" => ProjectMembershipPrefix,
+            "Notification" => NotificationPrefix,
+            "ActivityEvent" => ActivityEventPrefix,
+            "VoicePreviewJob" => VoicePreviewPrefix,
             _ => throw new DomainException($"No public ID prefix mapping for type '{type.Name}'."),
         };
     }

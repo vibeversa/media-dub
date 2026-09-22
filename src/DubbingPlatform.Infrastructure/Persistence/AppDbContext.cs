@@ -38,6 +38,18 @@ public class AppDbContext : DbContext
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
 
+    public DbSet<TenantUser> TenantUsers => Set<TenantUser>();
+
+    public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
+
+    public DbSet<ProjectMembership> ProjectMemberships => Set<ProjectMembership>();
+
+    public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<ActivityEvent> ActivityEvents => Set<ActivityEvent>();
+
+    public DbSet<VoicePreviewJob> VoicePreviewJobs => Set<VoicePreviewJob>();
+
     public DbSet<DubbingProject> DubbingProjects => Set<DubbingProject>();
 
     public DbSet<ProcessingRun> ProcessingRuns => Set<ProcessingRun>();
@@ -53,6 +65,8 @@ public class AppDbContext : DbContext
     public DbSet<Speaker> Speakers => Set<Speaker>();
 
     public DbSet<SpeechSegment> SpeechSegments => Set<SpeechSegment>();
+
+    public DbSet<SegmentSelection> SegmentSelections => Set<SegmentSelection>();
 
     public DbSet<ContextWindow> ContextWindows => Set<ContextWindow>();
 

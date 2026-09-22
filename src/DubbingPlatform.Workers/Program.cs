@@ -1,11 +1,14 @@
+using DubbingPlatform.Application.Diagnostics;
 using DubbingPlatform.Application.Options;
 using DubbingPlatform.Application.Services;
+using DubbingPlatform.Infrastructure.Diagnostics;
 using DubbingPlatform.Infrastructure.Health;
 using DubbingPlatform.Infrastructure.Messaging;
 using DubbingPlatform.Infrastructure.Observability;
 using DubbingPlatform.Infrastructure.Orchestration;
 using DubbingPlatform.Infrastructure.Persistence;
 using DubbingPlatform.Infrastructure.Persistence.Interceptors;
+using DubbingPlatform.Infrastructure.Previews;
 using DubbingPlatform.Infrastructure.Providers;
 using DubbingPlatform.Infrastructure.Storage;
 using DubbingPlatform.Workers.Services;
@@ -52,6 +55,14 @@ builder.Services.AddOptions<TimingOptions>()
     .ValidateOnStart();
 builder.Services.AddOptions<QuotaOptions>()
     .BindConfiguration(QuotaOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<PreviewOptions>()
+    .BindConfiguration(PreviewOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<DiagnosticsOptions>()
+    .BindConfiguration(DiagnosticsOptions.SectionName)
     .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services.AddOptions<SegmentOptions>()
@@ -147,6 +158,8 @@ builder.Services.AddSingleton<IValidateOptions<MediaOptions>, MediaOptionsValida
 builder.Services.AddSingleton<IValidateOptions<RetryOptions>, RetryOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<TimingOptions>, TimingOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<QuotaOptions>, QuotaOptionsValidator>();
+builder.Services.AddSingleton<IValidateOptions<PreviewOptions>, PreviewOptionsValidator>();
+builder.Services.AddSingleton<IValidateOptions<DiagnosticsOptions>, DiagnosticsOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<SegmentOptions>, SegmentOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<DiarizationOptions>, DiarizationOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<TranscriptionOptions>, TranscriptionOptionsValidator>();
@@ -178,10 +191,14 @@ builder.Services.AddDbContextFactory<AppDbContext>(options => options
     .ReplaceService<IModelCacheKeyFactory, TenantModelCacheKeyFactory>());
 builder.Services.AddScoped<IStageExecutionContextFactory, StageExecutionContextFactory>();
 builder.Services.AddScoped<StageExecutionService>();
+builder.Services.AddScoped<DubbingPlatform.Application.Notifications.NotificationProjector>();
+builder.Services.AddScoped<DubbingPlatform.Application.Activity.ActivityProjector>();
 StorageRegistration.AddDubbingStorage(builder.Services, builder.Configuration);
 DubbingPlatform.Infrastructure.Media.MediaRegistration.AddDubbingMedia(builder.Services);
 OrchestrationRegistration.AddDubbingOrchestration(builder.Services);
 ProviderRegistration.AddDubbingProviders(builder.Services, builder.Configuration);
+PreviewRegistration.AddDubbingPreviews(builder.Services);
+DiagnosticsRegistration.AddDubbingDiagnostics(builder.Services);
 builder.Services.AddHostedService<WorkerRecoverySweeper>();
 builder.Services.AddHostedService<OrphanObjectReconciler>();
 builder.Services.AddHostedService<RetentionSweeper>();
@@ -212,6 +229,7 @@ MassTransitConfig.AddDubbingMassTransit(
         x.AddConsumer<DubbingPlatform.Workers.Consumers.LipSyncWorker>();
         x.AddConsumer<DubbingPlatform.Workers.Consumers.ExportWorker>();
         x.AddConsumer<DubbingPlatform.Workers.Consumers.DeletionJobWorker>();
+        x.AddConsumer<DubbingPlatform.Infrastructure.Messaging.NotificationActivityProjectionConsumer>();
     });
 
 ObservabilitySetup.AddDubbingOpenTelemetry(builder, includeAspNetCore: false);

@@ -4,6 +4,7 @@ using DubbingPlatform.Application.Errors;
 using DubbingPlatform.Application.Exceptions;
 using DubbingPlatform.Application.MultiTenancy;
 using DubbingPlatform.Application.Options;
+using DubbingPlatform.Application.Previews;
 using DubbingPlatform.Domain.Entities;
 using DubbingPlatform.Domain.Enums;
 using DubbingPlatform.Domain.Exceptions;
@@ -44,6 +45,7 @@ public sealed class MediaAnalysisService
     private readonly IFFprobeService _ffprobe;
     private readonly MediaOptions _media;
     private readonly QuotaOptions _quota;
+    private readonly MediaPreviewGenerator? _previews;
     private readonly ILogger<MediaAnalysisService> _logger;
 
     public MediaAnalysisService(
@@ -52,7 +54,8 @@ public sealed class MediaAnalysisService
         IFFprobeService ffprobe,
         IOptions<MediaOptions> media,
         IOptions<QuotaOptions> quota,
-        ILogger<MediaAnalysisService> logger)
+        ILogger<MediaAnalysisService> logger,
+        MediaPreviewGenerator? previewGenerator = null)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         ArgumentNullException.ThrowIfNull(artifacts);
@@ -65,6 +68,7 @@ public sealed class MediaAnalysisService
         _ffprobe = ffprobe;
         _media = media.Value;
         _quota = quota.Value;
+        _previews = previewGenerator;
         _logger = logger;
     }
 
@@ -171,6 +175,8 @@ public sealed class MediaAnalysisService
             [published.ArtifactId.ToString("N")],
             cancellationToken).ConfigureAwait(false);
 
+        await TryGeneratePreviewsAsync(tenantId, projectId, runId, cancellationToken).ConfigureAwait(false);
+
         _logger.LogInformation(
             "Media analysis complete for run {RunId}: duration {DurationMs}ms, segments ~{Segments}, separation {NeedsSeparation}.",
             runId, durationMs, estimatedSegments, needsSeparation);
@@ -178,6 +184,39 @@ public sealed class MediaAnalysisService
         return new MediaAnalysisResult(
             published.ArtifactId, published.ContentObjectId,
             published.ContentHash, durationMs, estimatedSegments, needsSeparation);
+    }
+
+    /// <summary>
+    /// Preview-lane hook (Task B-004). Runs after the stage commits: the
+    /// generator never throws (degraded results are logged, not raised), and
+    /// this guard ensures even a contract breach cannot fail analysis.
+    /// </summary>
+    private async Task TryGeneratePreviewsAsync(
+        Guid tenantId,
+        Guid projectId,
+        Guid runId,
+        CancellationToken cancellationToken)
+    {
+        if (_previews is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var previews = await _previews.GenerateForRunAsync(
+                tenantId, projectId, runId, runId.ToString("N"), cancellationToken).ConfigureAwait(false);
+            if (previews.PreviewDegraded)
+            {
+                _logger.LogWarning("Preview lane degraded for run {RunId}; analysis result unaffected.", runId);
+            }
+        }
+#pragma warning disable CA1031 // Parent-stage guarantee: preview failures must never fail analysis.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            _logger.LogWarning(ex, "Preview lane degraded for run {RunId}; analysis result unaffected.", runId);
+        }
     }
 
     private async Task VerifySourceHashAsync(Guid tenantId, ValidSourceMedia source, CancellationToken cancellationToken)

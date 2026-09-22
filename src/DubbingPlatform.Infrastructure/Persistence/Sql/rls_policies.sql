@@ -148,3 +148,24 @@ CREATE POLICY tenant_isolation ON retention_holds USING (tenant_id = current_set
 
 ALTER TABLE deletion_jobs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON deletion_jobs USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+ALTER TABLE tenant_users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON tenant_users USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON user_preferences USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+ALTER TABLE project_memberships ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON project_memberships USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+ALTER TABLE segment_selections ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON segment_selections USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON notifications USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+ALTER TABLE activity_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON activity_events USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+ALTER TABLE voice_preview_jobs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON voice_preview_jobs USING (tenant_id = current_setting('app.tenant_id', true)::uuid);

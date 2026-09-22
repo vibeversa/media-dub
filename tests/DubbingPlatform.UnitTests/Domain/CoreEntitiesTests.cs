@@ -107,7 +107,7 @@ public sealed class CoreEntitiesTests
     [Fact]
     public void PublicIdMapper_RoundTrips_All_Prefixes()
     {
-        Assert.Equal(17, PublicIdMapper.AllPrefixes.Count);
+        Assert.Equal(22, PublicIdMapper.AllPrefixes.Count);
 
         foreach (var prefix in PublicIdMapper.AllPrefixes)
         {
@@ -131,6 +131,7 @@ public sealed class CoreEntitiesTests
         Assert.Equal("spk_", PublicIdMapper.PrefixFor<Speaker>());
         Assert.Equal("ctx_", PublicIdMapper.PrefixFor<ContextWindow>());
         Assert.Equal("voice_", PublicIdMapper.PrefixFor<VoiceProfile>());
+        Assert.Equal("vpv_", PublicIdMapper.PrefixFor<VoicePreviewJob>());
     }
 
     [Fact]
@@ -142,7 +143,7 @@ public sealed class CoreEntitiesTests
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(45, entityTypes.Count);
+        Assert.Equal(52, entityTypes.Count);
 
         foreach (var type in entityTypes)
         {

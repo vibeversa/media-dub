@@ -1,8 +1,11 @@
 namespace DubbingPlatform.Domain.Enums;
 
 /// <summary>
-/// Artifact types mirror <see cref="AssetType"/> 1:1 for simplicity.
-/// An artifact is the persisted, content-addressed form of an asset.
+/// Artifact types. Plan A pipeline types mirror <see cref="AssetType"/> 1:1;
+/// an artifact is the persisted, content-addressed form of an asset. The five
+/// preview-lane types below (Task B-004) have no <see cref="AssetType"/>
+/// counterpart: they are produced outside the final pipeline for fast UI
+/// playback and QC evidence, and never reuse final-audio artifact ids.
 /// </summary>
 public enum ArtifactType
 {
@@ -25,5 +28,10 @@ public enum ArtifactType
     Export,
     FfprobeAnalysis,
     ContextWindow,
-    Enrichment
+    Enrichment,
+    MediaPreviewAudio,
+    WaveformPeaks,
+    VideoPreview,
+    VoicePreviewAudio,
+    QcEvidenceArtifact
 }

@@ -21,7 +21,7 @@ public sealed class EnumAndValueObjectTests
             [typeof(OutcomeClass)] = new[] { "Success", "ProviderUnavailable", "ProviderRateLimited", "ProviderTransientFailure", "ProviderPermanentFailure", "ProviderInvalidResponse", "ProviderTimeout", "QualityBelowThreshold", "PolicyRejected", "UnsupportedCapability", "Cancelled" },
             [typeof(FailureCategory)] = new[] { "Validation", "MediaUnsupported", "MediaCorrupt", "ProviderTransient", "ProviderPermanent", "ProviderRateLimited", "ProviderTimeout", "ProviderInvalidResponse", "QuotaExceeded", "RateLimited", "LeaseLost", "Cancelled", "PolicyDenied", "ConsentRequired", "ConfigurationError", "StorageUnavailable", "ChecksumMismatch", "InvariantViolation", "Unknown" },
             [typeof(AssetType)] = new[] { "SourceOriginal", "CanonicalAudio", "WorkingAudio", "DialogueStem", "BackgroundStem", "VadRegions", "Segments", "DiarizationMap", "Transcript", "Translation", "GeneratedAudioPreview", "GeneratedAudioFinal", "Timeline", "MixedAudio", "QcReport", "RenderedOutput", "Export", "FfprobeAnalysis", "ContextWindow" },
-            [typeof(ArtifactType)] = new[] { "SourceOriginal", "CanonicalAudio", "WorkingAudio", "DialogueStem", "BackgroundStem", "VadRegions", "Segments", "DiarizationMap", "Transcript", "Translation", "GeneratedAudioPreview", "GeneratedAudioFinal", "Timeline", "MixedAudio", "QcReport", "RenderedOutput", "Export", "FfprobeAnalysis", "ContextWindow", "Enrichment" },
+            [typeof(ArtifactType)] = new[] { "SourceOriginal", "CanonicalAudio", "WorkingAudio", "DialogueStem", "BackgroundStem", "VadRegions", "Segments", "DiarizationMap", "Transcript", "Translation", "GeneratedAudioPreview", "GeneratedAudioFinal", "Timeline", "MixedAudio", "QcReport", "RenderedOutput", "Export", "FfprobeAnalysis", "ContextWindow", "Enrichment", "MediaPreviewAudio", "WaveformPeaks", "VideoPreview", "VoicePreviewAudio", "QcEvidenceArtifact" },
             [typeof(ArtifactStatus)] = new[] { "Pending", "Committed", "Deleted" },
             [typeof(ContentObjectStatus)] = new[] { "Pending", "Committed", "Orphaned", "Deleted" },
             [typeof(UploadStatus)] = new[] { "Created", "InProgress", "Completed", "Aborted", "Expired", "Duplicate" },
@@ -38,9 +38,12 @@ public sealed class EnumAndValueObjectTests
             [typeof(AudioMixPolicy)] = new[] { "DuckBackground", "KeepBackground", "MuteBackground" },
             [typeof(SourceSeparationPolicy)] = new[] { "Disabled", "Enabled", "Auto" },
             [typeof(ConsentStatus)] = new[] { "Granted", "Revoked", "Expired", "Pending" },
+            [typeof(VoicePreviewStatus)] = new[] { "Pending", "Running", "Completed", "Failed", "Cancelled" },
+            [typeof(VoicePreviewQuotaCheck)] = new[] { "Allowed", "Denied" },
+            [typeof(VoicePreviewConsentState)] = new[] { "Verified", "Blocked" },
         };
 
-        Assert.Equal(25, expectations.Count);
+        Assert.Equal(28, expectations.Count);
 
         foreach (var (enumType, expectedMembers) in expectations)
         {

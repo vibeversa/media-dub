@@ -22,6 +22,81 @@ namespace DubbingPlatform.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("DubbingPlatform.Domain.Entities.ActivityEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("actor_type");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("metadata_json");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid?>("ProcessingRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("processing_run_id");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("schema_version");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("severity");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("summary");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_activity_events");
+
+                    b.HasIndex("TenantId", "ProjectId", "OccurredAt")
+                        .HasDatabaseName("ix_activity_events_tenant_id_project_id_occurred_at");
+
+                    b.ToTable("activity_events", (string)null);
+                });
+
             modelBuilder.Entity("DubbingPlatform.Domain.Entities.Artifact", b =>
                 {
                     b.Property<Guid>("Id")
@@ -524,6 +599,10 @@ namespace DubbingPlatform.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("active_run_id");
 
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
                     b.Property<string>("ConfigurationHash")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -534,16 +613,50 @@ namespace DubbingPlatform.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsArchived")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_archived");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("is_deleted");
 
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
+                    b.Property<string>("ProcessingSettingsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("processing_settings_json");
+
                     b.Property<string>("SettingsJson")
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("settings_json");
+
+                    b.Property<int>("SettingsVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("settings_version");
 
                     b.Property<string>("SourceLanguage")
                         .IsRequired()
@@ -575,11 +688,21 @@ namespace DubbingPlatform.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
                     b.HasKey("Id")
                         .HasName("pk_dubbing_projects");
 
                     b.HasIndex("TenantId", "CreatedAt")
                         .HasDatabaseName("ix_dubbing_projects_tenant_id_created_at");
+
+                    b.HasIndex("TenantId", "IsArchived")
+                        .HasDatabaseName("ix_dubbing_projects_tenant_id_is_archived");
+
+                    b.HasIndex("TenantId", "OwnerUserId")
+                        .HasDatabaseName("ix_dubbing_projects_tenant_id_owner_user_id");
 
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("ix_dubbing_projects_tenant_id_status");
@@ -922,6 +1045,92 @@ namespace DubbingPlatform.Infrastructure.Persistence.Migrations
                     b.ToTable("media_assets", (string)null);
                 });
 
+            modelBuilder.Entity("DubbingPlatform.Domain.Entities.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_user_id");
+
+                    b.Property<string>("ResourceId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("resource_id");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("resource_type");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("severity");
+
+                    b.Property<Guid?>("SourceEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_event_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notifications");
+
+                    b.HasIndex("TenantId", "RecipientUserId", "SourceEventId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_notifications_tenant_id_recipient_user_id_source_event_id")
+                        .HasFilter("source_event_id IS NOT NULL");
+
+                    b.HasIndex("TenantId", "RecipientUserId", "ReadAt", "CreatedAt")
+                        .HasDatabaseName("ix_notifications_tenant_id_recipient_user_id_read_at_created_at");
+
+                    b.ToTable("notifications", (string)null);
+                });
+
             modelBuilder.Entity("DubbingPlatform.Domain.Entities.OutputAsset", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1166,6 +1375,56 @@ namespace DubbingPlatform.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_processing_runs_tenant_id_status_created_at");
 
                     b.ToTable("processing_runs", (string)null);
+                });
+
+            modelBuilder.Entity("DubbingPlatform.Domain.Entities.ProjectMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("GrantedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("granted_by_user_id");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("role");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_project_memberships");
+
+                    b.HasIndex("ProjectId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_project_memberships_project_id_user_id");
+
+                    b.HasIndex("TenantId", "ProjectId")
+                        .HasDatabaseName("ix_project_memberships_tenant_id_project_id");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .HasDatabaseName("ix_project_memberships_tenant_id_user_id");
+
+                    b.ToTable("project_memberships", (string)null);
                 });
 
             modelBuilder.Entity("DubbingPlatform.Domain.Entities.PromptTemplate", b =>
@@ -2049,6 +2308,63 @@ namespace DubbingPlatform.Infrastructure.Persistence.Migrations
                     b.ToTable("segment_overlaps", (string)null);
                 });
 
+            modelBuilder.Entity("DubbingPlatform.Domain.Entities.SegmentSelection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid>("SegmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("segment_id");
+
+                    b.Property<Guid?>("SelectedAudioArtifactId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("selected_audio_artifact_id");
+
+                    b.Property<Guid?>("SelectedTranscriptVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("selected_transcript_version_id");
+
+                    b.Property<Guid?>("SelectedTranslationVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("selected_translation_version_id");
+
+                    b.Property<int>("SelectionVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("selection_version");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_segment_selections");
+
+                    b.HasIndex("TenantId", "ProjectId")
+                        .HasDatabaseName("ix_segment_selections_tenant_id_project_id");
+
+                    b.HasIndex("TenantId", "SegmentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_segment_selections_tenant_id_segment_id");
+
+                    b.ToTable("segment_selections", (string)null);
+                });
+
             modelBuilder.Entity("DubbingPlatform.Domain.Entities.Speaker", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2616,6 +2932,66 @@ namespace DubbingPlatform.Infrastructure.Persistence.Migrations
                     b.ToTable("tenants", (string)null);
                 });
 
+            modelBuilder.Entity("DubbingPlatform.Domain.Entities.TenantUser", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("ExternalSubject")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("external_subject");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tenant_users");
+
+                    b.HasIndex("TenantId", "Email")
+                        .HasDatabaseName("ix_tenant_users_tenant_id_email");
+
+                    b.HasIndex("TenantId", "ExternalSubject")
+                        .IsUnique()
+                        .HasDatabaseName("ix_tenant_users_tenant_id_external_subject");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_tenant_users_tenant_id_status");
+
+                    b.ToTable("tenant_users", (string)null);
+                });
+
             modelBuilder.Entity("DubbingPlatform.Domain.Entities.TranscriptVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2911,6 +3287,150 @@ namespace DubbingPlatform.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_upload_sessions_tenant_id_status_expires_at");
 
                     b.ToTable("upload_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("DubbingPlatform.Domain.Entities.UserPreference", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("ValueJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("value_json");
+
+                    b.HasKey("TenantId", "UserId", "Key")
+                        .HasName("pk_user_preferences");
+
+                    b.HasIndex("TenantId", "UserId")
+                        .HasDatabaseName("ix_user_preferences_tenant_id_user_id");
+
+                    b.ToTable("user_preferences", (string)null);
+                });
+
+            modelBuilder.Entity("DubbingPlatform.Domain.Entities.VoicePreviewJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid?>("ArtifactId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("artifact_id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("ConsentState")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("consent_state");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("error_code");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("error_message");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid?>("ProviderExecutionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("provider_execution_id");
+
+                    b.Property<string>("QuotaCheck")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("quota_check");
+
+                    b.Property<string>("QuotaCheckReason")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("quota_check_reason");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_user_id");
+
+                    b.Property<Guid>("SpeakerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("speaker_id");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("text");
+
+                    b.Property<string>("VoiceId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("voice_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_voice_preview_jobs");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_voice_preview_jobs_tenant_id_idempotency_key")
+                        .HasFilter("idempotency_key IS NOT NULL");
+
+                    b.HasIndex("TenantId", "ProjectId", "Status")
+                        .HasDatabaseName("ix_voice_preview_jobs_tenant_id_project_id_status");
+
+                    b.HasIndex("TenantId", "SpeakerId", "CreatedAt")
+                        .HasDatabaseName("ix_voice_preview_jobs_tenant_id_speaker_id_created_at");
+
+                    b.ToTable("voice_preview_jobs", (string)null);
                 });
 
             modelBuilder.Entity("DubbingPlatform.Domain.Entities.VoiceProfile", b =>

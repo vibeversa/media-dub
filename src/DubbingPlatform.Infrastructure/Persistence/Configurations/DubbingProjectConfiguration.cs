@@ -17,7 +17,14 @@ public sealed class DubbingProjectConfiguration : IEntityTypeConfiguration<Dubbi
         builder.Property(e => e.SettingsJson).IsRequired().HasColumnType("jsonb");
         builder.Property(e => e.ConfigurationHash).IsRequired().HasMaxLength(64);
         builder.Property<bool>("IsDeleted").HasDefaultValue(false);
+        builder.Property(e => e.Name).HasMaxLength(200);
+        builder.Property(e => e.Description).HasMaxLength(2000);
+        builder.Property(e => e.ProcessingSettingsJson).HasColumnType("jsonb");
+        builder.Property(e => e.SettingsVersion).HasDefaultValue(1);
+        builder.Property(e => e.IsArchived).HasDefaultValue(false);
         builder.HasIndex(e => new { e.TenantId, e.Status });
         builder.HasIndex(e => new { e.TenantId, e.CreatedAt });
+        builder.HasIndex(e => new { e.TenantId, e.IsArchived });
+        builder.HasIndex(e => new { e.TenantId, e.OwnerUserId });
     }
 }

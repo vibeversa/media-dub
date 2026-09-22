@@ -26,7 +26,7 @@ public sealed class MigrationTests
     [
         "tenants", "dubbing_projects", "processing_runs", "media_assets",
         "upload_sessions", "upload_parts", "speakers", "speaker_voice_assignments",
-        "voice_profiles", "consent_records", "speech_segments", "overlap_groups",
+        "voice_profiles", "consent_records", "speech_segments", "segment_selections", "overlap_groups",
         "segment_overlaps", "context_windows", "segment_context_assignments",
         "transcript_versions", "translation_versions", "generated_audio_artifacts",
         "sync_results", "stage_executions", "run_stage_summaries",
@@ -38,14 +38,15 @@ public sealed class MigrationTests
         "export_artifacts", "audit_events", "idempotency_records",
         "cost_reservations", "quota_usages", "processing_policies",
         "retention_holds", "deletion_jobs", "outbox_state", "outbox_message",
-        "inbox_state",
+        "inbox_state", "tenant_users", "user_preferences", "project_memberships",
+        "notifications", "activity_events", "voice_preview_jobs",
     ];
 
     private static readonly string[] RlsTables =
     [
         "dubbing_projects", "processing_runs", "media_assets",
         "upload_sessions", "upload_parts", "voice_profiles", "speakers",
-        "speech_segments", "context_windows", "segment_context_assignments",
+        "speech_segments", "segment_selections", "context_windows", "segment_context_assignments",
         "overlap_groups", "segment_overlaps", "speaker_voice_assignments",
         "consent_records", "transcript_versions", "translation_versions",
         "generated_audio_artifacts", "sync_results", "stage_executions",
@@ -58,6 +59,8 @@ public sealed class MigrationTests
         "export_artifacts", "audit_events", "idempotency_records",
         "cost_reservations", "quota_usages", "processing_policies",
         "retention_holds", "deletion_jobs",
+        "tenant_users", "user_preferences", "project_memberships",
+        "notifications", "activity_events", "voice_preview_jobs",
     ];
 
     private readonly ITestOutputHelper _output;

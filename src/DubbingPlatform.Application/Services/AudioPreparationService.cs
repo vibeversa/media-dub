@@ -4,6 +4,7 @@ using DubbingPlatform.Application.Errors;
 using DubbingPlatform.Application.Exceptions;
 using DubbingPlatform.Application.MultiTenancy;
 using DubbingPlatform.Application.Options;
+using DubbingPlatform.Application.Previews;
 using DubbingPlatform.Domain.Enums;
 using DubbingPlatform.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,7 @@ public sealed class AudioPreparationService
     private readonly IFFmpegService _ffmpeg;
     private readonly IDiskSpaceChecker _disk;
     private readonly MediaOptions _media;
+    private readonly MediaPreviewGenerator? _previews;
     private readonly ILogger<AudioPreparationService> _logger;
 
     public AudioPreparationService(
@@ -62,7 +64,8 @@ public sealed class AudioPreparationService
         IFFmpegService ffmpeg,
         IDiskSpaceChecker disk,
         IOptions<MediaOptions> media,
-        ILogger<AudioPreparationService> logger)
+        ILogger<AudioPreparationService> logger,
+        MediaPreviewGenerator? previewGenerator = null)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         ArgumentNullException.ThrowIfNull(storage);
@@ -79,6 +82,7 @@ public sealed class AudioPreparationService
         _ffmpeg = ffmpeg;
         _disk = disk;
         _media = media.Value;
+        _previews = previewGenerator;
         _logger = logger;
     }
 
@@ -184,6 +188,8 @@ public sealed class AudioPreparationService
                 [published.ArtifactId.ToString("N")],
                 cancellationToken).ConfigureAwait(false);
 
+            await TryGeneratePreviewsAsync(tenantId, projectId, runId, cancellationToken).ConfigureAwait(false);
+
             _logger.LogInformation(
                 "Canonical audio prepared for run {RunId}: artifact {ArtifactId} ({SampleRate}Hz, {Channels}ch).",
                 runId, published.ArtifactId, canonicalSampleRate, canonicalChannels);
@@ -197,6 +203,39 @@ public sealed class AudioPreparationService
         finally
         {
             DeleteWorkDirQuietly(workDir);
+        }
+    }
+
+    /// <summary>
+    /// Preview-lane hook (Task B-004). Runs after the stage commits: the
+    /// generator never throws (degraded results are logged, not raised), and
+    /// this guard ensures even a contract breach cannot fail preparation.
+    /// </summary>
+    private async Task TryGeneratePreviewsAsync(
+        Guid tenantId,
+        Guid projectId,
+        Guid runId,
+        CancellationToken cancellationToken)
+    {
+        if (_previews is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var previews = await _previews.GenerateForRunAsync(
+                tenantId, projectId, runId, runId.ToString("N"), cancellationToken).ConfigureAwait(false);
+            if (previews.PreviewDegraded)
+            {
+                _logger.LogWarning("Preview lane degraded for run {RunId}; preparation result unaffected.", runId);
+            }
+        }
+#pragma warning disable CA1031 // Parent-stage guarantee: preview failures must never fail preparation.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            _logger.LogWarning(ex, "Preview lane degraded for run {RunId}; preparation result unaffected.", runId);
         }
     }
 

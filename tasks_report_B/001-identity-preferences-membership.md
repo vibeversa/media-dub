@@ -1,0 +1,49 @@
+# 001 — Identity, Preferences, Membership
+
+## Status
+COMPLETED
+
+## Summary
+Added `TenantUser`, `UserPreference`, and `ProjectMembership` entities with EF configurations, extended `DubbingProject` with product metadata (name, archive, ownership, versioned processing settings), and created the `AddProductIdentityExtensions` expand/contract migration with RLS on all three new tables. Added `ProjectProcessingSettingsValidator` (FluentValidation, schemaVersion=1 with `SETTINGS_VERSION_UNSUPPORTED` error code) and `IdentityPreferencesTests` covering uniqueness, preference round-trip/rejection, RLS isolation, and archival persistence. Full unit suite (310) passes; identity integration tests pass hermetically (6 passed, 5 Docker-dependent skipped without Docker, live in CI).
+
+## Files Created/Modified
+- `src/DubbingPlatform.Domain/Enums/TenantUserStatus.cs` (created) — `Active`/`Disabled` status enum.
+- `src/DubbingPlatform.Domain/Enums/ProjectRole.cs` (created) — `ProjectOwner`/`ProjectEditor`/`Reviewer`/`ProjectViewer` roles.
+- `src/DubbingPlatform.Domain/Entities/TenantUser.cs` (created) — tenant-scoped user with unique `(TenantId, ExternalSubject)`, email/display-name validation, `Enable`/`Disable` mutators.
+- `src/DubbingPlatform.Domain/Entities/UserPreference.cs` (created) — composite PK `(TenantId, UserId, Key)`, 6-key whitelist, 4KB value cap, secret-property rejection.
+- `src/DubbingPlatform.Domain/Entities/ProjectMembership.cs` (created) — unique `(ProjectId, UserId)` membership with `ChangeRole` mutator.
+- `src/DubbingPlatform.Domain/Entities/DubbingProject.cs` (modified) — added `Name`/`Description`/`OwnerUserId`/`CreatedByUserId`/`UpdatedByUserId`/`IsArchived`/`ArchivedAt`/`SettingsVersion`/`ProcessingSettingsJson` plus `Rename`/`SetOwnership`/`Archive`/`Unarchive`/`UpdateProcessingSettings` mutators; ctor extended with optional params (source-compatible).
+- `src/DubbingPlatform.Domain/Identity/PublicIdMapper.cs` (modified) — added `usr_` (`TenantUserPrefix`) and `mbr_` (`ProjectMembershipPrefix`) prefixes (19 total).
+- `src/DubbingPlatform.Infrastructure/Persistence/AppDbContext.cs` (modified) — added `TenantUsers`, `UserPreferences`, `ProjectMemberships` DbSets (tenant query filters apply automatically).
+- `src/DubbingPlatform.Infrastructure/Persistence/Configurations/TenantUserConfiguration.cs` (created) — `tenant_users` table, unique `(tenant_id, external_subject)` index.
+- `src/DubbingPlatform.Infrastructure/Persistence/Configurations/UserPreferenceConfiguration.cs` (created) — `user_preferences` table, composite PK, `value_json` as `jsonb`.
+- `src/DubbingPlatform.Infrastructure/Persistence/Configurations/ProjectMembershipConfiguration.cs` (created) — `project_memberships` table, unique `(project_id, user_id)` index.
+- `src/DubbingPlatform.Infrastructure/Persistence/Configurations/DubbingProjectConfiguration.cs` (modified) — new nullable columns plus `(tenant_id, is_archived)` and `(tenant_id, owner_user_id)` indexes.
+- `src/DubbingPlatform.Infrastructure/Persistence/Sql/rls_policies.sql` (modified) — RLS `tenant_isolation` policies for the three new tables.
+- `src/DubbingPlatform.Infrastructure/Persistence/Migrations/20260921093301_AddProductIdentityExtensions.cs` (created) — expand/contract migration: 7 nullable adds + 2 defaulted adds on `dubbing_projects`, 3 new tables, embedded RLS SQL in `Up` / `DROP POLICY IF EXISTS` in `Down`.
+- `src/DubbingPlatform.Infrastructure/Persistence/Migrations/20260921093301_AddProductIdentityExtensions.Designer.cs` + `AppDbContextModelSnapshot.cs` (generated/updated) — EF model snapshot.
+- `src/DubbingPlatform.Application/Validation/ProjectProcessingSettingsValidator.cs` (created) — `AbstractValidator<string>` for versioned settings JSON (schemaVersion=1, shape checks, `Parse` helper).
+- `tests/DubbingPlatform.IntegrationTests/Identity/IdentityPreferencesTests.cs` (created) — 11 tests (6 hermetic Facts, 5 Docker-gated SkippableFacts).
+- `tests/DubbingPlatform.IntegrationTests/Persistence/MigrationTests.cs` (modified) — `ExpectedTables`/`RlsTables` extended with the 3 new tables.
+- `tests/DubbingPlatform.UnitTests/Domain/CoreEntitiesTests.cs` (modified) — entity count 45→48, prefix count 17→19.
+
+## Decisions Made
+- **Expand/contract nullability:** all new `dubbing_projects` string/Guid columns are nullable in the migration; only `is_archived` (default `false`) and `settings_version` (default `1`) are non-nullable with defaults so existing rows backfill safely. `Name` defaults to `"Untitled project"` in the domain ctor so the 21 existing `new DubbingProject(...)` call sites and `ProjectService.CreateAsync` keep compiling without signature changes; required-ness is enforced for explicit values (overlong → `DomainException`) and will be enforced at the API layer in Task 007.
+- **`UserPreference` secret rule:** whitelist + 4KB UTF-8 cap in domain; value-object scan rejects JSON objects containing secret-like property names (`secret/password/token/credential/private_key/api_key/...`) but does not scan free-text values, avoiding false positives on locale strings. Key-only logging is a service concern for Task 006 (no logging added here).
+- **Validator placement:** `ProjectProcessingSettingsValidator` lives in `src/DubbingPlatform.Application/Validation/` (Application already references FluentValidation 12.1.1; Domain has no FV reference). It is auto-registered via existing `AddValidatorsFromAssembly(Application)`. `SETTINGS_VERSION_UNSUPPORTED` is a FluentValidation `ErrorCode`, NOT added to `ErrorCodes.All` (which stays at 29 per `ErrorEnvelopeTests.All_29_Error_Codes_Are_Mappable`); the HTTP envelope for validation failures remains `VALIDATION_FAILED` until Task 013 freezes the error contract.
+- **Conflict mapping:** unique violations surface as `DomainException` with `CONFLICT` prefix via the existing `AppDbContext.SaveChanges` mapping; HTTP 409 translation belongs to Tasks 006/007 endpoint work, not this task.
+- **Audit hook:** archival/ownership changes are available via `Archive`/`SetOwnership` mutators; `AuditEvent` emission stays in the service layer (Task 007), no audit writes added here.
+
+## Build/Test Results
+- `dotnet build` — `Build succeeded. 0 Warning(s) 0 Error(s). Time Elapsed 00:00:07.76`.
+- `dotnet ef migrations script --project src/DubbingPlatform.Infrastructure --no-build --output $out` — `EXIT:0`; script contains `ALTER TABLE dubbing_projects ADD ...` (additive only), `CREATE TABLE project_memberships/tenant_users/user_preferences`, unique indexes `ix_tenant_users_tenant_id_external_subject` / `ix_project_memberships_project_id_user_id`, and RLS `ENABLE ROW LEVEL SECURITY` + `tenant_isolation` for all three tables. NOTE: the task's literal `... --no-build | Select-Object -First 50` form exits 1 from a broken pipe on truncation, not a migration failure; file-output form exits 0.
+- `dotnet test --filter FullyQualifiedName~IdentityPreferencesTests` — `Passed! - Failed: 0, Passed: 6, Skipped: 5, Total: 11, Duration: 11 s` (5 skips are `SkippableFact` Docker/PostgreSQL-gated; Docker unavailable in this sandbox, live in CI).
+- `dotnet test tests/DubbingPlatform.UnitTests` — `Passed! - Failed: 0, Passed: 310, Skipped: 0, Total: 310` (includes updated `CoreEntitiesTests` and `ErrorEnvelopeTests` 29-code assertions).
+
+## Recommendations for Next Agent (002)
+- **State:** all Task 001 deliverables are in `main` working tree (uncommitted). Migration `20260921093301_AddProductIdentityExtensions` is applied-model only; no live DB was migrated here (no Docker). CI must run `MigrationTests` + `IdentityPreferencesTests` live.
+- **Key APIs for Task 002 (notifications/activity):** reuse `TenantUser.Id` as activity actor key and `ProjectMembership (TenantId, ProjectId, UserId, Role)` for notification recipients — `DbSet<ProjectMembership> AppDbContext.ProjectMemberships`, `DbSet<TenantUser> AppDbContext.TenantUsers`, `DbSet<UserPreference> AppDbContext.UserPreferences`. Role enum: `DubbingPlatform.Domain.Enums.ProjectRole` (`ProjectOwner`, `ProjectEditor`, `Reviewer`, `ProjectViewer`).
+- **Validator reuse:** `DubbingPlatform.Application.Validation.ProjectProcessingSettingsValidator` (`Validate(string json)`, static `BeValidJson`/`HaveSupportedSchemaVersion`/`HaveValidShape`, `Parse` → `ProjectProcessingSettingsDocument`); error code const `UnsupportedVersionCode = "SETTINGS_VERSION_UNSUPPORTED"`, `SupportedSchemaVersion = 1`, `MaxGlossaryEntries = 1000`.
+- **Gotchas:** (1) `DubbingProject.Name` is `string?` nullable in CLR/DB during expand phase — Task 007 must backfill nulls then enforce required + make non-nullable in a contract migration. (2) `AppDbContext` tenant filters auto-cover any domain entity with a `Guid TenantId` property — new Task 002 entities (`Notification`, `ActivityEvent`) get isolation for free if they follow the pattern, but still need explicit RLS lines in both `Sql/rls_policies.sql` AND the new migration's embedded `migrationBuilder.Sql` (migrations are self-contained; never `File.ReadAllText`). (3) `PublicIdMapper.AllPrefixes` is now 19; if Task 002 adds `ntf_`/`act_` prefixes, update `CoreEntitiesTests` counts again (currently 48 entities / 19 prefixes). (4) `ErrorCodes.All` must stay at 29 until Task 013 — do not add new public codes in Task 002.
+- **Config keys:** design-time factory reads only `ConnectionStrings__Default` env var (never hardcode; placeholder `"CHANGE_ME"` used in docs/commands).
+- **Test helpers:** `IdentityPreferencesTests` (`tests/DubbingPlatform.IntegrationTests/Identity/`) is the pattern to copy for Task 002 tests — `StartContainerAsync` + `CreateOptions` (Npgsql + `UseSnakeCaseNamingConvention` + `TenantSessionInterceptor`) + `TenantContext.BeginScope/BeginMaintenanceScope`, `AssertUniqueViolation` helper, `EnsureAppRoleAsync`/`CountAsRoleAsync` for true RLS (owner bypasses RLS; `app_role` does not).

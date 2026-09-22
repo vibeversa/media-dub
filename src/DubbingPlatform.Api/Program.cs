@@ -2,13 +2,16 @@ using DubbingPlatform.Api.Auth;
 using DubbingPlatform.Api.Filters;
 using DubbingPlatform.Api.Middleware;
 using DubbingPlatform.Api.OpenApi;
+using DubbingPlatform.Application.Diagnostics;
 using DubbingPlatform.Application.Options;
 using DubbingPlatform.Application.Services;
+using DubbingPlatform.Infrastructure.Diagnostics;
 using DubbingPlatform.Infrastructure.Health;
 using DubbingPlatform.Infrastructure.Messaging;
 using DubbingPlatform.Infrastructure.Observability;
 using DubbingPlatform.Infrastructure.Persistence;
 using DubbingPlatform.Infrastructure.Persistence.Interceptors;
+using DubbingPlatform.Infrastructure.Previews;
 using DubbingPlatform.Infrastructure.Providers;
 using DubbingPlatform.Infrastructure.Storage;
 using EFCore.NamingConventions;
@@ -56,6 +59,14 @@ builder.Services.AddOptions<ProviderOptions>()
     .ValidateOnStart();
 builder.Services.AddOptions<QuotaOptions>()
     .BindConfiguration(QuotaOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<PreviewOptions>()
+    .BindConfiguration(PreviewOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<DiagnosticsOptions>()
+    .BindConfiguration(DiagnosticsOptions.SectionName)
     .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services.AddOptions<SegmentOptions>()
@@ -154,6 +165,8 @@ builder.Services.AddSingleton<IValidateOptions<TimingOptions>, TimingOptionsVali
 builder.Services.AddSingleton<IValidateOptions<StorageOptions>, StorageOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<ProviderOptions>, ProviderOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<QuotaOptions>, QuotaOptionsValidator>();
+builder.Services.AddSingleton<IValidateOptions<PreviewOptions>, PreviewOptionsValidator>();
+builder.Services.AddSingleton<IValidateOptions<DiagnosticsOptions>, DiagnosticsOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<SegmentOptions>, SegmentOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<DiarizationOptions>, DiarizationOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<TranscriptionOptions>, TranscriptionOptionsValidator>();
@@ -192,9 +205,13 @@ builder.Services.AddScoped<ProgressService>();
 builder.Services.AddScoped<CancellationService>();
 builder.Services.AddScoped<RetryService>();
 builder.Services.AddScoped<ReviewService>();
+builder.Services.AddScoped<DubbingPlatform.Application.Segments.SegmentSelectionService>();
+builder.Services.AddScoped<DubbingPlatform.Application.Segments.ISegmentSelectionEventPublisher, DubbingPlatform.Infrastructure.Messaging.MassTransitSegmentSelectionEventPublisher>();
 builder.Services.AddScoped<CostService>();
 builder.Services.AddScoped<QuotaService>();
 builder.Services.AddScoped<RetentionService>();
+builder.Services.AddScoped<DubbingPlatform.Application.Notifications.NotificationProjector>();
+builder.Services.AddScoped<DubbingPlatform.Application.Activity.ActivityProjector>();
 builder.Services.AddScoped<DubbingPlatform.Application.Abstractions.IQuotaGate>(provider => provider.GetRequiredService<QuotaService>());
 builder.Services.AddSingleton<DubbingPlatform.Infrastructure.Redis.RateLimiter>(provider => new DubbingPlatform.Infrastructure.Redis.RateLimiter(
     provider.GetService<StackExchange.Redis.IConnectionMultiplexer>(),
@@ -262,6 +279,8 @@ builder.Services.AddScoped<IStageExecutionContextFactory, StageExecutionContextF
 builder.Services.AddScoped<StageExecutionService>();
 StorageRegistration.AddDubbingStorage(builder.Services, builder.Configuration);
 ProviderRegistration.AddDubbingProviders(builder.Services, builder.Configuration);
+PreviewRegistration.AddDubbingPreviews(builder.Services);
+DiagnosticsRegistration.AddDubbingDiagnostics(builder.Services);
 MassTransitConfig.AddDubbingMassTransit(builder.Services, builder.Configuration);
 
 ObservabilitySetup.AddDubbingOpenTelemetry(builder, includeAspNetCore: true);
