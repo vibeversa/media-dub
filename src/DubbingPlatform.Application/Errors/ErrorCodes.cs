@@ -48,9 +48,15 @@ public static class ErrorCodes
     public const string ProjectNotFound = "PROJECT_NOT_FOUND";
     public const string ProjectHasActiveRun = "PROJECT_HAS_ACTIVE_RUN";
     public const string SettingsVersionConflict = "SETTINGS_VERSION_CONFLICT";
+    public const string IdempotencyKeyRequired = "IDEMPOTENCY_KEY_REQUIRED";
+    public const string IdempotencyKeyReused = "IDEMPOTENCY_KEY_REUSED";
+    public const string ProjectArchived = "PROJECT_ARCHIVED";
+    public const string RunAlreadyTerminal = "RUN_ALREADY_TERMINAL";
+    public const string RunAlreadyActive = "RUN_ALREADY_ACTIVE";
+    public const string ConfigChangedSinceRun = "CONFIG_CHANGED_SINCE_RUN";
 
     /// <summary>
-    /// All 41 public error codes.
+    /// All 47 public error codes.
     /// </summary>
     public static readonly string[] All =
     [
@@ -95,6 +101,12 @@ public static class ErrorCodes
         ProjectNotFound,
         ProjectHasActiveRun,
         SettingsVersionConflict,
+        IdempotencyKeyRequired,
+        IdempotencyKeyReused,
+        ProjectArchived,
+        RunAlreadyTerminal,
+        RunAlreadyActive,
+        ConfigChangedSinceRun,
     ];
 
     /// <summary>
@@ -153,6 +165,12 @@ public static class ErrorCodes
             ProjectNotFound => 404,
             ProjectHasActiveRun => 409,
             SettingsVersionConflict => 409,
+            IdempotencyKeyRequired => 400,
+            IdempotencyKeyReused => 422,
+            ProjectArchived => 409,
+            RunAlreadyTerminal => 409,
+            RunAlreadyActive => 409,
+            ConfigChangedSinceRun => 409,
             _ => 500,
         };
     }

@@ -221,6 +221,8 @@ builder.Services.AddScoped<DubbingPlatform.Application.Segments.ISegmentSelectio
 builder.Services.AddScoped<CostService>();
 builder.Services.AddScoped<QuotaService>();
 builder.Services.AddScoped<RetentionService>();
+builder.Services.AddScoped<DubbingPlatform.Application.Processing.ProcessingIdempotency>();
+builder.Services.AddScoped<DubbingPlatform.Application.Workspace.WorkspaceService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Notifications.NotificationProjector>();
 builder.Services.AddScoped<DubbingPlatform.Application.Activity.ActivityProjector>();
 builder.Services.AddScoped<DubbingPlatform.Application.Abstractions.IQuotaGate>(provider => provider.GetRequiredService<QuotaService>());
@@ -316,6 +318,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
         o.Events = new JwtBearerEvents
         {
+            OnMessageReceived = context =>
+            {
+                // SSE transport shell: EventSource cannot set Authorization
+                // headers, so ?access_token= carries the same short-TTL bearer
+                // for /stream paths only. The value is never logged.
+                var path = context.HttpContext.Request.Path.Value ?? string.Empty;
+                if (path.Contains("/stream", StringComparison.OrdinalIgnoreCase))
+                {
+                    var token = context.HttpContext.Request.Query["access_token"].ToString();
+                    if (!string.IsNullOrWhiteSpace(token))
+                    {
+                        context.Token = token.Trim();
+                    }
+                }
+
+                return Task.CompletedTask;
+            },
             OnChallenge = context =>
             {
                 context.HandleResponse();

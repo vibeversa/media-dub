@@ -30,7 +30,7 @@ public static class OpenApiConfiguration
             {
                 document.Info.Title = "Dubbing Platform API";
                 document.Info.Version = "v1";
-                document.Info.Description = "Tenant-scoped dubbing pipeline. Auth: JWT bearer (tid/sub/roles). Mutations accept Idempotency-Key. Errors use { error: { code, message, correlationId, details } } with codes including LANGUAGE_IMMUTABLE, SETTINGS_LOCKED_ACTIVE_RUN, PROJECT_NOT_FOUND, PROJECT_HAS_ACTIVE_RUN, SETTINGS_VERSION_CONFLICT. Project lists use { items, page, pageSize, total, sort, sortDir, hasMore, clamped }; dashboard summary is GET /api/v1/dashboard/summary with seven sections.";
+                document.Info.Description = "Tenant-scoped dubbing pipeline. Auth: JWT bearer (tid/sub/roles) or ?access_token= on SSE /stream (same policy, never logged). Mutations accept Idempotency-Key. Errors use { error: { code, message, correlationId, details } } with codes including LANGUAGE_IMMUTABLE, SETTINGS_LOCKED_ACTIVE_RUN, PROJECT_NOT_FOUND, PROJECT_HAS_ACTIVE_RUN, SETTINGS_VERSION_CONFLICT, IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_REUSED, PROJECT_ARCHIVED, RUN_ALREADY_TERMINAL, RUN_ALREADY_ACTIVE, CONFIG_CHANGED_SINCE_RUN. Project lists use { items, page, pageSize, total, sort, sortDir, hasMore, clamped }; dashboard summary is GET /api/v1/dashboard/summary with seven sections; processing start returns 202 (replay 200 + Idempotent-Replayed:true) and run lists use { items, page, pageSize, total, hasMore }; workspace aggregate is GET /api/v1/projects/{projectId}/workspace (single call, ten sections); progress exposes percentApproximate (display-only) and SSE is GET .../progress/stream (text/event-stream, Last-Event-ID accepted, event freeze in Task 013).";
 
                 document.Components ??= new OpenApiComponents();
                 if (document.Components.SecuritySchemes is null)
@@ -132,6 +132,9 @@ public static class OpenApiConfiguration
                 EnsureSchema(document, "PaginatedResult");
                 EnsureSchema(document, "ProjectListResponse");
                 EnsureSchema(document, "DashboardSummaryResponse");
+                EnsureSchema(document, "ProcessingRunListResponse");
+                EnsureSchema(document, "WorkspaceDto");
+                EnsureSchema(document, "ProgressResponse");
 
                 return Task.CompletedTask;
             });
@@ -166,6 +169,9 @@ public static class OpenApiConfiguration
                 "ErrorResponse" => "Structured error envelope: { error: { code, message, correlationId, details } }.",
                 "ProjectListResponse" => "Project list envelope: { items, page, pageSize, total, sort, sortDir, hasMore, clamped }.",
                 "DashboardSummaryResponse" => "Dashboard summary: { projectCounts, recentOutputs[<=5], storage, cost, quota, warnings[], backlog }.",
+                "ProcessingRunListResponse" => "Processing run list: { items[{ runId, status, retryOfRunId? }], page, pageSize, total, hasMore } (202 start, 200 replay + Idempotent-Replayed:true).",
+                "WorkspaceDto" => "Workspace aggregate: { project, media, run, phase, stage, progress{percentApproximate}, review, warnings[], output, cost, activity[<=10], permissions }.",
+                "ProgressResponse" => "Progress: { percentApproximate (display-only), currentStage, ... } plus SSE text/event-stream.",
                 _ => "Pagination envelope: { items, page, pageSize, total, hasMore }.",
             };
             document.Components.Schemas[name] = new OpenApiSchema

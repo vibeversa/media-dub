@@ -253,7 +253,8 @@ public sealed class ProgressService
 
     /// <summary>
     /// Finds the first incomplete DAG stage (barrier not crossed), or null when
-    /// every initialized stage is complete. Pure. Stages with
+    /// no summaries exist yet (run with no stages) or every initialized stage
+    /// is complete. Pure. Stages with
     /// <c>ExpectedUnits == 0</c> (fan-out not yet sized by the dispatcher) are
     /// treated as pending only when every sized stage before them is complete,
     /// so early progress points at the true frontier.
@@ -261,6 +262,11 @@ public sealed class ProgressService
     public static string? DeriveCurrentStage(IReadOnlyList<RunStageSummary> summaries)
     {
         ArgumentNullException.ThrowIfNull(summaries);
+        if (summaries.Count == 0)
+        {
+            return null;
+        }
+
         var byStage = summaries.ToDictionary(s => s.StageType);
         foreach (var node in StageGraph.Nodes)
         {

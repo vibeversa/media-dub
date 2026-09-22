@@ -62,6 +62,12 @@ public sealed class ProjectGuardHashTests
         Assert.Equal(404, ErrorCodes.StatusFor(ErrorCodes.ProjectNotFound));
         Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ProjectHasActiveRun));
         Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.SettingsVersionConflict));
-        Assert.Equal(41, ErrorCodes.All.Length);
+        Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.IdempotencyKeyRequired));
+        Assert.Equal(422, ErrorCodes.StatusFor(ErrorCodes.IdempotencyKeyReused));
+        Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ProjectArchived));
+        Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.RunAlreadyTerminal));
+        Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.RunAlreadyActive));
+        Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ConfigChangedSinceRun));
+        Assert.Equal(47, ErrorCodes.All.Length);
     }
 }
