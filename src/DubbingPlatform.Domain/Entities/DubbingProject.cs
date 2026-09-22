@@ -303,6 +303,11 @@ public sealed class DubbingProject
 
     public void UpdateProcessingSettings(string processingSettingsJson, int settingsVersion)
     {
+        UpdateProcessingSettings(processingSettingsJson, settingsVersion, null);
+    }
+
+    public void UpdateProcessingSettings(string processingSettingsJson, int settingsVersion, string? configurationHash)
+    {
         if (string.IsNullOrWhiteSpace(processingSettingsJson))
         {
             throw new DomainException("DubbingProject ProcessingSettingsJson must not be empty.");
@@ -322,8 +327,49 @@ public sealed class DubbingProject
             throw new DomainException("DubbingProject ProcessingSettingsJson must be valid JSON.", ex);
         }
 
+        if (configurationHash is not null)
+        {
+            if (string.IsNullOrWhiteSpace(configurationHash))
+            {
+                throw new DomainException("DubbingProject ConfigurationHash must not be empty.");
+            }
+        }
+
         ProcessingSettingsJson = processingSettingsJson;
         SettingsVersion = settingsVersion;
+        if (configurationHash is not null)
+        {
+            ConfigurationHash = configurationHash;
+        }
+
+        UpdatedAt = DateTimeOffset.UtcNow;
+
+        Validate();
+    }
+
+    public void UpdateGeneralSettings(string settingsJson, string configurationHash)
+    {
+        if (string.IsNullOrWhiteSpace(settingsJson))
+        {
+            throw new DomainException("DubbingProject SettingsJson must not be empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(configurationHash))
+        {
+            throw new DomainException("DubbingProject ConfigurationHash must not be empty.");
+        }
+
+        try
+        {
+            using var _ = JsonDocument.Parse(settingsJson);
+        }
+        catch (JsonException ex)
+        {
+            throw new DomainException("DubbingProject SettingsJson must be valid JSON.", ex);
+        }
+
+        SettingsJson = settingsJson;
+        ConfigurationHash = configurationHash;
         UpdatedAt = DateTimeOffset.UtcNow;
 
         Validate();

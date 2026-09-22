@@ -30,7 +30,7 @@ public static class OpenApiConfiguration
             {
                 document.Info.Title = "Dubbing Platform API";
                 document.Info.Version = "v1";
-                document.Info.Description = "Tenant-scoped dubbing pipeline. Auth: JWT bearer (tid/sub/roles). Mutations accept Idempotency-Key. Errors use { error: { code, message, correlationId, details } }. Lists use { items, page, pageSize, total, hasMore }.";
+                document.Info.Description = "Tenant-scoped dubbing pipeline. Auth: JWT bearer (tid/sub/roles). Mutations accept Idempotency-Key. Errors use { error: { code, message, correlationId, details } } with codes including LANGUAGE_IMMUTABLE, SETTINGS_LOCKED_ACTIVE_RUN, PROJECT_NOT_FOUND, PROJECT_HAS_ACTIVE_RUN, SETTINGS_VERSION_CONFLICT. Project lists use { items, page, pageSize, total, sort, sortDir, hasMore, clamped }; dashboard summary is GET /api/v1/dashboard/summary with seven sections.";
 
                 document.Components ??= new OpenApiComponents();
                 if (document.Components.SecuritySchemes is null)
@@ -130,6 +130,8 @@ public static class OpenApiConfiguration
 
                 EnsureSchema(document, "ErrorResponse");
                 EnsureSchema(document, "PaginatedResult");
+                EnsureSchema(document, "ProjectListResponse");
+                EnsureSchema(document, "DashboardSummaryResponse");
 
                 return Task.CompletedTask;
             });
@@ -159,12 +161,17 @@ public static class OpenApiConfiguration
 
         if (!document.Components.Schemas.ContainsKey(name))
         {
+            var description = name switch
+            {
+                "ErrorResponse" => "Structured error envelope: { error: { code, message, correlationId, details } }.",
+                "ProjectListResponse" => "Project list envelope: { items, page, pageSize, total, sort, sortDir, hasMore, clamped }.",
+                "DashboardSummaryResponse" => "Dashboard summary: { projectCounts, recentOutputs[<=5], storage, cost, quota, warnings[], backlog }.",
+                _ => "Pagination envelope: { items, page, pageSize, total, hasMore }.",
+            };
             document.Components.Schemas[name] = new OpenApiSchema
             {
                 Type = JsonSchemaType.Object,
-                Description = string.Equals(name, "ErrorResponse", StringComparison.Ordinal)
-                    ? "Structured error envelope: { error: { code, message, correlationId, details } }."
-                    : "Pagination envelope: { items, page, pageSize, total, hasMore }.",
+                Description = description,
             };
         }
     }

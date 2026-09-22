@@ -207,6 +207,8 @@ builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IPermissionResolver, PermissionResolver>();
 builder.Services.AddScoped<ProjectService>();
+builder.Services.AddScoped<DubbingPlatform.Application.Projects.ProjectSettingsGuard>();
+builder.Services.AddScoped<DubbingPlatform.Application.Dashboard.DashboardService>();
 builder.Services.AddScoped<UploadService>();
 builder.Services.AddScoped<ProcessingStartService>();
 builder.Services.AddScoped<ExportService>();

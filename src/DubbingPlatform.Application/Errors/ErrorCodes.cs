@@ -43,9 +43,14 @@ public static class ErrorCodes
     public const string PreferenceKeyUnknown = "PREFERENCE_KEY_UNKNOWN";
     public const string PreferenceValueTooLarge = "PREFERENCE_VALUE_TOO_LARGE";
     public const string TenantRequired = "TENANT_REQUIRED";
+    public const string LanguageImmutable = "LANGUAGE_IMMUTABLE";
+    public const string SettingsLockedActiveRun = "SETTINGS_LOCKED_ACTIVE_RUN";
+    public const string ProjectNotFound = "PROJECT_NOT_FOUND";
+    public const string ProjectHasActiveRun = "PROJECT_HAS_ACTIVE_RUN";
+    public const string SettingsVersionConflict = "SETTINGS_VERSION_CONFLICT";
 
     /// <summary>
-    /// All 36 public error codes.
+    /// All 41 public error codes.
     /// </summary>
     public static readonly string[] All =
     [
@@ -85,6 +90,11 @@ public static class ErrorCodes
         PreferenceKeyUnknown,
         PreferenceValueTooLarge,
         TenantRequired,
+        LanguageImmutable,
+        SettingsLockedActiveRun,
+        ProjectNotFound,
+        ProjectHasActiveRun,
+        SettingsVersionConflict,
     ];
 
     /// <summary>
@@ -138,6 +148,11 @@ public static class ErrorCodes
             PreferenceKeyUnknown => 400,
             PreferenceValueTooLarge => 413,
             TenantRequired => 401,
+            LanguageImmutable => 400,
+            SettingsLockedActiveRun => 409,
+            ProjectNotFound => 404,
+            ProjectHasActiveRun => 409,
+            SettingsVersionConflict => 409,
             _ => 500,
         };
     }
