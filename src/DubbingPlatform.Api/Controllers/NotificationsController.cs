@@ -11,18 +11,27 @@ namespace DubbingPlatform.Api.Controllers;
 
 /// <summary>
 /// Durable notification inbox (Task 012 / 012B) over the Task 002 projection:
-/// <c>GET /api/v1/notifications</c> (paginated, <c>?unreadOnly=true</c>,
-/// newest-first, expired excluded),
+/// <c>GET /api/v1/notifications</c> (paginated <c>?page&amp;pageSize</c>,
+/// <c>?unreadOnly=true</c>, newest-first, expired excluded),
 /// <c>GET /api/v1/notifications/unread-count</c> (same scope, lightweight),
 /// <c>POST /api/v1/notifications/{id}/read</c> (idempotent),
 /// <c>POST /api/v1/notifications/read-all</c> (idempotent, returns both
 /// <c>markedCount</c> and <c>marked</c> for 012/012B compat).
+/// Pagination is page-based (<c>PaginatedResult</c>, newest-first) — the
+/// API-wide convention shared with projects/runs/segments — not cursor-based.
 /// Strict recipient scoping (<c>TenantId + RecipientUserId == caller</c>);
 /// cross-user/cross-tenant ids return 404 without leak. Null-<c>ProjectId</c>
 /// quota/policy rows are visible at tenant level (no project filter).
+/// Deep links (<c>resourceType/resourceId/projectId</c>) route Task 034:
+/// <c>ProcessingRun</c> → run detail, <c>ReviewItem</c> → review studio,
+/// <c>ExportJob</c> → export row, <c>MediaAsset</c> → upload/media row,
+/// <c>DubbingProject</c>/<c>Tenant</c> → project/dashboard. When the linked row
+/// no longer exists (deleted/expired), clients fall back to the owning project
+/// (<c>projectId</c>) or, when null, to the notification list.
 /// Payloads carry short summaries only — never transcript bodies, signed
-/// URLs, secrets, or raw provider data. SSE (Task 013) is an invalidation
-/// hint only; this API is the source of truth.
+/// URLs, secrets, or raw provider data. Task 013 owns the
+/// <c>notification.created</c> SSE emission; SSE is an invalidation hint only
+/// and this API is the source of truth (clients refetch on hint).
 /// </summary>
 [ApiController]
 [Route("api/v1/notifications")]

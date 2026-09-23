@@ -2,6 +2,11 @@ namespace DubbingPlatform.Api.Models;
 
 /// <summary>
 /// Notification inbox row with deep-link fields for Task 034 routing.
+/// <c>ResourceType</c> is one of <c>ProcessingRun|ReviewItem|ExportJob|MediaAsset|DubbingProject|Tenant</c>;
+/// <c>ResourceId</c> is the linked row id (N-formatted GUID or wire id);
+/// <c>ProjectId</c> is the owning project (<c>prj_</c>) or null for
+/// tenant-level quota/policy rows. Fallback: when the linked row no longer
+/// exists, route to <c>ProjectId</c>, else to the notification list.
 /// Summaries only — never transcript bodies, signed URLs, or secrets.
 /// </summary>
 public sealed record NotificationResponse(
