@@ -54,9 +54,9 @@ public sealed class ErrorEnvelopeTests
     }
 
     [Fact]
-    public async Task All_62_Error_Codes_Are_Mappable()
+    public async Task All_65_Error_Codes_Are_Mappable()
     {
-        Assert.Equal(62, ErrorCodes.All.Length);
+        Assert.Equal(65, ErrorCodes.All.Length);
 
         foreach (var code in ErrorCodes.All)
         {

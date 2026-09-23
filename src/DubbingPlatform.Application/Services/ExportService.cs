@@ -67,10 +67,17 @@ public sealed class ExportService
 
     /// <summary>
     /// Creates a <c>Pending</c> export job for the latest exportable run and
-    /// audits <c>export.create</c>. The caller publishes
+    /// audits <c>export.create</c> (actor + format + run + profile +
+    /// idempotency key; URL values never logged). The caller publishes
     /// <c>ExportJobRequested</c> best effort; the worker performs generation.
     /// Throws <c>EXPORT_NOT_READY</c> when no exportable run exists or the run
-    /// has zero segments.
+    /// has zero segments. When the run snapshot is incomplete
+    /// (<c>IsComplete == false</c>) and <paramref name="allowPartial"/> is
+    /// false, throws <c>EXPORT_INCOMPLETE</c> (segment-incomplete) or
+    /// <c>OUTPUT_INCOMPLETE</c> (no rendered output yet) with the partial
+    /// offer in details — never silent truncation. <c>profile</c> is
+    /// validated via <see cref="Exports.ExportProfileValidator"/> (path
+    /// traversal → 400).
     /// </summary>
     public async Task<Guid> RequestAsync(
         Guid tenantId,
@@ -79,9 +86,27 @@ public sealed class ExportService
         string actor,
         CancellationToken cancellationToken = default)
     {
+        return await RequestAsync(tenantId, projectId, format, actor, null, false, null, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Full export creation with profile, partial guard, and idempotency-key
+    /// audit linkage.
+    /// </summary>
+    public async Task<Guid> RequestAsync(
+        Guid tenantId,
+        Guid projectId,
+        ExportFormat format,
+        string actor,
+        string? profile,
+        bool allowPartial,
+        string? idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
         RequireTenant(tenantId);
         RequireId(projectId, nameof(projectId));
         ArgumentException.ThrowIfNullOrWhiteSpace(actor);
+        var normalizedProfile = Exports.ExportProfileValidator.Normalize(profile);
 
         await RequireProjectAsync(tenantId, projectId, cancellationToken).ConfigureAwait(false);
         var run = await FindExportableRunAsync(tenantId, projectId, cancellationToken).ConfigureAwait(false);
@@ -100,6 +125,38 @@ public sealed class ExportService
                 "The run has no segments; exports are not ready.");
         }
 
+        if (!allowPartial)
+        {
+            var snapshot = await BuildSnapshotAsync(tenantId, projectId, run.Id, cancellationToken).ConfigureAwait(false);
+            if (!snapshot.Completeness.IsComplete)
+            {
+                var hasOutput = await HasRenderedOutputAsync(tenantId, projectId, cancellationToken).ConfigureAwait(false);
+                var details = JsonSerializer.Serialize(new
+                {
+                    completeness = new
+                    {
+                        completed = snapshot.Completeness.Completed,
+                        failed = snapshot.Completeness.Failed,
+                        skipped = snapshot.Completeness.Skipped,
+                        reviewCount = snapshot.Completeness.ReviewCount,
+                    },
+                    isPartial = true,
+                    missing = MissingSummary(snapshot),
+                    offerPartial = true,
+                }, JsonOptions);
+                if (!hasOutput)
+                {
+                    throw new ErrorCodeException(
+                        ErrorCodes.OutputIncomplete,
+                        string.Concat("Output is partial (", snapshot.Completeness.Completed.ToString(System.Globalization.CultureInfo.InvariantCulture), "/", segmentCount.ToString(System.Globalization.CultureInfo.InvariantCulture), "); retry with allowPartial=true for a partial export. Details: ", details));
+                }
+
+                throw new ErrorCodeException(
+                    ErrorCodes.ExportIncomplete,
+                    string.Concat("Export would be partial (", snapshot.Completeness.Completed.ToString(System.Globalization.CultureInfo.InvariantCulture), "/", segmentCount.ToString(System.Globalization.CultureInfo.InvariantCulture), "); retry with allowPartial=true. Details: ", details));
+            }
+        }
+
         var exportId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
         using (TenantContext.BeginScope(tenantId))
@@ -114,7 +171,7 @@ public sealed class ExportService
         await _audit.LogAsync(
             tenantId, projectId, actor.Trim(), "export.create",
             "export", exportId.ToString("N"),
-            JsonSerializer.Serialize(new { format = ExportFormatParser.ToWireName(format), runId = run.Id.ToString("N") }, JsonOptions),
+            JsonSerializer.Serialize(new { format = ExportFormatParser.ToWireName(format), runId = run.Id.ToString("N"), profile = normalizedProfile, allowPartial, idempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim() }, JsonOptions),
             cancellationToken).ConfigureAwait(false);
 
         return exportId;
@@ -453,6 +510,9 @@ public sealed class ExportService
 
     /// <summary>
     /// Issues a 15-minute presigned download URL for a completed export.
+    /// Storage expiry surfaces as 410 <c>URL_EXPIRED</c> (re-issue by
+    /// calling download again); any other storage failure stays
+    /// <c>STORAGE_UNAVAILABLE</c>. The URL value is never logged.
     /// </summary>
     public async Task<(string Url, DateTimeOffset ExpiresAt)> GetDownloadUrlAsync(
         Guid tenantId,
@@ -469,9 +529,19 @@ public sealed class ExportService
         }
 
         var artifactId = ParseArtifactRef(job.ArtifactIdRef);
-        var url = await _artifacts.GetDownloadUrlAsync(
-            tenantId, projectId, artifactId, SignedUrlPolicy.DefaultExpiry, cancellationToken).ConfigureAwait(false);
-        return (url, DateTimeOffset.UtcNow.Add(SignedUrlPolicy.DefaultExpiry));
+        try
+        {
+            var url = await _artifacts.GetDownloadUrlAsync(
+                tenantId, projectId, artifactId, SignedUrlPolicy.DefaultExpiry, cancellationToken).ConfigureAwait(false);
+            return (url, DateTimeOffset.UtcNow.Add(SignedUrlPolicy.DefaultExpiry));
+        }
+        catch (Exception ex) when (IsExpired(ex))
+        {
+            throw new ErrorCodeException(
+                ErrorCodes.UrlExpired,
+                "The signed URL has expired; re-issue it by calling download again.",
+                ex);
+        }
     }
 
     /// <summary>
@@ -517,6 +587,56 @@ public sealed class ExportService
                 .AsNoTracking()
                 .CountAsync(s => s.RunId == runId, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private async Task<bool> HasRenderedOutputAsync(Guid tenantId, Guid projectId, CancellationToken cancellationToken)
+    {
+        using (TenantContext.BeginScope(tenantId))
+        {
+            using var db = _contextFactory.CreateDbContext();
+            return await db.Set<OutputAsset>()
+                .AsNoTracking()
+                .AnyAsync(o => o.ProjectId == projectId, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static IReadOnlyList<string> MissingSummary(ExportRunData snapshot)
+    {
+        var missing = new List<string>();
+        if (snapshot.Completeness.Failed > 0 || snapshot.Completeness.Completed < snapshot.Segments.Count)
+        {
+            missing.Add("SEGMENT_PENDING");
+        }
+
+        if (snapshot.Completeness.ReviewCount > 0)
+        {
+            missing.Add("REVIEW_OPEN");
+        }
+
+        if (snapshot.QualityEntries.Any(q => string.Equals(q.Code, "QC_BLOCKED", StringComparison.OrdinalIgnoreCase)))
+        {
+            missing.Add("QC_BLOCKED");
+        }
+
+        if (missing.Count == 0)
+        {
+            missing.Add("ARTIFACT_MISSING");
+        }
+
+        return missing;
+    }
+
+    private static bool IsExpired(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains("expired", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task<ExportJob> LoadOwnedJobAsync(

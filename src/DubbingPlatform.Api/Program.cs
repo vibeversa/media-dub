@@ -228,6 +228,7 @@ builder.Services.AddScoped<RetentionService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Processing.ProcessingIdempotency>();
 builder.Services.AddScoped<DubbingPlatform.Application.Workspace.WorkspaceService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Notifications.NotificationProjector>();
+builder.Services.AddScoped<DubbingPlatform.Application.Output.OutputService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Activity.ActivityProjector>();
 builder.Services.AddScoped<DubbingPlatform.Application.Abstractions.IQuotaGate>(provider => provider.GetRequiredService<QuotaService>());
 builder.Services.AddSingleton<DubbingPlatform.Infrastructure.Redis.RateLimiter>(provider => new DubbingPlatform.Infrastructure.Redis.RateLimiter(

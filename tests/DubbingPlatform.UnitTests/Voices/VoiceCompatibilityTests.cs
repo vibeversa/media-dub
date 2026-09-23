@@ -20,7 +20,7 @@ public sealed class VoiceCompatibilityTests
         Assert.Equal(429, ErrorCodes.StatusFor(ErrorCodes.PreviewQuotaExceeded));
         Assert.Equal(404, ErrorCodes.StatusFor(ErrorCodes.VoiceNotFound));
         Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.PreviewTextInvalid));
-        Assert.Equal(62, ErrorCodes.All.Length);
+        Assert.Equal(65, ErrorCodes.All.Length);
     }
 
     [Fact]

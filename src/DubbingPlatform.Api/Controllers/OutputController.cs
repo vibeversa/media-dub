@@ -5,6 +5,7 @@ using DubbingPlatform.Application.Errors;
 using DubbingPlatform.Application.Exceptions;
 using DubbingPlatform.Application.MultiTenancy;
 using DubbingPlatform.Application.Services;
+using DubbingPlatform.Application.Output;
 using DubbingPlatform.Application.Storage;
 using DubbingPlatform.Domain.Entities;
 using DubbingPlatform.Domain.Enums;
@@ -15,11 +16,17 @@ using Microsoft.EntityFrameworkCore;
 namespace DubbingPlatform.Api.Controllers;
 
 /// <summary>
-/// Rendered-output downloads nested under projects:
+/// Rendered-output surface nested under projects:
+/// <c>GET /api/v1/projects/{projectId}/output</c> (200 aggregate with state
+/// <c>Ready|Generating|Failed|Partial|Unavailable</c>, completeness
+/// <c>{ready,total}</c>, per-asset items with signed-URL-only delivery, and
+/// <c>warnings[]</c>) and
 /// <c>GET /api/v1/projects/{projectId}/output/download</c>.
-/// Issues 15-minute signed URLs only when a completed output exists;
-/// otherwise returns structured errors (404 ARTIFACT_UNAVAILABLE when no
-/// output row, never 501).
+/// The aggregate never exposes storage keys or bucket paths; every servable
+/// file is a ≤15-minute signed URL. Output before any run returns 200
+/// <c>Unavailable</c> with <c>reason NO_RUNS_YET</c> (not 404). Cross-tenant
+/// project ids on the aggregate return 404 (no leak); the legacy download
+/// route preserves its 403 project split.
 /// </summary>
 [ApiController]
 [Route("api/v1/projects/{projectId}/output")]
@@ -30,13 +37,33 @@ public sealed class OutputController : ControllerBase
 {
     private readonly IStageExecutionContextFactory _contextFactory;
     private readonly ArtifactService _artifacts;
+    private readonly OutputService _output;
 
-    public OutputController(IStageExecutionContextFactory contextFactory, ArtifactService artifacts)
+    public OutputController(
+        IStageExecutionContextFactory contextFactory,
+        ArtifactService artifacts,
+        OutputService output)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         ArgumentNullException.ThrowIfNull(artifacts);
+        ArgumentNullException.ThrowIfNull(output);
         _contextFactory = contextFactory;
         _artifacts = artifacts;
+        _output = output;
+    }
+
+    [HttpGet]
+    [Authorize(Policy = AuthPolicies.RequireProjectViewer)]
+    [ProducesResponseType(typeof(OutputResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Get(
+        [FromRoute] string projectId,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = User.GetTenantId();
+        var projectGuid = PublicIdParser.ParseProjectId(projectId);
+        var response = await _output.GetAsync(tenantId, projectGuid, cancellationToken).ConfigureAwait(false);
+        return Ok(response);
     }
 
     [HttpGet("download")]

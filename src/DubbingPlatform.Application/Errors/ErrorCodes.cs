@@ -69,9 +69,12 @@ public static class ErrorCodes
     public const string ReviewAlreadyResolved = "REVIEW_ALREADY_RESOLVED";
     public const string ReviewNotResolved = "REVIEW_NOT_RESOLVED";
     public const string ReviewEditEmpty = "REVIEW_EDIT_EMPTY";
+    public const string ExportIncomplete = "EXPORT_INCOMPLETE";
+    public const string OutputIncomplete = "OUTPUT_INCOMPLETE";
+    public const string UrlExpired = "URL_EXPIRED";
 
     /// <summary>
-    /// All 62 public error codes.
+    /// All 65 public error codes.
     /// </summary>
     public static readonly string[] All =
     [
@@ -137,6 +140,9 @@ public static class ErrorCodes
         ReviewAlreadyResolved,
         ReviewNotResolved,
         ReviewEditEmpty,
+        ExportIncomplete,
+        OutputIncomplete,
+        UrlExpired,
     ];
 
     /// <summary>
@@ -216,6 +222,9 @@ public static class ErrorCodes
             ReviewAlreadyResolved => 409,
             ReviewNotResolved => 409,
             ReviewEditEmpty => 400,
+            ExportIncomplete => 409,
+            OutputIncomplete => 409,
+            UrlExpired => 410,
             _ => 500,
         };
     }

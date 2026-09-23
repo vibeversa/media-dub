@@ -18,7 +18,7 @@ public sealed class SegmentApiContractTests
         Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.VersionSegmentMismatch));
         Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.SegmentTextEmpty));
         Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.SegmentRetryActive));
-        Assert.Equal(62, ErrorCodes.All.Length);
+        Assert.Equal(65, ErrorCodes.All.Length);
     }
 
     [Fact]

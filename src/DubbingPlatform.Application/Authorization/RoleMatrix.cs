@@ -37,6 +37,9 @@ public static class RoleMatrix
             ["POST /api/v1/reviews/resolve-with-edit"] = [Roles.TenantAdmin, Roles.ProjectOwner, Roles.ProjectEditor, Roles.Reviewer],
             ["POST /api/v1/exports"] = [Roles.TenantAdmin, Roles.ProjectOwner, Roles.ProjectEditor],
             ["GET /api/v1/output"] = [Roles.TenantAdmin, Roles.ProjectOwner, Roles.ProjectEditor, Roles.Reviewer, Roles.ProjectViewer],
+            ["GET /api/v1/exports"] = [Roles.TenantAdmin, Roles.ProjectOwner, Roles.ProjectEditor, Roles.Reviewer, Roles.ProjectViewer],
+            ["GET /api/v1/notifications"] = [Roles.TenantAdmin, Roles.ProjectOwner, Roles.ProjectEditor, Roles.Reviewer, Roles.ProjectViewer],
+            ["POST /api/v1/notifications"] = [Roles.TenantAdmin, Roles.ProjectOwner, Roles.ProjectEditor, Roles.Reviewer, Roles.ProjectViewer],
             ["GET /api/v1/admin"] = [Roles.Service, Roles.TenantAdmin],
             ["POST /api/v1/admin"] = [Roles.Service, Roles.TenantAdmin],
         };

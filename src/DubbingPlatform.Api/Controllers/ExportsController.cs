@@ -3,6 +3,7 @@ using DubbingPlatform.Api.Middleware;
 using DubbingPlatform.Api.Models;
 using DubbingPlatform.Application.Authorization;
 using DubbingPlatform.Application.Common;
+using DubbingPlatform.Application.Errors;
 using DubbingPlatform.Application.Exceptions;
 using DubbingPlatform.Application.Exports;
 using DubbingPlatform.Application.MultiTenancy;
@@ -20,18 +21,25 @@ namespace DubbingPlatform.Api.Controllers;
 /// <summary>
 /// Export jobs nested under projects:
 /// <c>POST /api/v1/projects/{projectId}/exports</c> (202 + audit +
-/// <c>ExportJobRequested</c> best effort; 409 EXPORT_NOT_READY when no
-/// exportable run or zero segments),
+/// <c>ExportJobRequested</c> best effort; requires <c>Idempotency-Key</c> else
+/// 400 <c>IDEMPOTENCY_KEY_REQUIRED</c>; 409 <c>EXPORT_NOT_READY</c> when no
+/// exportable run or zero segments; 409 <c>EXPORT_INCOMPLETE</c> /
+/// <c>OUTPUT_INCOMPLETE</c> when the run is incomplete and
+/// <c>allowPartial</c> is not true — never silent truncation),
 /// <c>GET .../exports</c> (200 paginated),
-/// <c>GET .../exports/{exportId}</c> (200 with status + completeness),
-/// <c>GET .../exports/{exportId}/download</c> (200 presigned 15min or 409).
-/// Formats are kebab-case
-/// (<c>srt|webvtt|json-timeline|speaker-metadata|transcript|translation|quality-report</c>).
+/// <c>GET .../exports/{exportId}</c> (200 with status + completeness; cross-tenant → 404),
+/// <c>GET .../exports/{exportId}/download</c> (302 redirect to a ≤15-minute
+/// signed URL; 409 <c>EXPORT_NOT_READY</c> when not completed, 410
+/// <c>URL_EXPIRED</c> on expiry with re-issue action).
+/// Formats are kebab-case allowlisted server-side
+/// (<c>srt|webvtt|json-timeline|speaker-metadata|transcript|translation|quality-report</c>);
+/// <c>profile</c> is an optional kebab-case variant (path traversal → 400).
 /// Exports are on-demand and independent of the core DAG: the latest
 /// <c>Completed</c> run is preferred, else the latest
 /// <c>Failed/Cancelled/ManualReviewRequired</c> run with data (partial with
 /// <c>isPartial:true</c> + completeness, never rendered media). Idempotency is
-/// 24h per key via <see cref="IdempotencyFilter"/>.
+/// 24h per key via <see cref="IdempotencyFilter"/> (same key+body replays a
+/// single row; same key+different body → 409).
 /// </summary>
 [ApiController]
 [Route("api/v1/projects/{projectId}/exports")]
@@ -42,18 +50,22 @@ public sealed class ExportsController : ControllerBase
 {
     private readonly IStageExecutionContextFactory _contextFactory;
     private readonly ExportService _exports;
+    private readonly AuditService _audit;
     private readonly IPublishEndpoint _publish;
 
     public ExportsController(
         IStageExecutionContextFactory contextFactory,
         ExportService exports,
+        AuditService audit,
         IPublishEndpoint publish)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         ArgumentNullException.ThrowIfNull(exports);
+        ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(publish);
         _contextFactory = contextFactory;
         _exports = exports;
+        _audit = audit;
         _publish = publish;
     }
 
@@ -70,16 +82,24 @@ public sealed class ExportsController : ControllerBase
         [FromHeader(Name = IdempotencyService.HeaderName)] string? idempotencyKey,
         CancellationToken cancellationToken)
     {
-        _ = idempotencyKey;
+        if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Trim().Length > 256)
+        {
+            throw new ErrorCodeException(
+                ErrorCodes.IdempotencyKeyRequired,
+                "The Idempotency-Key header is required for this operation.");
+        }
+
+        ArgumentNullException.ThrowIfNull(request);
         var tenantId = User.GetTenantId();
         var projectGuid = PublicIdParser.ParseProjectId(projectId);
         await RequireProjectAsync(tenantId, projectGuid, cancellationToken).ConfigureAwait(false);
 
         var format = ExportFormatParser.Parse(request.Format?.Trim());
+        var key = idempotencyKey.Trim();
         var exportId = await _exports.RequestAsync(
-            tenantId, projectGuid, format, User.GetSubject(), cancellationToken).ConfigureAwait(false);
+            tenantId, projectGuid, format, User.GetSubject(), request.Profile, request.AllowPartial, key, cancellationToken).ConfigureAwait(false);
 
-        var job = await _exports.GetAsync(tenantId, projectGuid, exportId, cancellationToken).ConfigureAwait(false);
+        var job = await GetOwnedAsync(tenantId, projectGuid, exportId, cancellationToken).ConfigureAwait(false);
         await PublishExportRequestedAsync(tenantId, projectGuid, job.ProcessingRunId, exportId, format, cancellationToken).ConfigureAwait(false);
 
         return Accepted(ToResponse(projectGuid, job));
@@ -121,15 +141,16 @@ public sealed class ExportsController : ControllerBase
         var exportGuid = PublicIdParser.ParseExportId(exportId);
         await RequireProjectAsync(tenantId, projectGuid, cancellationToken).ConfigureAwait(false);
 
-        var job = await _exports.GetAsync(tenantId, projectGuid, exportGuid, cancellationToken).ConfigureAwait(false);
+        var job = await GetOwnedAsync(tenantId, projectGuid, exportGuid, cancellationToken).ConfigureAwait(false);
         return Ok(ToResponse(projectGuid, job));
     }
 
     [HttpGet("{exportId}/download")]
     [Authorize(Policy = AuthPolicies.RequireProjectViewer)]
-    [ProducesResponseType(typeof(DownloadUrlResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status302Found)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status410Gone)]
     public async Task<IActionResult> Download(
         [FromRoute] string projectId,
         [FromRoute] string exportId,
@@ -140,8 +161,33 @@ public sealed class ExportsController : ControllerBase
         var exportGuid = PublicIdParser.ParseExportId(exportId);
         await RequireProjectAsync(tenantId, projectGuid, cancellationToken).ConfigureAwait(false);
 
-        var (url, expiresAt) = await _exports.GetDownloadUrlAsync(tenantId, projectGuid, exportGuid, cancellationToken).ConfigureAwait(false);
-        return Ok(new DownloadUrlResponse(url, expiresAt));
+        var (url, _) = await _exports.GetDownloadUrlAsync(tenantId, projectGuid, exportGuid, cancellationToken).ConfigureAwait(false);
+
+        // Issuance is audited with ids only; the URL value is never logged.
+        await _audit.LogAsync(
+            tenantId, projectGuid, User.GetSubject(), "export.download",
+            "export", exportGuid.ToString("N"),
+            System.Text.Json.JsonSerializer.Serialize(new { exportId = exportGuid.ToString("N") }),
+            cancellationToken).ConfigureAwait(false);
+
+        return Redirect(url);
+    }
+
+    private async Task<ExportJob> GetOwnedAsync(
+        Guid tenantId,
+        Guid projectId,
+        Guid exportId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _exports.GetAsync(tenantId, projectId, exportId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ForbiddenException ex)
+        {
+            // Cross-tenant/project export ids must not leak existence.
+            throw new NotFoundException($"Export '{exportId}' was not found.", ex);
+        }
     }
 
     private static ExportResponse ToResponse(Guid projectId, ExportJob job)

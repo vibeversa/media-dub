@@ -36,11 +36,18 @@ public sealed class ReviewDecisionRequest
 }
 
 /// <summary>
-/// Export create request body.
+/// Export create request body. <c>Format</c> is kebab-case allowlisted
+/// server-side; <c>Profile</c> is an optional kebab-case variant (path
+/// traversal rejected with 400); <c>AllowPartial</c> must be true to create
+/// an export over an incomplete run (otherwise 409 with a partial offer).
 /// </summary>
 public sealed class CreateExportRequest
 {
     public string Format { get; set; } = string.Empty;
+
+    public string? Profile { get; set; }
+
+    public bool AllowPartial { get; set; }
 }
 
 /// <summary>

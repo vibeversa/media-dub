@@ -110,6 +110,9 @@ public sealed class WorkspaceShellTests
         Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ReviewAlreadyResolved));
         Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ReviewNotResolved));
         Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.ReviewEditEmpty));
-        Assert.Equal(62, ErrorCodes.All.Length);
+        Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ExportIncomplete));
+        Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.OutputIncomplete));
+        Assert.Equal(410, ErrorCodes.StatusFor(ErrorCodes.UrlExpired));
+        Assert.Equal(65, ErrorCodes.All.Length);
     }
 }

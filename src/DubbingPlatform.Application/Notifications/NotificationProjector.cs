@@ -148,10 +148,28 @@ public sealed class NotificationProjector
 
     /// <summary>
     /// Lists unexpired notifications for one recipient, newest first.
+    /// Null-<c>ProjectId</c> quota/policy rows are included (tenant-level
+    /// visibility is recipient scoping, not project filtering).
     /// </summary>
     public async Task<(IReadOnlyList<Notification> Items, long Total)> ListActiveAsync(
         Guid tenantId,
         Guid recipientUserId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return await ListActiveAsync(tenantId, recipientUserId, false, page, pageSize, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Lists unexpired notifications with an optional unread-only filter,
+    /// newest first. Expired rows are excluded but retained for the retention
+    /// job; already-read re-marks are no-ops (never 409).
+    /// </summary>
+    public async Task<(IReadOnlyList<Notification> Items, long Total)> ListActiveAsync(
+        Guid tenantId,
+        Guid recipientUserId,
+        bool unreadOnly,
         int page,
         int pageSize,
         CancellationToken cancellationToken = default)
@@ -169,8 +187,13 @@ public sealed class NotificationProjector
         {
             using var db = _contextFactory.CreateDbContext();
             var scoped = db.Set<Notification>().AsNoTracking()
-                .Where(n => n.RecipientUserId == recipientUserId)
+                .Where(n => n.TenantId == tenantId && n.RecipientUserId == recipientUserId)
                 .Where(n => n.ExpiresAt == null || n.ExpiresAt > now);
+            if (unreadOnly)
+            {
+                scoped = scoped.Where(n => n.ReadAt == null);
+            }
+
             var total = await scoped.LongCountAsync(cancellationToken).ConfigureAwait(false);
             var items = await scoped
                 .OrderByDescending(n => n.CreatedAt)
@@ -183,8 +206,76 @@ public sealed class NotificationProjector
     }
 
     /// <summary>
+    /// Lightweight unread count over the same scope as
+    /// <see cref="ListActiveAsync(Guid,Guid,bool,int,int,CancellationToken)"/>.
+    /// </summary>
+    public async Task<long> CountUnreadAsync(
+        Guid tenantId,
+        Guid recipientUserId,
+        CancellationToken cancellationToken = default)
+    {
+        RequireTenant(tenantId);
+        if (recipientUserId == Guid.Empty)
+        {
+            throw new DomainException("RecipientUserId must not be empty.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        using (TenantContext.BeginScope(tenantId))
+        {
+            using var db = _contextFactory.CreateDbContext();
+            return await db.Set<Notification>().AsNoTracking()
+                .Where(n => n.TenantId == tenantId && n.RecipientUserId == recipientUserId)
+                .Where(n => n.ReadAt == null)
+                .Where(n => n.ExpiresAt == null || n.ExpiresAt > now)
+                .LongCountAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Marks all unexpired unread rows for the caller read. Idempotent;
+    /// returns the number newly marked (0 when nothing was unread).
+    /// Expired rows are treated as gone (never counted, never marked).
+    /// </summary>
+    public async Task<int> MarkAllReadAsync(
+        Guid tenantId,
+        Guid recipientUserId,
+        CancellationToken cancellationToken = default)
+    {
+        RequireTenant(tenantId);
+        if (recipientUserId == Guid.Empty)
+        {
+            throw new DomainException("RecipientUserId must not be empty.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        using (TenantContext.BeginScope(tenantId))
+        {
+            using var db = _contextFactory.CreateDbContext();
+            var unread = await db.Set<Notification>()
+                .Where(n => n.TenantId == tenantId && n.RecipientUserId == recipientUserId)
+                .Where(n => n.ReadAt == null)
+                .Where(n => n.ExpiresAt == null || n.ExpiresAt > now)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var notification in unread)
+            {
+                notification.MarkAsRead(now);
+            }
+
+            if (unread.Count > 0)
+            {
+                await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            return unread.Count;
+        }
+    }
+
+    /// <summary>
     /// Marks one owned notification read. Throws <see cref="Exceptions.NotFoundException"/>
-    /// when the row is missing or belongs to another recipient.
+    /// when the row is missing, expired (treated as gone), or belongs to
+    /// another recipient/tenant (no leak). Idempotent: re-marking an
+    /// already-read row is a no-op.
     /// </summary>
     public async Task MarkAsReadAsync(
         Guid tenantId,
@@ -208,9 +299,14 @@ public sealed class NotificationProjector
             using var db = _contextFactory.CreateDbContext();
             var notification = await db.Set<Notification>()
                 .FirstOrDefaultAsync(
-                    n => n.Id == notificationId && n.RecipientUserId == recipientUserId,
+                    n => n.Id == notificationId && n.TenantId == tenantId && n.RecipientUserId == recipientUserId,
                     cancellationToken).ConfigureAwait(false);
             if (notification is null)
+            {
+                throw new Exceptions.NotFoundException($"Notification '{notificationId}' was not found.");
+            }
+
+            if (notification.ExpiresAt.HasValue && notification.ExpiresAt.Value <= DateTimeOffset.UtcNow)
             {
                 throw new Exceptions.NotFoundException($"Notification '{notificationId}' was not found.");
             }

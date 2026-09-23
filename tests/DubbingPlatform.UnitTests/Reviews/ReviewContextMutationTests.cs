@@ -19,7 +19,7 @@ public sealed class ReviewContextMutationTests
         Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ReviewAlreadyResolved));
         Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ReviewNotResolved));
         Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.ReviewEditEmpty));
-        Assert.Equal(62, ErrorCodes.All.Length);
+        Assert.Equal(65, ErrorCodes.All.Length);
     }
 
     [Fact]

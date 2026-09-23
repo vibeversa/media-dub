@@ -191,4 +191,20 @@ public static class PublicIdParser
     {
         return PublicIdMapper.ToPublic(id, PublicIdMapper.VoicePreviewPrefix);
     }
+
+    /// <summary>
+    /// Parses a notification id (<c>ntf_</c> or raw GUID).
+    /// </summary>
+    public static Guid ParseNotificationId(string? raw)
+    {
+        return Parse(raw, PublicIdMapper.NotificationPrefix, "notification");
+    }
+
+    /// <summary>
+    /// Formats a notification id as <c>ntf_</c>.
+    /// </summary>
+    public static string ToNotificationId(Guid id)
+    {
+        return PublicIdMapper.ToPublic(id, PublicIdMapper.NotificationPrefix);
+    }
 }
