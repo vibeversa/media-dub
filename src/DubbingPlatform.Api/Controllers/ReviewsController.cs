@@ -6,6 +6,7 @@ using DubbingPlatform.Application.Authorization;
 using DubbingPlatform.Application.Common;
 using DubbingPlatform.Application.Exceptions;
 using DubbingPlatform.Application.MultiTenancy;
+using DubbingPlatform.Application.Reviews;
 using DubbingPlatform.Application.Services;
 using DubbingPlatform.Contracts.Messages;
 using DubbingPlatform.Domain.Entities;
@@ -23,15 +24,21 @@ namespace DubbingPlatform.Api.Controllers;
 /// <c>GET /api/v1/projects/{projectId}/reviews</c> (200 paginated),
 /// <c>GET /api/v1/projects/{projectId}/reviews/{reviewId}</c> (200),
 /// <c>GET /api/v1/reviews/{reviewId}</c> (200),
-/// <c>POST /api/v1/reviews/{reviewId}/approve|reject|requeue|resolve</c>.
-/// Decisions run through <see cref="ReviewService"/> (state-machine guarded,
-/// decision row appended, manual version on resolve, run resumed only when no
-/// open reviews remain — reject never resumes), then publish
-/// <c>ReviewResolved</c> best effort (without a stage for rejects, so the saga
-/// performs no redispatch) and audit <c>review.{decision}</c>. Missing rows
-/// return 404, repeat decisions on terminal rows return 409, empty
-/// resolve text returns 400, resolve on project-level reviews returns 400.
-/// No 501s.
+/// <c>GET /api/v1/reviews/{reviewId}/context</c> (200 single-screen aggregate),
+/// legacy <c>POST /api/v1/reviews/{reviewId}/approve|reject|requeue</c> (Plan A),
+/// hardened <c>POST /api/v1/reviews/{reviewId}/resolve|dismiss|reopen|resolve-with-edit</c>
+/// (body <c>{ expectedVersion, reason, editText? }</c> + <c>Idempotency-Key</c>;
+/// stale → 409 <c>REVIEW_VERSION_CONFLICT</c>, missing reason → 400
+/// <c>REVIEW_REASON_REQUIRED</c>, replay → 200 + <c>Idempotent-Replayed</c>).
+/// Hardened decisions run through <see cref="ReviewMutationService"/>
+/// (version-guarded, reasoned, audited with correlationId + idempotency key;
+/// resolve-with-edit delegates to the Task 003 manual-version path), then
+/// publish <c>ReviewResolved</c> best effort (resolve/dismiss/resolve-with-edit
+/// only — reopen leaves the run untouched) and audit <c>review.{action}</c>.
+/// Missing rows return 404, repeat hardened resolves on terminal rows return
+/// 409 <c>REVIEW_ALREADY_RESOLVED</c>, reopen on open rows returns 409
+/// <c>REVIEW_NOT_RESOLVED</c>, empty resolve-with-edit text returns 400
+/// <c>REVIEW_EDIT_EMPTY</c>. Cross-tenant ids return 404 (no leak). No 501s.
 /// </summary>
 [ApiController]
 [Route("api/v1/reviews")]
@@ -44,21 +51,29 @@ public sealed class ReviewsController : ControllerBase
 
     private readonly IStageExecutionContextFactory _contextFactory;
     private readonly ReviewService _reviews;
+    private readonly ReviewContextService _reviewContext;
+    private readonly ReviewMutationService _mutations;
     private readonly AuditService _audit;
     private readonly IPublishEndpoint _publish;
 
     public ReviewsController(
         IStageExecutionContextFactory contextFactory,
         ReviewService reviews,
+        ReviewContextService reviewContext,
+        ReviewMutationService mutations,
         AuditService audit,
         IPublishEndpoint publish)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         ArgumentNullException.ThrowIfNull(reviews);
+        ArgumentNullException.ThrowIfNull(reviewContext);
+        ArgumentNullException.ThrowIfNull(mutations);
         ArgumentNullException.ThrowIfNull(audit);
         ArgumentNullException.ThrowIfNull(publish);
         _contextFactory = contextFactory;
         _reviews = reviews;
+        _reviewContext = reviewContext;
+        _mutations = mutations;
         _audit = audit;
         _publish = publish;
     }
@@ -164,21 +179,176 @@ public sealed class ReviewsController : ControllerBase
         return await DecideAsync(reviewId, ReviewDecisionType.Requeue, request?.Reason, null, cancellationToken).ConfigureAwait(false);
     }
 
+    [HttpGet("{reviewId}/context")]
+    [Authorize(Policy = AuthPolicies.RequireProjectViewer)]
+    [ProducesResponseType(typeof(ReviewContextResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetContext(
+        [FromRoute] string reviewId,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = User.GetTenantId();
+        var reviewGuid = PublicIdParser.ParseReviewId(reviewId);
+
+        var context = await _reviewContext.GetAsync(tenantId, reviewGuid, User.GetRoles(), cancellationToken).ConfigureAwait(false);
+        return Ok(context);
+    }
+
     [HttpPost("{reviewId}/resolve")]
     [Authorize(Policy = AuthPolicies.RequireReviewer)]
-    [ServiceFilter(typeof(IdempotencyFilter))]
-    [ProducesResponseType(typeof(ReviewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ReviewMutationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Resolve(
         [FromRoute] string reviewId,
-        [FromBody] ReviewDecisionRequest? request,
+        [FromBody] ReviewMutationRequest? request,
         [FromHeader(Name = IdempotencyService.HeaderName)] string? idempotencyKey,
         CancellationToken cancellationToken)
     {
-        _ = idempotencyKey;
-        return await DecideAsync(reviewId, ReviewDecisionType.ResolveWithEdit, request?.Reason, request?.EditedText, cancellationToken).ConfigureAwait(false);
+        return await MutateAsync(reviewId, ReviewMutationAction.Resolve, request, idempotencyKey, cancellationToken).ConfigureAwait(false);
+    }
+
+    [HttpPost("{reviewId}/dismiss")]
+    [Authorize(Policy = AuthPolicies.RequireReviewer)]
+    [ProducesResponseType(typeof(ReviewMutationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Dismiss(
+        [FromRoute] string reviewId,
+        [FromBody] ReviewMutationRequest? request,
+        [FromHeader(Name = IdempotencyService.HeaderName)] string? idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        return await MutateAsync(reviewId, ReviewMutationAction.Dismiss, request, idempotencyKey, cancellationToken).ConfigureAwait(false);
+    }
+
+    [HttpPost("{reviewId}/reopen")]
+    [Authorize(Policy = AuthPolicies.RequireReviewer)]
+    [ProducesResponseType(typeof(ReviewMutationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Reopen(
+        [FromRoute] string reviewId,
+        [FromBody] ReviewMutationRequest? request,
+        [FromHeader(Name = IdempotencyService.HeaderName)] string? idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        return await MutateAsync(reviewId, ReviewMutationAction.Reopen, request, idempotencyKey, cancellationToken).ConfigureAwait(false);
+    }
+
+    [HttpPost("{reviewId}/resolve-with-edit")]
+    [Authorize(Policy = AuthPolicies.RequireReviewer)]
+    [ProducesResponseType(typeof(ReviewMutationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ResolveWithEdit(
+        [FromRoute] string reviewId,
+        [FromBody] ReviewMutationRequest? request,
+        [FromHeader(Name = IdempotencyService.HeaderName)] string? idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        return await MutateAsync(reviewId, ReviewMutationAction.ResolveWithEdit, request, idempotencyKey, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<IActionResult> MutateAsync(
+        string reviewId,
+        ReviewMutationAction action,
+        ReviewMutationRequest? request,
+        string? idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = User.GetTenantId();
+        var reviewGuid = PublicIdParser.ParseReviewId(reviewId);
+        var actor = RequireActorGuid();
+        var correlationId = CorrelationIdMiddleware.GetCorrelationId(HttpContext);
+
+        var (result, isReplay) = await _mutations.MutateAsync(
+            tenantId, reviewGuid, action,
+            request?.ExpectedVersion ?? 0, request?.Reason, request?.EditText,
+            idempotencyKey, actor, correlationId, cancellationToken).ConfigureAwait(false);
+
+        if (isReplay)
+        {
+            Response.Headers[ReviewMutationService.ReplayedHeaderName] = "true";
+        }
+
+        if (action != ReviewMutationAction.Reopen)
+        {
+            var item = await _reviews.GetAsync(tenantId, reviewGuid, cancellationToken).ConfigureAwait(false);
+            var decision = action switch
+            {
+                ReviewMutationAction.Resolve => ReviewDecisionType.Approve,
+                ReviewMutationAction.Dismiss => ReviewDecisionType.Reject,
+                _ => ReviewDecisionType.ResolveWithEdit,
+            };
+            var resumeStage = decision == ReviewDecisionType.Reject
+                ? null
+                : ResolveResumeStage(item.Reason, item.ScopeType);
+            await PublishResolvedAsync(item, decision, resumeStage, cancellationToken).ConfigureAwait(false);
+        }
+
+        PlatformMetrics.ReviewResolved(tenantId);
+        return Ok(new ReviewMutationResponse(
+            PublicIdParser.ToReviewId(result.ReviewId),
+            result.Status,
+            result.Version,
+            result.ManualVersionId?.ToString("D"),
+            result.VersionKind));
+    }
+
+    private Guid RequireActorGuid()
+    {
+        var sub = User.GetSubject();
+        if (Guid.TryParse(sub.Trim(), out var actor) && actor != Guid.Empty)
+        {
+            return actor;
+        }
+
+        throw new UnauthorizedAccessException("The 'sub' claim must be a user id.");
+    }
+
+    private async Task PublishResolvedAsync(
+        ReviewItem item,
+        ReviewDecisionType type,
+        string? resumeStage,
+        CancellationToken cancellationToken)
+    {
+        ProcessingRun? run;
+        using (TenantContext.BeginMaintenanceScope())
+        {
+            using var db = _contextFactory.CreateDbContext();
+            run = await db.Set<ProcessingRun>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Id == item.ProcessingRunId, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (run is null || run.TenantId != item.TenantId)
+        {
+            return;
+        }
+
+        var correlationId = CorrelationIdMiddleware.GetCorrelationId(HttpContext);
+        var message = new ReviewResolved(
+            Guid.NewGuid(), correlationId,
+            item.TenantId, item.ProjectId, item.ProcessingRunId,
+            null, resumeStage, item.ScopeType.ToString(), item.ScopeId,
+            item.SegmentId, 1, DateTimeOffset.UtcNow, run.Attempt,
+            null, run.ConfigurationHash, run.ExecutionSnapshotHash,
+            PublicIdParser.ToReviewId(item.Id), type.ToString());
+
+        try
+        {
+            await _publish.Publish(message, cancellationToken).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // Publish is best effort: the DB commit already succeeded.
+        catch (Exception)
+        {
+        }
+#pragma warning restore CA1031
     }
 
     private async Task<IActionResult> DecideAsync(

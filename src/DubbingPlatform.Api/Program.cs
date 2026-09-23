@@ -216,6 +216,8 @@ builder.Services.AddScoped<ProgressService>();
 builder.Services.AddScoped<CancellationService>();
 builder.Services.AddScoped<RetryService>();
 builder.Services.AddScoped<ReviewService>();
+builder.Services.AddScoped<DubbingPlatform.Application.Reviews.ReviewContextService>();
+builder.Services.AddScoped<DubbingPlatform.Application.Reviews.ReviewMutationService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Segments.SegmentSelectionService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Segments.ISegmentSelectionEventPublisher, DubbingPlatform.Infrastructure.Messaging.MassTransitSegmentSelectionEventPublisher>();
 builder.Services.AddScoped<DubbingPlatform.Application.Voices.SpeakerVoiceService>();

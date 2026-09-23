@@ -64,9 +64,14 @@ public static class ErrorCodes
     public const string PreviewQuotaExceeded = "PREVIEW_QUOTA_EXCEEDED";
     public const string VoiceNotFound = "VOICE_NOT_FOUND";
     public const string PreviewTextInvalid = "PREVIEW_TEXT_INVALID";
+    public const string ReviewVersionConflict = "REVIEW_VERSION_CONFLICT";
+    public const string ReviewReasonRequired = "REVIEW_REASON_REQUIRED";
+    public const string ReviewAlreadyResolved = "REVIEW_ALREADY_RESOLVED";
+    public const string ReviewNotResolved = "REVIEW_NOT_RESOLVED";
+    public const string ReviewEditEmpty = "REVIEW_EDIT_EMPTY";
 
     /// <summary>
-    /// All 57 public error codes.
+    /// All 62 public error codes.
     /// </summary>
     public static readonly string[] All =
     [
@@ -127,6 +132,11 @@ public static class ErrorCodes
         PreviewQuotaExceeded,
         VoiceNotFound,
         PreviewTextInvalid,
+        ReviewVersionConflict,
+        ReviewReasonRequired,
+        ReviewAlreadyResolved,
+        ReviewNotResolved,
+        ReviewEditEmpty,
     ];
 
     /// <summary>
@@ -201,6 +211,11 @@ public static class ErrorCodes
             PreviewQuotaExceeded => 429,
             VoiceNotFound => 404,
             PreviewTextInvalid => 400,
+            ReviewVersionConflict => 409,
+            ReviewReasonRequired => 400,
+            ReviewAlreadyResolved => 409,
+            ReviewNotResolved => 409,
+            ReviewEditEmpty => 400,
             _ => 500,
         };
     }

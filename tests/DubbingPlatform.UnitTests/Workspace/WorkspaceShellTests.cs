@@ -105,6 +105,11 @@ public sealed class WorkspaceShellTests
         Assert.Equal(429, ErrorCodes.StatusFor(ErrorCodes.PreviewQuotaExceeded));
         Assert.Equal(404, ErrorCodes.StatusFor(ErrorCodes.VoiceNotFound));
         Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.PreviewTextInvalid));
-        Assert.Equal(57, ErrorCodes.All.Length);
+        Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ReviewVersionConflict));
+        Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.ReviewReasonRequired));
+        Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ReviewAlreadyResolved));
+        Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.ReviewNotResolved));
+        Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.ReviewEditEmpty));
+        Assert.Equal(62, ErrorCodes.All.Length);
     }
 }
