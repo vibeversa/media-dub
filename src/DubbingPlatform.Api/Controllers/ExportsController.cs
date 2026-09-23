@@ -38,7 +38,7 @@ namespace DubbingPlatform.Api.Controllers;
 /// <c>Completed</c> run is preferred, else the latest
 /// <c>Failed/Cancelled/ManualReviewRequired</c> run with data (partial with
 /// <c>isPartial:true</c> + completeness, never rendered media). Idempotency is
-/// 24h per key via <see cref="IdempotencyFilter"/> (same key+body replays a
+/// 7d per key via <see cref="IdempotencyFilter"/> (same key+body replays a
 /// single row; same key+different body → 409).
 /// </summary>
 [ApiController]

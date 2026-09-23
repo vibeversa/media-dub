@@ -136,10 +136,11 @@ public sealed class OutputService
         var missing = new List<string> { "NO_RUNS_YET" };
         OutputAssetEntryDto Entry()
         {
-            return new OutputAssetEntryDto("unavailable", null, missing, new OutputCompletenessDto(0, 0));
+            return new OutputAssetEntryDto("unavailable", "unavailable", null, missing, new OutputCompletenessDto(0, 0));
         }
 
         return new OutputResponse(
+            "Unavailable",
             "Unavailable",
             "NO_RUNS_YET",
             new OutputCompletenessDto(0, 0),
@@ -147,7 +148,7 @@ public sealed class OutputService
             null,
             new OutputItemsDto(
                 Entry(), Entry(), [], Entry(), Entry(), Entry(), Entry(),
-                new OutputQcDto("unavailable", "No runs yet.", null, missing)),
+                new OutputQcDto("unavailable", "unavailable", "No runs yet.", null, missing)),
             [],
             updatedAt);
     }
@@ -199,6 +200,7 @@ public sealed class OutputService
             var missing = MissingFor(total, ready, blocked, openReviews);
             return new OutputResponse(
                 "Failed",
+                "Failed",
                 null,
                 completeness,
                 null,
@@ -213,6 +215,7 @@ public sealed class OutputService
             var progress = total == 0 ? 0.0 : Math.Round((double)ready / total * 100.0, 1);
             var missing = MissingFor(total, ready, blocked, openReviews);
             return new OutputResponse(
+                "Generating",
                 "Generating",
                 null,
                 completeness,
@@ -237,6 +240,7 @@ public sealed class OutputService
 
             return new OutputResponse(
                 "Partial",
+                "Partial",
                 null,
                 completeness,
                 null,
@@ -247,6 +251,7 @@ public sealed class OutputService
         }
 
         return new OutputResponse(
+            "Ready",
             "Ready",
             null,
             completeness,
@@ -347,22 +352,22 @@ public sealed class OutputService
         {
             var state = fallbackState is "ready" ? "ready" : "partial";
             return new OutputAssetEntryDto(
-                state, null,
+                state, state, null,
                 state == "ready" ? [] : missing,
                 state == "ready" ? null : completeness);
         }
 
         if (fallbackState is "generating")
         {
-            return new OutputAssetEntryDto("generating", null, missing, completeness);
+            return new OutputAssetEntryDto("generating", "generating", null, missing, completeness);
         }
 
         if (fallbackState is "failed")
         {
-            return new OutputAssetEntryDto("failed", null, missing, completeness);
+            return new OutputAssetEntryDto("failed", "failed", null, missing, completeness);
         }
 
-        return new OutputAssetEntryDto("unavailable", null, missing, completeness);
+        return new OutputAssetEntryDto("unavailable", "unavailable", null, missing, completeness);
     }
 
     private async Task<OutputAssetEntryDto> EntryAsync(
@@ -384,7 +389,7 @@ public sealed class OutputService
                 "failed" => "failed",
                 _ => "unavailable",
             };
-            return new OutputAssetEntryDto(state, null, missing, state is "partial" or "generating" ? completeness : null);
+            return new OutputAssetEntryDto(state, state, null, missing, state is "partial" or "generating" ? completeness : null);
         }
 
         // Ready only when the artifact is downloadable; any storage or
@@ -396,21 +401,21 @@ public sealed class OutputService
                 tenantId, projectId, artifactId.Value, SignedUrlPolicy.DefaultExpiry, cancellationToken).ConfigureAwait(false);
             if (fallbackState is "ready")
             {
-                return new OutputAssetEntryDto("ready", url, [], null);
+                return new OutputAssetEntryDto("ready", "ready", url, [], null);
             }
 
             if (fallbackState is "partial")
             {
-                return new OutputAssetEntryDto("partial", url, missing, completeness);
+                return new OutputAssetEntryDto("partial", "partial", url, missing, completeness);
             }
 
-            return new OutputAssetEntryDto(fallbackState, null, missing, completeness);
+            return new OutputAssetEntryDto(fallbackState, fallbackState, null, missing, completeness);
         }
 #pragma warning disable CA1031 // URL issuance is best effort in the aggregate; degrade, never fail the call.
         catch (Exception)
 #pragma warning restore CA1031
         {
-            return new OutputAssetEntryDto(fallbackState, null, missing, completeness);
+            return new OutputAssetEntryDto(fallbackState, fallbackState, null, missing, completeness);
         }
     }
 
@@ -455,6 +460,6 @@ public sealed class OutputService
             "failed" => "failed",
             _ => "unavailable",
         };
-        return new OutputQcDto(state, summary, issuesUrl, missing);
+        return new OutputQcDto(state, state, summary, issuesUrl, missing);
     }
 }

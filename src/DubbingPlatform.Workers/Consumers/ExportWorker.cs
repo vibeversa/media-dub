@@ -1,7 +1,9 @@
+using DubbingPlatform.Application.Activity;
 using DubbingPlatform.Application.Errors;
 using DubbingPlatform.Application.Exceptions;
 using DubbingPlatform.Application.Exports;
 using DubbingPlatform.Application.MultiTenancy;
+using DubbingPlatform.Application.Notifications;
 using DubbingPlatform.Application.Services;
 using DubbingPlatform.Contracts.Messages;
 using DubbingPlatform.Domain.Entities;
@@ -30,7 +32,16 @@ namespace DubbingPlatform.Workers.Consumers;
 /// owned by Task 035 cancellation), and delegates to
 /// <see cref="ExportService.GenerateAsync"/> which owns the
 /// <c>Pending→Running→Completed|Failed</c> transitions, the immutable
-/// <c>Export</c> artifact, and the completeness block. Transient I/O rethrows
+/// <c>Export</c> artifact, and the completeness block. On terminal success or
+/// permanent failure the worker best-effort projects to the Task 002
+/// <see cref="NotificationProjector"/> (via
+/// <see cref="NotificationEventMapper.FromExport"/>) and
+/// <see cref="ActivityProjector"/> (via
+/// <see cref="ActivityEventMapper.FromExportCompleted"/>); creation itself is
+/// audit-only (<c>export.create</c> with actor + idempotency key in
+/// <see cref="ExportService"/>) plus the best-effort <c>ExportJobRequested</c>
+/// bus publish — there is no <c>ExportCreated</c> activity type by design.
+/// Transient I/O rethrows
 /// into transport retry; permanent failures are already marked
 /// <c>Failed</c> by the service and acknowledged without retry. Never logs
 /// export text or secrets: only ids, formats, and counts.
@@ -39,18 +50,26 @@ public sealed class ExportWorker : IConsumer<ExportJobRequested>
 {
     private readonly IStageExecutionContextFactory _contextFactory;
     private readonly ExportService _exports;
+    private readonly NotificationProjector _notifications;
+    private readonly ActivityProjector _activity;
     private readonly ILogger<ExportWorker> _logger;
 
     public ExportWorker(
         IStageExecutionContextFactory contextFactory,
         ExportService exports,
+        NotificationProjector notifications,
+        ActivityProjector activity,
         ILogger<ExportWorker> logger)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         ArgumentNullException.ThrowIfNull(exports);
+        ArgumentNullException.ThrowIfNull(notifications);
+        ArgumentNullException.ThrowIfNull(activity);
         ArgumentNullException.ThrowIfNull(logger);
         _contextFactory = contextFactory;
         _exports = exports;
+        _notifications = notifications;
+        _activity = activity;
         _logger = logger;
     }
 
@@ -143,6 +162,9 @@ public sealed class ExportWorker : IConsumer<ExportJobRequested>
                     "Export {ExportId} ({Format}) completed: artifact {ArtifactId}, partial={Partial}.",
                     exportJobId, ExportFormatParser.ToWireName(format),
                     result.ArtifactId, result.IsPartial);
+                await ProjectExportAsync(
+                    message, format, success: true, correlationId,
+                    context.CancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (IsTransient(ex))
             {
@@ -156,6 +178,9 @@ public sealed class ExportWorker : IConsumer<ExportJobRequested>
                 _logger.LogWarning(
                     "Export {ExportId} failed: {Error}.",
                     exportJobId, ex.Message);
+                await ProjectExportAsync(
+                    message, format, success: false, correlationId,
+                    context.CancellationToken).ConfigureAwait(false);
             }
         }
     }
@@ -180,6 +205,48 @@ public sealed class ExportWorker : IConsumer<ExportJobRequested>
             return await db.Set<ExportJob>()
                 .AsNoTracking()
                 .FirstOrDefaultAsync(e => e.Id == exportJobId, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ProjectExportAsync(
+        ExportJobRequested message,
+        ExportFormat format,
+        bool success,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseExportId(message.ExportJobId, out var exportJobId))
+        {
+            return;
+        }
+
+        var wireFormat = ExportFormatParser.ToWireName(format);
+        try
+        {
+            await _notifications.ProjectAsync(
+                NotificationEventMapper.FromExport(
+                    message.TenantId, message.ProjectId, exportJobId, wireFormat, success, message.MessageId),
+                cancellationToken).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // Projection is best effort; export outcome already committed.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+
+        try
+        {
+            await _activity.AppendAsync(
+                ActivityEventMapper.FromExportCompleted(
+                    message.TenantId, message.ProjectId,
+                    message.ProcessingRunId == Guid.Empty ? null : message.ProcessingRunId,
+                    exportJobId, wireFormat, success, correlationId, DateTimeOffset.UtcNow),
+                cancellationToken).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // Projection is best effort; export outcome already committed.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
         }
     }
 

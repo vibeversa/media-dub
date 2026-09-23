@@ -349,6 +349,46 @@ public sealed class OutputExportApiTests
         }
     }
 
+    [SkippableFact]
+    public async Task Output_GenerationState_Matches_State()
+    {
+        var container = await StartPostgresAsync().ConfigureAwait(true);
+        await using (container.ConfigureAwait(true))
+        {
+            var connectionString = container.GetConnectionString();
+            await MigrateAsync(connectionString).ConfigureAwait(true);
+            var tenantId = Guid.NewGuid();
+            await SeedTenantAsync(connectionString, tenantId).ConfigureAwait(true);
+
+            var fake = new FakeStorage();
+            using var factory = CreateFactory(connectionString, fake);
+            using var client = factory.CreateClient();
+            UseToken(client, tenantId, Guid.NewGuid(), "TenantAdmin");
+            var projectId = await CreateProjectAsync(client).ConfigureAwait(true);
+            await SeedRunAsync(connectionString, tenantId, ParseProjectId(projectId), ProcessingRunStatus.Running, 1, 2, false).ConfigureAwait(true);
+
+            using var response = await client.GetAsync($"/api/v1/projects/{projectId}/output").ConfigureAwait(true);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(true));
+            var root = doc.RootElement;
+            Assert.Equal(root.GetProperty("state").GetString(), root.GetProperty("generationState").GetString());
+            var items = root.GetProperty("items");
+            foreach (var name in new[] { "video", "audio", "transcript", "translation", "timeline", "speakers" })
+            {
+                if (items.TryGetProperty(name, out var entry) && entry.ValueKind == JsonValueKind.Object)
+                {
+                    Assert.Equal(entry.GetProperty("state").GetString(), entry.GetProperty("generationState").GetString());
+                }
+            }
+
+            var qc = items.GetProperty("qc");
+            Assert.Equal(qc.GetProperty("state").GetString(), qc.GetProperty("generationState").GetString());
+            var completeness = root.GetProperty("completeness");
+            Assert.Equal(1, completeness.GetProperty("ready").GetInt32());
+            Assert.Equal(2, completeness.GetProperty("total").GetInt32());
+        }
+    }
+
     private sealed class FakeStorage : IArtifactStorage
     {
         public TimeSpan LastExpiry { get; private set; } = TimeSpan.FromMinutes(15);

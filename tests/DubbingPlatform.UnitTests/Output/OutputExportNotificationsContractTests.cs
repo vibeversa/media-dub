@@ -1,6 +1,10 @@
+using DubbingPlatform.Application.Activity;
 using DubbingPlatform.Application.Authorization;
 using DubbingPlatform.Application.Errors;
 using DubbingPlatform.Application.Exports;
+using DubbingPlatform.Application.Notifications;
+using DubbingPlatform.Application.Output;
+using DubbingPlatform.Application.Services;
 
 namespace DubbingPlatform.UnitTests.Output;
 
@@ -58,5 +62,49 @@ public sealed class OutputExportNotificationsContractTests
         Assert.True(ExportFormatParser.TryParse("json-timeline", out _));
         Assert.False(ExportFormatParser.TryParse("../../etc/passwd", out _));
         Assert.False(ExportFormatParser.TryParse("../srt", out _));
+    }
+
+    [Fact]
+    public void Export_Idempotency_Retention_7d()
+    {
+        Assert.Equal(TimeSpan.FromDays(7), IdempotencyRetention.Export);
+        Assert.Equal(TimeSpan.FromDays(7), IdempotencyRetention.ExpiryFor("POST /api/v1/projects/abc/exports"));
+        Assert.Equal(TimeSpan.FromDays(7), IdempotencyRetention.ExpiryFor("POST /api/v1/exports"));
+    }
+
+    [Fact]
+    public void Output_GenerationState_Aliases_State()
+    {
+        var completeness = new OutputCompletenessDto(96, 100);
+        var entry = new OutputAssetEntryDto("ready", "ready", "https://example.test/x", [], null);
+        Assert.Equal(entry.State, entry.GenerationState);
+        var qc = new OutputQcDto("partial", "partial", "summary", null, ["SEGMENT_PENDING"]);
+        Assert.Equal(qc.State, qc.GenerationState);
+        var response = new OutputResponse(
+            "Ready", "Ready", null, completeness, null, null,
+            new OutputItemsDto(null, null, [], null, null, null, null, qc),
+            [], DateTimeOffset.UtcNow);
+        Assert.Equal(response.State, response.GenerationState);
+    }
+
+    [Fact]
+    public void Export_Completion_Mappers_Carry_Ids_Only()
+    {
+        var tenant = Guid.NewGuid();
+        var project = Guid.NewGuid();
+        var export = Guid.NewGuid();
+        var source = Guid.NewGuid();
+        var completed = NotificationEventMapper.FromExport(tenant, project, export, "srt", true, source);
+        Assert.Equal(global::DubbingPlatform.Domain.Enums.NotificationType.ExportCompleted, completed.Type);
+        Assert.Equal(export.ToString("N"), completed.ResourceId);
+        var failed = NotificationEventMapper.FromExport(tenant, project, export, "srt", false, source);
+        Assert.Equal(global::DubbingPlatform.Domain.Enums.NotificationType.ExportFailed, failed.Type);
+        var activityOk = ActivityEventMapper.FromExportCompleted(
+            tenant, project, Guid.NewGuid(), export, "srt", true, "corr-1", DateTimeOffset.UtcNow);
+        Assert.Equal(global::DubbingPlatform.Domain.Enums.ActivityType.ExportCompleted, activityOk.Type);
+        var activityFail = ActivityEventMapper.FromExportCompleted(
+            tenant, project, Guid.NewGuid(), export, "srt", false, "corr-1", DateTimeOffset.UtcNow);
+        Assert.Equal(global::DubbingPlatform.Domain.Enums.ActivityType.ExportFailed, activityFail.Type);
+        Assert.DoesNotContain("https://", completed.Body, StringComparison.OrdinalIgnoreCase);
     }
 }

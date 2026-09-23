@@ -18,7 +18,8 @@ namespace DubbingPlatform.Api.Controllers;
 /// <summary>
 /// Rendered-output surface nested under projects:
 /// <c>GET /api/v1/projects/{projectId}/output</c> (200 aggregate with state
-/// <c>Ready|Generating|Failed|Partial|Unavailable</c>, completeness
+/// <c>Ready|Generating|Failed|Partial|Unavailable</c> plus explicit
+/// <c>generationState</c> alias per Task 012A R1, completeness
 /// <c>{ready,total}</c>, per-asset items with signed-URL-only delivery, and
 /// <c>warnings[]</c>) and
 /// <c>GET /api/v1/projects/{projectId}/output/download</c>.

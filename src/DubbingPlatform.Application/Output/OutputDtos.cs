@@ -1,8 +1,10 @@
 namespace DubbingPlatform.Application.Output;
 
 /// <summary>
-/// Task 012 output aggregate wire model. Top-level <c>state</c> is one of
-/// <c>Ready|Generating|Failed|Partial|Unavailable</c>; <c>completeness</c> is
+/// Task 012A output aggregate wire model. Top-level <c>state</c> is one of
+/// <c>Ready|Generating|Failed|Partial|Unavailable</c>; <c>generationState</c>
+/// is the explicit alias of <c>state</c> required by Task 012A R1 (per-asset
+/// and top-level readiness are never implied); <c>completeness</c> is
 /// segment readiness (e.g. 96/100); <c>items</c> carries per-asset readiness
 /// with signed-URL-only delivery (never storage keys or bucket paths);
 /// <c>warnings</c> are display strings; <c>updatedAt</c> is the latest
@@ -12,6 +14,7 @@ namespace DubbingPlatform.Application.Output;
 /// </summary>
 public sealed record OutputResponse(
     string State,
+    string GenerationState,
     string? Reason,
     OutputCompletenessDto Completeness,
     double? ProgressApproximate,
@@ -44,7 +47,9 @@ public sealed record OutputItemsDto(
 
 /// <summary>
 /// One servable asset entry. <c>state</c> is one of
-/// <c>ready|generating|failed|partial|unavailable</c>; <c>downloadUrl</c> is a
+/// <c>ready|generating|failed|partial|unavailable</c>; <c>generationState</c>
+/// is the explicit alias of <c>state</c> required by Task 012A R1 (no asset is
+/// implied ready); <c>downloadUrl</c> is a
 /// short-lived signed URL (≤15 min) present only when ready; <c>missing</c>
 /// carries machine reasons (<c>SEGMENT_PENDING</c>, <c>QC_BLOCKED</c>,
 /// <c>NO_RUNS_YET</c>, <c>ARTIFACT_MISSING</c>); <c>completeness</c> mirrors
@@ -52,15 +57,17 @@ public sealed record OutputItemsDto(
 /// </summary>
 public sealed record OutputAssetEntryDto(
     string State,
+    string GenerationState,
     string? DownloadUrl,
     IReadOnlyList<string> Missing,
     OutputCompletenessDto? Completeness);
 
 /// <summary>
-/// QC summary entry.
+/// QC summary entry. <c>generationState</c> aliases <c>state</c> per Task 012A R1.
 /// </summary>
 public sealed record OutputQcDto(
     string State,
+    string GenerationState,
     string Summary,
     string? IssuesUrl,
     IReadOnlyList<string> Missing);
