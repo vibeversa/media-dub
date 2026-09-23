@@ -1,15 +1,17 @@
 using System.Text.Json;
-using DubbingPlatform.Api.Errors;
+using DubbingPlatform.Api.Middleware;
 
-namespace DubbingPlatform.Api.Middleware;
+namespace DubbingPlatform.Api.Errors;
 
 /// <summary>
-/// Converts exceptions to structured <see cref="ErrorResponse"/> envelopes.
-/// Delegates to the frozen <see cref="ApiError.Map"/> table (Task 013).
-/// Kept for backward compatibility; new code prefers
-/// <see cref="ErrorMappingMiddleware"/> (same table).
+/// Uniform error-envelope middleware (Task 013). Converts exceptions to
+/// <c>{ error: { code, message, correlationId, details } }</c> via
+/// <see cref="ApiError.Map"/> (frozen code→HTTP table). 500s carry a generic
+/// message; correlationId links to the server log. This is the canonical
+/// middleware; <see cref="ExceptionHandlingMiddleware"/> delegates to the same
+/// table for backward compatibility.
 /// </summary>
-public sealed class ExceptionHandlingMiddleware
+public sealed class ErrorMappingMiddleware
 {
     private static readonly JsonSerializerOptions EnvelopeOptions = new()
     {
@@ -18,7 +20,7 @@ public sealed class ExceptionHandlingMiddleware
 
     private readonly RequestDelegate _next;
 
-    public ExceptionHandlingMiddleware(RequestDelegate next)
+    public ErrorMappingMiddleware(RequestDelegate next)
     {
         _next = next;
     }
@@ -37,19 +39,14 @@ public sealed class ExceptionHandlingMiddleware
 #pragma warning restore CA1031
     }
 
-    internal static (int StatusCode, string Code, string Message, Dictionary<string, object?> Details) Map(Exception exception)
-    {
-        return ApiError.Map(exception);
-    }
-
-    private static async Task WriteErrorAsync(HttpContext context, Exception exception)
+    internal static async Task WriteErrorAsync(HttpContext context, Exception exception)
     {
         if (context.Response.HasStarted)
         {
             throw exception;
         }
 
-        var (statusCode, code, message, details) = Map(exception);
+        var (statusCode, code, message, details) = ApiError.Map(exception);
         var correlationId = CorrelationIdMiddleware.GetCorrelationId(context);
 
         context.Response.StatusCode = statusCode;

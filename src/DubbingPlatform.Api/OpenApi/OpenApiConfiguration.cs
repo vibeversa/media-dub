@@ -129,6 +129,9 @@ public static class OpenApiConfiguration
                 }
 
                 EnsureSchema(document, "ErrorResponse");
+                EnsureSchema(document, "SseEnvelope");
+                EnsureSchema(document, "AdminUsageResponse");
+                EnsureSchema(document, "AdminQuotasResponse");
                 EnsureSchema(document, "PaginatedResult");
                 EnsureSchema(document, "ProjectListResponse");
                 EnsureSchema(document, "DashboardSummaryResponse");
@@ -181,12 +184,12 @@ public static class OpenApiConfiguration
         {
             var description = name switch
             {
-                "ErrorResponse" => "Structured error envelope: { error: { code, message, correlationId, details } }.",
+                "ErrorResponse" => "Structured error envelope: { error: { code, message, correlationId, details } } (Task 013 frozen table: validation 400, auth 401 TOKEN_EXPIRED/TOKEN_REUSED/INVALID_CREDENTIALS, forbidden 403, not-found 404 incl. cross-tenant, conflict 409 SELECTION_CONFLICT/REVIEW_VERSION_CONFLICT/SETTINGS_LOCKED_ACTIVE_RUN/RUN_ALREADY_ACTIVE/PREVIEW_STATE_CONFLICT, quota 429, provider 502/504 inc. PREVIEW_PROVIDER_TIMEOUT, unknown 500 INTERNAL_ERROR generic; ADMIN_ROUTE_UNKNOWN/DIAGNOSTICS_FORBIDDEN ride as markers on NOT_FOUND/FORBIDDEN).",
                 "ProjectListResponse" => "Project list envelope: { items, page, pageSize, total, sort, sortDir, hasMore, clamped }.",
                 "DashboardSummaryResponse" => "Dashboard summary: { projectCounts, recentOutputs[<=5], storage, cost, quota, warnings[], backlog }.",
                 "ProcessingRunListResponse" => "Processing run list: { items[{ runId, status, retryOfRunId? }], page, pageSize, total, hasMore } (202 start, 200 replay + Idempotent-Replayed:true).",
                 "WorkspaceDto" => "Workspace aggregate: { project, media, run, phase, stage, progress{percentApproximate}, review, warnings[], output, cost, activity[<=10], permissions }.",
-                "ProgressResponse" => "Progress: { percentApproximate (display-only), currentStage, ... } plus SSE text/event-stream.",
+                "ProgressResponse" => "Progress: { percentApproximate (display-only), currentStage, ... } plus frozen SSE text/event-stream (Task 013 SseEnvelope, stage.progress hints, Last-Event-ID resume with last-100 headers-only replay and replayTruncated:true beyond window).",
                 "SegmentDetailResponse" => "Segment detail: { id, selectionVersion, transcriptVersions[], translationVersions[], reviewStatus?, qualityCodes[], syncStatus?, outputStale }.",
                 "SegmentSummaryResponse" => "Segment list row: { id, startMs, selectionVersion, reviewStatus?, qualityCodes[], syncStatus? } (filters speakerId/reviewStatus/qualityFlag/syncIssue/text/startMs/endMs, default 50/max 200).",
                 "SegmentMutationResponse" => "Segment mutation: { segmentId, selectionVersion, selectedVersionIds?, newVersionId?, outputStale, warningCode? } (stale → 409 SELECTION_CONFLICT with { currentSelectionVersion, currentVersionIds }).",
@@ -202,6 +205,9 @@ public static class OpenApiConfiguration
                 "OutputResponse" => "Output aggregate: { state Ready|Generating|Failed|Partial|Unavailable, generationState (alias of state, Task 012A R1), reason? (NO_RUNS_YET), completeness{ready,total}, progressApproximate? (Generating), errorCode? (Failed), items{video?,audio?,subtitles[],transcript?,translation?,timeline?,speakers?,qc{summary,issuesUrl?}} each with state+generationState, warnings[], updatedAt } (signed URLs ≤15min only, never storage keys).",
                 "ExportResponse" => "Export job: { id (exp_), projectId, format, status, isPartial, createdAt, completenessJson? } (idempotency 7d; incomplete without allowPartial → 409 EXPORT_INCOMPLETE/OUTPUT_INCOMPLETE; download 302 to ≤15min signed URL, 409 EXPORT_NOT_READY, 410 URL_EXPIRED).",
                 "NotificationResponse" => "Notification row: { id (ntf_), type, severity, title, body (summary only), resourceType (ProcessingRun|ReviewItem|ExportJob|MediaAsset|DubbingProject|Tenant), resourceId, projectId? (prj_, null for tenant quota/policy), readAt?, createdAt, expiresAt? } (newest-first page-based, expired excluded; read/read-all idempotent; deep-link fallback: linked row → projectId → list; notification.created SSE (013) is hint only).",
+                "SseEnvelope" => "Frozen SSE envelope (Task 013): { eventId, schemaVersion:1, eventType (14: project.status_changed|run.status_changed|stage.started|stage.progress|stage.completed|stage.failed|stage.review_required|review.created|review.resolved|export.created|export.completed|export.failed|notification.created|output.ready), tenantId, projectId?, processingRunId?, occurredAt, payload, correlationId } (hint only; allowlist IDs/statuses/percents/counts/codes/timestamps, never secrets/tokens/URLs/paths/raw payloads/lease data/bodies; 64KB drops counted; Last-Event-ID last-100 headers-only replay, replayTruncated:true beyond window).",
+                "AdminUsageResponse" => "Admin usage: { correlationId, storageUsedBytes, storageQuotaBytes, monthCostUsd, projectsTodayRemaining, activeRuns, pendingReviews, totalProjects } (elevated admin.manage|diagnostics.view).",
+                "AdminQuotasResponse" => "Admin quotas: frozen Quota limits { maxActiveProjects, maxProjectsPerDay, maxCostPerProject, maxCostPerSegment, maxSegmentCount, maxStorageBytes, maxConcurrentStagesPerTenant } (elevated admin.manage|diagnostics.view).",
                 _ => "Pagination envelope: { items, page, pageSize, total, hasMore }.",
             };
             document.Components.Schemas[name] = new OpenApiSchema

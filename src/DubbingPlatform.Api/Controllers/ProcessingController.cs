@@ -2,6 +2,7 @@ using System.Text.Json;
 using DubbingPlatform.Api.Filters;
 using DubbingPlatform.Api.Middleware;
 using DubbingPlatform.Api.Models;
+using DubbingPlatform.Api.Sse;
 using DubbingPlatform.Application.Authorization;
 using DubbingPlatform.Application.Common;
 using DubbingPlatform.Application.Errors;
@@ -626,16 +627,19 @@ public sealed class ProcessingController : ControllerBase
     }
 
     /// <summary>
-    /// Streams progress as Server-Sent Events (<c>text/event-stream</c>): one
-    /// <c>data:</c> JSON progress document every 2 seconds until the client
+    /// Streams progress as frozen SSE envelopes (<c>text/event-stream</c>): one
+    /// <c>stage.progress</c> envelope every 2 seconds until the client
     /// disconnects. Requires the project Viewer role; auth may arrive as
     /// <c>Authorization: Bearer</c> or query <c>?access_token=</c> (same
-    /// policy, short-TTL single-use-scoped token, never logged). Accepts
-    /// <c>Last-Event-ID</c> for resume (replay semantics frozen in Task 013;
-    /// this shell only accepts the header). Cross-tenant ids return 404 (no
-    /// existence leak); unauthenticated returns 401. Event serialization beyond
-    /// the progress document is deferred to Task 013 — this shell emits
-    /// invalidation-hint data frames the Task 026 client polls on.
+    /// policy, short-TTL single-use-scoped token, never logged).
+    /// <c>Last-Event-ID</c> resume: missed envelope headers are replayed from
+    /// the last-100 buffer (no payload backfill beyond the window); replay
+    /// beyond the window sets the <c>replayTruncated: true</c> response header
+    /// and the client falls back to polling (Task 026). Duplicates are tolerated
+    /// by the client (<c>eventId</c> dedupe). Oversize payloads are dropped with
+    /// <c>sse.payload_dropped_total</c>; the stream stays open. Cross-tenant ids
+    /// return 404 (no existence leak); unauthenticated returns 401. Frames are
+    /// invalidation hints; the progress API is the source of truth.
     /// </summary>
     [HttpGet("progress/stream")]
     [Authorize(Policy = AuthPolicies.RequireProjectViewer)]
@@ -645,7 +649,8 @@ public sealed class ProcessingController : ControllerBase
         [FromRoute] string projectId,
         CancellationToken cancellationToken)
     {
-        _ = Request.Headers.TryGetValue("Last-Event-ID", out var _lastEventId);
+        Request.Headers.TryGetValue("Last-Event-ID", out var lastEventIdValues);
+        var lastEventId = lastEventIdValues.ToString();
         var tenantId = User.GetTenantId();
         var projectGuid = PublicIdParser.ParseProjectId(projectId);
 
@@ -659,6 +664,23 @@ public sealed class ProcessingController : ControllerBase
             // (not 403) without leaking existence.
             await RequireProjectStreamAsync(tenantId, projectGuid, HttpContext.RequestAborted).ConfigureAwait(false);
 
+            var streamKey = SseEventBuffer.KeyFor(tenantId, projectGuid);
+            var (found, missed, truncated) = SseEventBuffer.ReplayAfter(streamKey, lastEventId);
+            if (truncated)
+            {
+                Response.Headers["replayTruncated"] = "true";
+            }
+
+            if (found)
+            {
+                foreach (var replayed in missed)
+                {
+                    await Response.WriteAsync(replayed.ToHeaderOnlyFrame(), cancellationToken).ConfigureAwait(false);
+                }
+
+                await Response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 ProgressSnapshot snapshot;
@@ -671,9 +693,25 @@ public sealed class ProcessingController : ControllerBase
                     throw new NotFoundException($"Project '{projectGuid}' was not found.");
                 }
 
-                var payload = JsonSerializer.Serialize(ToProgressResponse(snapshot), SseJsonOptions);
-                await Response.WriteAsync(string.Concat("data: ", payload, "\n\n"), cancellationToken).ConfigureAwait(false);
-                await Response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
+                var correlationId = CorrelationIdMiddleware.GetCorrelationId(HttpContext);
+                var envelope = new SseEnvelope(
+                    Guid.NewGuid().ToString("N"),
+                    SseEnvelope.CurrentSchemaVersion,
+                    SseEventTypes.StageProgress,
+                    tenantId.ToString("N"),
+                    projectGuid.ToString("N"),
+                    snapshot.RunId?.ToString("N"),
+                    DateTimeOffset.UtcNow,
+                    BuildProgressPayload(snapshot),
+                    correlationId);
+                var frame = envelope.ToFrame();
+                if (frame is not null)
+                {
+                    SseEventBuffer.Append(streamKey, envelope);
+                    await Response.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
+                    await Response.Body.FlushAsync(cancellationToken).ConfigureAwait(false);
+                }
+
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
             }
         }
@@ -681,6 +719,35 @@ public sealed class ProcessingController : ControllerBase
         {
             // Client disconnected; SSE streams end by cancellation, never an error envelope.
         }
+    }
+
+    private static IReadOnlyDictionary<string, object?> BuildProgressPayload(ProgressSnapshot snapshot)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["projectId"] = snapshot.ProjectId.ToString("N"),
+            ["status"] = snapshot.Status,
+            ["phase"] = snapshot.Phase,
+            ["percentApproximate"] = snapshot.PercentageIndicator,
+            ["completedUnits"] = snapshot.CompletedUnits,
+            ["failedUnits"] = snapshot.FailedUnits,
+            ["retryingUnits"] = snapshot.RetryingUnits,
+            ["reviewUnits"] = snapshot.ReviewUnits,
+            ["skippedUnits"] = snapshot.SkippedUnits,
+            ["expectedUnits"] = snapshot.ExpectedUnits,
+            ["generatedAt"] = snapshot.GeneratedAt,
+        };
+        if (snapshot.RunId.HasValue)
+        {
+            payload["processingRunId"] = snapshot.RunId.Value.ToString("N");
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.CurrentStage))
+        {
+            payload["currentStage"] = snapshot.CurrentStage.Trim();
+        }
+
+        return payload;
     }
 
     private static ProcessingRunResponse ToResponse(Guid projectId, ProcessingRun run, Guid? retryOf = null)

@@ -6,6 +6,10 @@ namespace DubbingPlatform.Application.Authorization;
 /// Endpoint-to-role matrix. Keys are <c>METHOD path-prefix</c> entries used for
 /// documentation and OpenAPI hints; runtime enforcement is via
 /// <c>[Authorize(Policy=...)]</c> plus the project-ownership resource check.
+/// Admin/diagnostics entries list the JWT role gate; <c>Operator</c> JWT roles
+/// and <c>diagnostics.view</c>/<c>admin.manage</c> permission holders
+/// (ProjectOwner membership) additionally pass the Task 013 endpoint check plus
+/// the Task 005 service guard (defense in depth).
 /// Matrix (hierarchical, Service satisfies all except strict Service-only):
 /// POST projects (create): TenantAdmin/ProjectOwner/ProjectEditor;
 /// GET projects (read/list): +Reviewer/Viewer; DELETE projects: TenantAdmin/Owner;
@@ -42,6 +46,15 @@ public static class RoleMatrix
             ["POST /api/v1/notifications"] = [Roles.TenantAdmin, Roles.ProjectOwner, Roles.ProjectEditor, Roles.Reviewer, Roles.ProjectViewer],
             ["GET /api/v1/admin"] = [Roles.Service, Roles.TenantAdmin],
             ["POST /api/v1/admin"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/usage"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/quotas"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/provider-health"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/provider-routes"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/diagnostics/queues"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/diagnostics/dlq"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/diagnostics/leases"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/diagnostics/orphans"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/diagnostics/review-backlog"] = [Roles.Service, Roles.TenantAdmin],
         };
 
     /// <summary>

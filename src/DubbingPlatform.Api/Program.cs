@@ -1,4 +1,5 @@
 using DubbingPlatform.Api.Auth;
+using DubbingPlatform.Api.Errors;
 using DubbingPlatform.Api.Filters;
 using DubbingPlatform.Api.Middleware;
 using DubbingPlatform.Api.OpenApi;
@@ -374,7 +375,7 @@ var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
-app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseMiddleware<ErrorMappingMiddleware>();
 
 app.UseRateLimiter();
 app.UseAuthentication();
