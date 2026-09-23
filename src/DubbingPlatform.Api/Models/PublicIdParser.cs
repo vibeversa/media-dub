@@ -157,4 +157,38 @@ public static class PublicIdParser
     {
         return PublicIdMapper.ToPublic(id, PublicIdMapper.SpeakerPrefix);
     }
+
+    /// <summary>
+    /// Parses a voice id (<c>voice_</c> or raw GUID). Inventory <c>VoiceId</c>
+    /// strings (non-GUID) are not parsed here; callers fall back to
+    /// inventory-key lookup.
+    /// </summary>
+    public static Guid ParseVoiceId(string? raw)
+    {
+        return Parse(raw, PublicIdMapper.VoiceProfilePrefix, "voice");
+    }
+
+    /// <summary>
+    /// Formats a voice profile id as <c>voice_</c>.
+    /// </summary>
+    public static string ToVoiceId(Guid id)
+    {
+        return PublicIdMapper.ToPublic(id, PublicIdMapper.VoiceProfilePrefix);
+    }
+
+    /// <summary>
+    /// Parses a voice preview id (<c>vpv_</c> or raw GUID).
+    /// </summary>
+    public static Guid ParsePreviewId(string? raw)
+    {
+        return Parse(raw, PublicIdMapper.VoicePreviewPrefix, "preview");
+    }
+
+    /// <summary>
+    /// Formats a voice preview id as <c>vpv_</c>.
+    /// </summary>
+    public static string ToPreviewId(Guid id)
+    {
+        return PublicIdMapper.ToPublic(id, PublicIdMapper.VoicePreviewPrefix);
+    }
 }

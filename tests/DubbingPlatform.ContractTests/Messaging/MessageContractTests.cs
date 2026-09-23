@@ -45,11 +45,12 @@ public sealed class MessageContractTests
     {
         var types = MessageTypes();
 
-        // 19 durable messages: the 16 core contracts plus optional
+        // 20 durable messages: the 16 core contracts plus optional
         // EnrichmentRequested (Task 042, ai.gpu enrichment, out-of-band) plus
         // SegmentSelectionChanged (Task B-003, selection invalidation) plus
-        // VoicePreviewCompleted (Task B-004, preview terminal events).
-        Assert.Equal(19, types.Count);
+        // VoicePreviewCompleted (Task B-004, preview terminal events) plus
+        // SpeakerVoiceChanged (Task B-010, voice assignment invalidation).
+        Assert.Equal(20, types.Count);
         foreach (var type in types)
         {
             foreach (var field in CommonFields)

@@ -59,9 +59,14 @@ public static class ErrorCodes
     public const string VersionSegmentMismatch = "VERSION_SEGMENT_MISMATCH";
     public const string SegmentTextEmpty = "SEGMENT_TEXT_EMPTY";
     public const string SegmentRetryActive = "SEGMENT_RETRY_ACTIVE";
+    public const string VoiceIncompatible = "VOICE_INCOMPATIBLE";
+    public const string VoiceConsentRequired = "VOICE_CONSENT_REQUIRED";
+    public const string PreviewQuotaExceeded = "PREVIEW_QUOTA_EXCEEDED";
+    public const string VoiceNotFound = "VOICE_NOT_FOUND";
+    public const string PreviewTextInvalid = "PREVIEW_TEXT_INVALID";
 
     /// <summary>
-    /// All 52 public error codes.
+    /// All 57 public error codes.
     /// </summary>
     public static readonly string[] All =
     [
@@ -117,6 +122,11 @@ public static class ErrorCodes
         VersionSegmentMismatch,
         SegmentTextEmpty,
         SegmentRetryActive,
+        VoiceIncompatible,
+        VoiceConsentRequired,
+        PreviewQuotaExceeded,
+        VoiceNotFound,
+        PreviewTextInvalid,
     ];
 
     /// <summary>
@@ -186,6 +196,11 @@ public static class ErrorCodes
             VersionSegmentMismatch => 400,
             SegmentTextEmpty => 400,
             SegmentRetryActive => 409,
+            VoiceIncompatible => 422,
+            VoiceConsentRequired => 403,
+            PreviewQuotaExceeded => 429,
+            VoiceNotFound => 404,
+            PreviewTextInvalid => 400,
             _ => 500,
         };
     }

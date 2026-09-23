@@ -218,6 +218,8 @@ builder.Services.AddScoped<RetryService>();
 builder.Services.AddScoped<ReviewService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Segments.SegmentSelectionService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Segments.ISegmentSelectionEventPublisher, DubbingPlatform.Infrastructure.Messaging.MassTransitSegmentSelectionEventPublisher>();
+builder.Services.AddScoped<DubbingPlatform.Application.Voices.SpeakerVoiceService>();
+builder.Services.AddScoped<DubbingPlatform.Application.Voices.ISpeakerVoiceEventPublisher, DubbingPlatform.Infrastructure.Messaging.MassTransitSpeakerVoiceEventPublisher>();
 builder.Services.AddScoped<CostService>();
 builder.Services.AddScoped<QuotaService>();
 builder.Services.AddScoped<RetentionService>();

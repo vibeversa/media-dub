@@ -73,6 +73,11 @@ public sealed class ProjectGuardHashTests
         Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.VersionSegmentMismatch));
         Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.SegmentTextEmpty));
         Assert.Equal(409, ErrorCodes.StatusFor(ErrorCodes.SegmentRetryActive));
-        Assert.Equal(52, ErrorCodes.All.Length);
+        Assert.Equal(422, ErrorCodes.StatusFor(ErrorCodes.VoiceIncompatible));
+        Assert.Equal(403, ErrorCodes.StatusFor(ErrorCodes.VoiceConsentRequired));
+        Assert.Equal(429, ErrorCodes.StatusFor(ErrorCodes.PreviewQuotaExceeded));
+        Assert.Equal(404, ErrorCodes.StatusFor(ErrorCodes.VoiceNotFound));
+        Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.PreviewTextInvalid));
+        Assert.Equal(57, ErrorCodes.All.Length);
     }
 }

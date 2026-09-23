@@ -30,7 +30,7 @@ public static class OpenApiConfiguration
             {
                 document.Info.Title = "Dubbing Platform API";
                 document.Info.Version = "v1";
-                document.Info.Description = "Tenant-scoped dubbing pipeline. Auth: JWT bearer (tid/sub/roles) or ?access_token= on SSE /stream (same policy, never logged). Mutations accept Idempotency-Key. Errors use { error: { code, message, correlationId, details } } with codes including LANGUAGE_IMMUTABLE, SETTINGS_LOCKED_ACTIVE_RUN, PROJECT_NOT_FOUND, PROJECT_HAS_ACTIVE_RUN, SETTINGS_VERSION_CONFLICT, IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_REUSED, PROJECT_ARCHIVED, RUN_ALREADY_TERMINAL, RUN_ALREADY_ACTIVE, CONFIG_CHANGED_SINCE_RUN, SELECTION_CONFLICT, VERSION_NOT_FOUND, VERSION_SEGMENT_MISMATCH, SEGMENT_TEXT_EMPTY, SEGMENT_RETRY_ACTIVE. Project lists use { items, page, pageSize, total, sort, sortDir, hasMore, clamped }; dashboard summary is GET /api/v1/dashboard/summary with seven sections; processing start returns 202 (replay 200 + Idempotent-Replayed:true) and run lists use { items, page, pageSize, total, hasMore }; workspace aggregate is GET /api/v1/projects/{projectId}/workspace (single call, ten sections); progress exposes percentApproximate (display-only) and SSE is GET .../progress/stream (text/event-stream, Last-Event-ID accepted, event freeze in Task 013); segments support GET .../segments (filters speakerId/reviewStatus/qualityFlag/syncIssue/text/startMs/endMs, default 50/max 200, sort startMs) plus detail with versions and POST .../segments/{id}/retry|transcript-selection|translation-selection|transcript-edits|translation-edits (stale → 409 SELECTION_CONFLICT with { currentSelectionVersion, currentVersionIds }).";
+                document.Info.Description = "Tenant-scoped dubbing pipeline. Auth: JWT bearer (tid/sub/roles) or ?access_token= on SSE /stream (same policy, never logged). Mutations accept Idempotency-Key. Errors use { error: { code, message, correlationId, details } } with codes including LANGUAGE_IMMUTABLE, SETTINGS_LOCKED_ACTIVE_RUN, PROJECT_NOT_FOUND, PROJECT_HAS_ACTIVE_RUN, SETTINGS_VERSION_CONFLICT, IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_REUSED, PROJECT_ARCHIVED, RUN_ALREADY_TERMINAL, RUN_ALREADY_ACTIVE, CONFIG_CHANGED_SINCE_RUN, SELECTION_CONFLICT, VERSION_NOT_FOUND, VERSION_SEGMENT_MISMATCH, SEGMENT_TEXT_EMPTY, SEGMENT_RETRY_ACTIVE, VOICE_INCOMPATIBLE, VOICE_CONSENT_REQUIRED, PREVIEW_QUOTA_EXCEEDED, VOICE_NOT_FOUND, PREVIEW_TEXT_INVALID. Project lists use { items, page, pageSize, total, sort, sortDir, hasMore, clamped }; dashboard summary is GET /api/v1/dashboard/summary with seven sections; processing start returns 202 (replay 200 + Idempotent-Replayed:true) and run lists use { items, page, pageSize, total, hasMore }; workspace aggregate is GET /api/v1/projects/{projectId}/workspace (single call, ten sections); progress exposes percentApproximate (display-only) and SSE is GET .../progress/stream (text/event-stream, Last-Event-ID accepted, event freeze in Task 013); segments support GET .../segments (filters speakerId/reviewStatus/qualityFlag/syncIssue/text/startMs/endMs, default 50/max 200, sort startMs) plus detail with versions and POST .../segments/{id}/retry|transcript-selection|translation-selection|transcript-edits|translation-edits (stale → 409 SELECTION_CONFLICT with { currentSelectionVersion, currentVersionIds }); speakers support GET .../speakers (segmentCount + assignedVoice) plus detail, GET .../speakers/{id}/available-voices (compatible-only + excludedCount/reasons), PUT .../speakers/{id}/voice-assignment { voiceId, reason? } (incompatible → 422 VOICE_INCOMPATIBLE, no consent → 403 VOICE_CONSENT_REQUIRED, same → 200 changed:false), and POST|GET .../voice-previews (202 first, 200 duplicate, quota → 429 PREVIEW_QUOTA_EXCEEDED, text → 400 PREVIEW_TEXT_INVALID).";
 
                 document.Components ??= new OpenApiComponents();
                 if (document.Components.SecuritySchemes is null)
@@ -138,6 +138,12 @@ public static class OpenApiConfiguration
                 EnsureSchema(document, "SegmentDetailResponse");
                 EnsureSchema(document, "SegmentSummaryResponse");
                 EnsureSchema(document, "SegmentMutationResponse");
+                EnsureSchema(document, "SpeakerSummaryResponse");
+                EnsureSchema(document, "SpeakerDetailResponse");
+                EnsureSchema(document, "AvailableVoicesResponse");
+                EnsureSchema(document, "VoiceAssignmentResponse");
+                EnsureSchema(document, "VoicePreviewResponse");
+                EnsureSchema(document, "VoicePreviewDetailResponse");
 
                 return Task.CompletedTask;
             });
@@ -178,6 +184,12 @@ public static class OpenApiConfiguration
                 "SegmentDetailResponse" => "Segment detail: { id, selectionVersion, transcriptVersions[], translationVersions[], reviewStatus?, qualityCodes[], syncStatus?, outputStale }.",
                 "SegmentSummaryResponse" => "Segment list row: { id, startMs, selectionVersion, reviewStatus?, qualityCodes[], syncStatus? } (filters speakerId/reviewStatus/qualityFlag/syncIssue/text/startMs/endMs, default 50/max 200).",
                 "SegmentMutationResponse" => "Segment mutation: { segmentId, selectionVersion, selectedVersionIds?, newVersionId?, outputStale, warningCode? } (stale → 409 SELECTION_CONFLICT with { currentSelectionVersion, currentVersionIds }).",
+                "SpeakerSummaryResponse" => "Speaker list row: { id, speakerKey, segmentCount, assignedVoice? }.",
+                "SpeakerDetailResponse" => "Speaker detail: { id, speakerKey, displayName, firstAppearanceMs, lastAppearanceMs, segmentCount, assignedVoice? }.",
+                "AvailableVoicesResponse" => "Compatible-only voices: { voices[], excludedCount, excluded[{ voiceId, reasons }] } (excluded never selectable; direct assign → 422 VOICE_INCOMPATIBLE).",
+                "VoiceAssignmentResponse" => "Voice assignment: { speakerId, voiceProfileId, voiceId, changed, outputStale, warningCode?, unusedSpeaker } (same → 200 changed:false; no consent → 403 VOICE_CONSENT_REQUIRED).",
+                "VoicePreviewResponse" => "Voice preview create: { previewId (vpv_), status, isDuplicate } (202 first, 200 duplicate; quota → 429 PREVIEW_QUOTA_EXCEEDED).",
+                "VoicePreviewDetailResponse" => "Voice preview detail: { previewId, status, artifactId?, downloadUrl? (15-min presigned, never internal path) }.",
                 _ => "Pagination envelope: { items, page, pageSize, total, hasMore }.",
             };
             document.Components.Schemas[name] = new OpenApiSchema
