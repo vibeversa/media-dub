@@ -77,6 +77,9 @@ jobs:
       - name: API drift gate (fails when stale)
         run: make check-api-drift
 
+      - name: Seed example env for the build gate (Task 015 R5)
+        run: cp frontend/.env.example frontend/.env
+
       - name: Frontend build (prebuild re-checks drift, strict tsc)
         run: npm run build --prefix frontend
 

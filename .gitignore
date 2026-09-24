@@ -39,6 +39,8 @@ Desktop.ini
 ## Frontend (Task 014: generated client is committed; never ignore it)
 node_modules/
 frontend/node_modules/
+frontend/dist/
+frontend/coverage/
 !frontend/src/api/generated/
 
 ## Rider / VSCode / coverage
