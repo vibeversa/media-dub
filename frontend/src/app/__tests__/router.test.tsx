@@ -4,18 +4,22 @@ import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RouteFallback } from '../RouteFallback.js';
 import { LocaleProvider } from '../providers/LocaleProvider.js';
+import { QueryProvider } from '../providers/QueryProvider.js';
+import { queryClient } from '../providers/queryClient.js';
 import { ROUTER_FUTURE_FLAGS, ROUTER_PROVIDER_FUTURE_FLAGS, routePaths, routes } from '../router.js';
 import { useAppStore } from '../../stores/index.js';
 
 beforeEach(() => {
   // Authenticated shell for route renders; guard-specific states are set
   // per test (Task 018 guards wrap every authenticated route).
+  queryClient.clear();
   useAppStore.getState().resetForTests();
   useAppStore.getState().setSession('authenticated', []);
 });
 
 afterEach(() => {
   cleanup();
+  queryClient.clear();
   useAppStore.getState().resetForTests();
 });
 
@@ -36,11 +40,13 @@ function renderPath(path: string): void {
     future: { ...ROUTER_FUTURE_FLAGS },
   });
   render(
-    <LocaleProvider>
-      <Suspense fallback={<RouteFallback />}>
-        <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
-      </Suspense>
-    </LocaleProvider>,
+    <QueryProvider>
+      <LocaleProvider>
+        <Suspense fallback={<RouteFallback />}>
+          <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
+        </Suspense>
+      </LocaleProvider>
+    </QueryProvider>,
   );
 }
 

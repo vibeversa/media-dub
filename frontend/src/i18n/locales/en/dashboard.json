@@ -1,4 +1,58 @@
 {
   "title": "Dashboard",
-  "subtitle": "Project overview and recent activity."
+  "subtitle": "Project overview and recent activity.",
+  "stale": "Updating…",
+  "empty": {
+    "title": "Create your first project",
+    "description": "This tenant has no projects yet. Start the creation wizard to dub your first media.",
+    "cta": "Create project"
+  },
+  "loadError": {
+    "title": "Dashboard unavailable",
+    "message": "The summary could not be loaded."
+  },
+  "sectionError": {
+    "title": "Section unavailable",
+    "message": "This section could not be loaded."
+  },
+  "stats": {
+    "title": "Projects",
+    "total": "Total projects",
+    "active": "Active",
+    "archived": "Archived",
+    "viewAll": "View all projects"
+  },
+  "recentOutputs": {
+    "title": "Recent outputs",
+    "empty": "No outputs yet. Outputs appear here after processing finishes.",
+    "viewProject": "Open project",
+    "unknownProject": "Unknown project"
+  },
+  "storageCost": {
+    "title": "Storage and cost",
+    "storage": "Storage",
+    "cost": "Cost this month",
+    "manage": "Manage in settings"
+  },
+  "quota": {
+    "title": "Daily project quota",
+    "remaining_one": "{{count}} project remaining today",
+    "remaining_other": "{{count}} projects remaining today",
+    "resetsAt": "Resets {{date}}",
+    "warning": "Quota usage is at {{percent}}. Consider pacing new projects.",
+    "blocked": "Quota exhausted. New costly runs are paused until {{date}}. Finish reviews or wait for reset.",
+    "manage": "Manage quota"
+  },
+  "warnings": {
+    "title": "Warnings",
+    "viewAll": "View projects",
+    "openProject": "Open project"
+  },
+  "backlog": {
+    "title": "Backlog",
+    "pendingReviews": "Pending reviews",
+    "runningJobs": "Running jobs",
+    "viewReviews": "Open review queue",
+    "viewProjects": "View active projects"
+  }
 }
