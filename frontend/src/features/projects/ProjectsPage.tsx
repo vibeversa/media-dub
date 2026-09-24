@@ -13,6 +13,7 @@ import { Modal } from '../../components/Modal/Modal.js';
 import { Pagination } from '../../components/Pagination/Pagination.js';
 import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { useToast } from '../../components/Toast/useToast.js';
+import { PreflightDialog } from '../processing/PreflightDialog.js';
 import { queryClient } from '../../app/providers/queryClient.js';
 import { useAppStore } from '../../stores/index.js';
 import { ProjectFilters } from './ProjectFilters.js';
@@ -56,6 +57,7 @@ export function ProjectsPage(): ReactNode {
   const [cancelTarget, setCancelTarget] = useState<Project | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deleteName, setDeleteName] = useState('');
+  const [preflightTarget, setPreflightTarget] = useState<Project | null>(null);
   const [busy, setBusy] = useState<{ action: ProjectAction; id: string } | null>(null);
 
   const summary = useProjectsQuery(filters);
@@ -105,10 +107,6 @@ export function ProjectsPage(): ReactNode {
   const cancelMutation = useAppMutation({
     mutationFn: (projectId: string, ctx) =>
       apiClient.cancelActiveProcessingRun({ path: { projectId } }, { idempotencyKey: ctx.idempotencyKey }),
-  });
-  const retryMutation = useAppMutation({
-    mutationFn: (projectId: string, ctx) =>
-      apiClient.startProcessing({ path: { projectId } }, undefined, { idempotencyKey: ctx.idempotencyKey }),
   });
 
   function clearBusy(action: ProjectAction, id: string): void {
@@ -182,22 +180,6 @@ export function ProjectsPage(): ReactNode {
     });
   }
 
-  function runRetry(project: Project): void {
-    setBusy({ action: 'retry', id: project.id });
-    retryMutation.mutate(project.id, {
-      onSuccess: () => {
-        push('success', t('projects:toasts.retried'));
-        refreshList();
-      },
-      onError: (err) => {
-        failFeedback(t('projects:toasts.retried'), err.code, err.message);
-      },
-      onSettled: () => {
-        clearBusy('retry', project.id);
-      },
-    });
-  }
-
   function handleAction(action: ProjectAction, project: Project): void {
     switch (action) {
       case 'open':
@@ -220,7 +202,9 @@ export function ProjectsPage(): ReactNode {
         setCancelTarget(project);
         break;
       case 'retry':
-        runRetry(project);
+        // Task 024: retry opens the preflight dialog, which owns the single
+        // processing-start call. No direct POST from this page (R1).
+        setPreflightTarget(project);
         break;
     }
   }
@@ -398,6 +382,21 @@ export function ProjectsPage(): ReactNode {
           </div>
         </div>
       </Modal>
+      {preflightTarget !== null ? (
+        <PreflightDialog
+          projectId={preflightTarget.id}
+          onClose={() => {
+            setPreflightTarget(null);
+          }}
+          onStarted={() => {
+            const startedId = preflightTarget.id;
+            setPreflightTarget(null);
+            push('success', t('processing:toasts.started'));
+            refreshList();
+            navigate(`/projects/${startedId}?started=1`);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

@@ -1,0 +1,78 @@
+{
+  "title": "Start processing run",
+  "subtitle": "Review the estimate and requirements before starting. Processing is a costly operation and needs explicit confirmation.",
+  "loading": "Loading preflight…",
+  "loadError": {
+    "title": "Preflight unavailable",
+    "message": "The estimate could not be loaded, so starting is blocked. No run was started.",
+    "retry": "Retry preflight"
+  },
+  "status": {
+    "warningTitle": "Media is not validated yet",
+    "warning": "This project is currently {{status}}. The server only starts validated projects, so starting now will likely be rejected — the server has the final say.",
+    "archivedTitle": "Project is archived",
+    "archived": "Archived projects cannot start processing. Unarchive the project first, then start again."
+  },
+  "estimate": {
+    "label": "Estimated cost",
+    "amount": "{{amount}} (estimate)",
+    "note": "Estimates are planning figures only — never promises. Actual cost is metered server-side.",
+    "segments": "Priced scope",
+    "segmentsValue": "{{count}} segments",
+    "priceTable": "Price table",
+    "priceTableValue": "v{{version}} defaults",
+    "timeNote": "Run time varies with media length and pipeline load. No ETA is promised."
+  },
+  "quota": {
+    "title": "Quota",
+    "spend": "Spent this month",
+    "remaining": "Daily project quota",
+    "remainingValue": "{{count}} remaining",
+    "remainingAfter": "Remaining after run",
+    "impactNote": "Starting a run creates no project, so the daily project quota is unchanged. The per-project cost budget is still enforced server-side at start.",
+    "exhaustedTitle": "Daily quota exhausted",
+    "exhausted": "The daily project quota is exhausted. Starting is a costly operation — enter an override reason to confirm explicitly, or wait for the reset.",
+    "overrideLabel": "Override reason",
+    "overrideHint": "Required while the daily quota is exhausted. Record why this run cannot wait.",
+    "blockedTitle": "Over budget",
+    "blocked": "The server rejected the start: the per-project cost budget would be exceeded. Review usage with your tenant admin before retrying."
+  },
+  "config": {
+    "title": "Configuration",
+    "hash": "Config hash",
+    "hashMissing": "Not reported yet",
+    "status": "Project status",
+    "languages": "Languages",
+    "speakers": "Speakers",
+    "speakersTruncated": "Showing the first {{shown}} of {{total}} speakers. Consent covers the listed voices; the server re-validates every assignment."
+  },
+  "consent": {
+    "title": "Voice-cloning consent",
+    "description": "The speakers below use cloned voices. Starting is blocked until you acknowledge consent for every listed voice.",
+    "check": "I acknowledge that recorded consent covers each cloned voice listed above.",
+    "acknowledged": "Acknowledged by {{user}} at {{at}}."
+  },
+  "actions": {
+    "start": "Start run — est. {{amount}}",
+    "cancel": "Cancel",
+    "close": "Close",
+    "openWorkspace": "Open workspace to cancel the run"
+  },
+  "blocks": {
+    "starting": "A start request is already in flight.",
+    "conflict": "A run is already active. Cancel it in the workspace first.",
+    "consent": "Acknowledge voice-cloning consent to continue.",
+    "quota": "Enter an override reason to start while the daily quota is exhausted."
+  },
+  "conflict": {
+    "title": "A run is already active",
+    "message": "Project already has an active run ({{status}}). Starting is disabled — cancel the active run in the workspace first, then start again."
+  },
+  "startError": {
+    "title": "Start failed",
+    "reportRef": "Reference: {{ref}}"
+  },
+  "toasts": {
+    "started": "Run started."
+  }
+}
