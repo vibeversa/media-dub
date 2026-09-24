@@ -1,11 +1,7 @@
 import type { ReactNode } from 'react';
+import { ProjectsPage as FeatureProjectsPage } from '../../features/projects/ProjectsPage.js';
 
-/** Project list. Feature content lands in later tasks. */
+/** Project list route: renders the Task 021 filterable list (one lazy chunk). */
 export default function ProjectsPage(): ReactNode {
-  return (
-    <section data-testid="page-projects">
-      <h1 className="text-xl font-semibold">Projects</h1>
-      <p className="mt-2 text-sm text-slate-600">All dubbing projects in this tenant.</p>
-    </section>
-  );
+  return <FeatureProjectsPage />;
 }

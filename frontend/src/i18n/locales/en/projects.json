@@ -1,4 +1,86 @@
 {
   "title": "Projects",
-  "subtitle": "All dubbing projects in this tenant."
+  "subtitle": "All dubbing projects in this tenant.",
+  "stale": "Updating…",
+  "untitled": "Untitled project",
+  "filters": {
+    "status": "Status",
+    "statusAll": "All statuses",
+    "targetLanguage": "Target language",
+    "targetLanguagePlaceholder": "e.g. es",
+    "archived": "Archived",
+    "archivedActive": "Active only",
+    "archivedOnly": "Archived only",
+    "archivedAll": "All",
+    "owner": "Owner",
+    "ownerPlaceholder": "Owner user id",
+    "from": "Created from",
+    "to": "Created to",
+    "sort": "Sort by",
+    "sortCreated": "Created",
+    "sortActivity": "Activity",
+    "sortName": "Name",
+    "sortProgress": "Progress (approximate)",
+    "sortDir": "Direction",
+    "sortDirAsc": "Ascending",
+    "sortDirDesc": "Descending",
+    "pageSize": "Page size",
+    "clear": "Clear filters"
+  },
+  "table": {
+    "caption": "Projects",
+    "name": "Name",
+    "media": "Media",
+    "mediaDurationMissing": "Duration is available in the project workspace.",
+    "targetLanguage": "Target language",
+    "status": "Status",
+    "progress": "Progress",
+    "progressMissing": "Approximate progress lives in the project workspace; sorting here uses recent activity as an approximation.",
+    "progressSortNote": "Approximate ordering: sorts by recent activity, not measured progress.",
+    "review": "Review",
+    "reviewMissing": "Open review counts are not part of the project list; see the review queue.",
+    "created": "Created",
+    "activity": "Activity",
+    "actions": "Actions",
+    "missingValue": "—"
+  },
+  "actions": {
+    "open": "Open",
+    "cancel": "Cancel run",
+    "retry": "Retry",
+    "export": "Exports",
+    "delete": "Delete",
+    "archive": "Archive",
+    "unarchive": "Unarchive"
+  },
+  "empty": {
+    "filteredTitle": "No projects match these filters",
+    "filteredDescription": "Try widening the filters or clearing them.",
+    "tenantTitle": "No projects yet",
+    "tenantDescription": "Projects appear here once created. The creation wizard lands in an upcoming release."
+  },
+  "loadError": {
+    "title": "Projects unavailable",
+    "message": "The project list could not be loaded."
+  },
+  "deleteDialog": {
+    "title": "Delete project",
+    "description": "This archives and logically deletes the project. Type the project name to confirm.",
+    "nameLabel": "Project name",
+    "confirm": "Delete project",
+    "mismatch": "Type the exact project name to enable delete."
+  },
+  "cancelDialog": {
+    "title": "Cancel active run",
+    "description": "The active processing run stops. Partial progress is kept and visible in the workspace.",
+    "confirm": "Cancel run"
+  },
+  "toasts": {
+    "deleted": "Project deleted.",
+    "deletedGone": "Project was already deleted. The list was refreshed.",
+    "archived": "Project archived.",
+    "unarchived": "Project unarchived.",
+    "cancelled": "Active run cancellation requested.",
+    "retried": "Processing retry started."
+  }
 }

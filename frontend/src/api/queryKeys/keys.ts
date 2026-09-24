@@ -17,6 +17,21 @@ export interface PageParams {
   readonly pageSize?: number;
 }
 
+/**
+ * Server-side project-list params (Task 021). Extends the page envelope with
+ * the filter/sort dimensions `GET /projects` accepts server-side
+ * (`ProjectsController.List`: status, ownerId, archived, sort, sortDir).
+ * Client-only refinements (target language, created-date range) stay out of
+ * the key: they filter the fetched page in memory without refetching.
+ */
+export interface ProjectListParams extends PageParams {
+  readonly status?: string;
+  readonly ownerId?: string;
+  readonly archived?: string;
+  readonly sort?: string;
+  readonly sortDir?: 'asc' | 'desc';
+}
+
 function withDefaults(params: PageParams | undefined): PageParams {
   return { ...(params ?? {}) };
 }
@@ -29,7 +44,7 @@ export const queryKeys = {
   projects: {
     all: ['projects'] as const,
     lists: (): QueryKey => ['projects', 'list'],
-    list: (params?: PageParams): QueryKey => ['projects', 'list', withDefaults(params)],
+    list: (params?: ProjectListParams): QueryKey => ['projects', 'list', withDefaults(params)],
     details: (): QueryKey => ['projects', 'detail'],
     detail: (projectId: string): QueryKey => ['projects', 'detail', projectId],
   },

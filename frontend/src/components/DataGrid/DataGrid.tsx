@@ -4,6 +4,8 @@ import { useState } from 'react';
 export interface DataGridColumn<T> {
   readonly key: string;
   readonly header: string;
+  /** Native tooltip for the header cell (e.g. approximate-ordering notes). */
+  readonly headerTitle?: string;
   readonly render: (row: T) => ReactNode;
 }
 
@@ -47,7 +49,7 @@ export function DataGrid<T>({ columns, rows, caption, getRowId, onRowActivate }:
           <thead>
             <tr>
               {columns.map((c) => (
-                <th key={c.key} scope="col">
+                <th key={c.key} scope="col" title={c.headerTitle}>
                   {c.header}
                 </th>
               ))}
