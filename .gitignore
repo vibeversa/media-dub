@@ -41,6 +41,7 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/
+frontend/storybook-static/
 !frontend/src/api/generated/
 
 ## Rider / VSCode / coverage

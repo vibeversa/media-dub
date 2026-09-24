@@ -8,7 +8,7 @@ import tseslint from 'typescript-eslint';
 // (hermetic generator + drift gate) and stays out of lint scope.
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'src/api/generated/**'],
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'src/api/generated/**', 'storybook-static/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -31,6 +31,11 @@ export default tseslint.config(
         {
           selector: "MemberExpression[object.type='MetaProperty'][object.meta.name='import']",
           message: 'Read environment only via src/lib/env.ts (getEnv()/tryGetEnv()).',
+        },
+        {
+          // Security (Task 016): untrusted strings render as plain text only.
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: 'dangerouslySetInnerHTML is banned in primitives; render untrusted strings as plain text.',
         },
       ],
     },

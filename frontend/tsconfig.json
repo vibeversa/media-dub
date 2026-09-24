@@ -18,5 +18,5 @@
     "useDefineForClassFields": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts", "eslint.config.js", "postcss.config.js", "tailwind.config.ts", "scripts/build-storybook-placeholder.mjs"]
+  "include": ["src", ".storybook/main.ts", ".storybook/preview.ts", "vite.config.ts", "eslint.config.js", "postcss.config.js", "tailwind.config.ts"]
 }

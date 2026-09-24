@@ -83,6 +83,15 @@ jobs:
       - name: Frontend build (prebuild re-checks drift, strict tsc)
         run: npm run build --prefix frontend
 
+      - name: Token gate (no hardcoded hex outside tokens.css, Task 016 R1)
+        run: npm run check:no-hex --prefix frontend
+
+      - name: Frontend component tests (Task 016)
+        run: npm run test --prefix frontend -- src/components
+
+      - name: Storybook build (Task 016 primitives)
+        run: npm run build-storybook --prefix frontend
+
       - name: OpenAPI coverage tests
         run: dotnet test tests/DubbingPlatform.IntegrationTests --nologo -v q --filter "FullyQualifiedName~OpenApiCoverageTests"
 

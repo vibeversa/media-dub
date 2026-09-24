@@ -1,0 +1,150 @@
+/**
+ * Design tokens (Task 016). Single source of truth for color, spacing, type,
+ * radius, and elevation. All other CSS/TSX must reference these variables —
+ * no hardcoded hex outside this file (enforced by tools/check-no-hex.mjs).
+ */
+:root {
+  /* Brand */
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #dbe6fe;
+  --color-brand-200: #bfd3fe;
+  --color-brand-300: #93b4fd;
+  --color-brand-400: #608dfa;
+  --color-brand-500: #3b67f6;
+  --color-brand-600: #2549eb;
+  --color-brand-700: #1d39d8;
+  --color-brand-800: #1e32af;
+  --color-brand-900: #1e2f8a;
+  --color-brand: #2549eb;
+  --color-brand-contrast: #ffffff;
+  --color-brand-subtle: #eef4ff;
+
+  /* Neutral */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+
+  /* Surface / text / border */
+  --color-surface: #ffffff;
+  --color-surface-raised: #f8fafc;
+  --color-surface-overlay: #ffffff;
+  --color-surface-inverse: #0f172a;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-text-inverse: #f8fafc;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
+  /* Status */
+  --color-success: #15803d;
+  --color-success-bg: #dcfce7;
+  --color-success-contrast: #ffffff;
+  --color-warning: #b45309;
+  --color-warning-bg: #fef3c7;
+  --color-warning-contrast: #ffffff;
+  --color-error: #b91c1c;
+  --color-error-bg: #fee2e2;
+  --color-error-contrast: #ffffff;
+  --color-info: #1d4ed8;
+  --color-info-bg: #dbeafe;
+  --color-info-contrast: #ffffff;
+  --color-neutral-status: #475569;
+  --color-neutral-status-bg: #f1f5f9;
+  --color-processing: #2549eb;
+  --color-processing-bg: #e0e7ff;
+  --color-processing-contrast: #ffffff;
+  --color-review: #7e22ce;
+  --color-review-bg: #f3e8ff;
+  --color-review-contrast: #ffffff;
+  --color-cancelled: #52525b;
+  --color-cancelled-bg: #e4e4e7;
+  --color-cancelled-contrast: #ffffff;
+
+  /* Spacing scale (rem) */
+  --space-0: 0rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Type scale */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.75;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-family-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+
+  /* Shadow / elevation */
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.06);
+  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.1), 0 2px 4px -2px rgb(15 23 42 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.1), 0 4px 6px -4px rgb(15 23 42 / 0.1);
+
+  /* Focus */
+  --color-focus-ring: #2549eb;
+}
+
+[data-theme="dark"] {
+  --color-brand: #608dfa;
+  --color-brand-contrast: #0f172a;
+  --color-brand-subtle: #1e2f8a;
+  --color-surface: #0f172a;
+  --color-surface-raised: #1e293b;
+  --color-surface-overlay: #1e293b;
+  --color-surface-inverse: #f8fafc;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
+  --color-text-inverse: #0f172a;
+  --color-border: #334155;
+  --color-border-strong: #475569;
+  --color-success: #4ade80;
+  --color-success-bg: #14532d;
+  --color-warning: #fbbf24;
+  --color-warning-bg: #451a03;
+  --color-error: #f87171;
+  --color-error-bg: #450a0a;
+  --color-info: #60a5fa;
+  --color-info-bg: #172554;
+  --color-neutral-status: #cbd5e1;
+  --color-neutral-status-bg: #334155;
+  --color-processing: #93b4fd;
+  --color-processing-bg: #1e2f8a;
+  --color-review: #c084fc;
+  --color-review-bg: #3b0764;
+  --color-cancelled: #a1a1aa;
+  --color-cancelled-bg: #27272a;
+  --color-focus-ring: #93b4fd;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+}
