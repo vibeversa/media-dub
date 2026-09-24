@@ -11,6 +11,7 @@ import {
   ForbiddenPage,
   LoggedOutPage,
   LoginPage,
+  MediaPage,
   NotFoundPage,
   NotificationsPage,
   ProjectCreatePage,
@@ -38,7 +39,7 @@ export const routes: RouteObject[] = [
   // `/login?next=...`; AppShell renders the IA from `getTopNavItems`, and
   // /admin nests under RequireAdmin (route-guarded, never CSS-only hiding).
   // Project tab outlets render the details placeholder until feature tasks
-  // (020+) fill them.
+  // fill them; the media tab already hosts the Task 023 resumable uploader.
   {
     path: '/',
     element: <RequireAuth />,
@@ -55,7 +56,11 @@ export const routes: RouteObject[] = [
             element: <ProjectLayout />,
             children: [
               { index: true, element: <ProjectDetailsPage /> },
-              ...PROJECT_TAB_PATHS.map((tab) => ({ path: tab, element: <ProjectDetailsPage /> })),
+              { path: 'media', element: <MediaPage /> },
+              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media').map((tab) => ({
+                path: tab,
+                element: <ProjectDetailsPage />,
+              })),
             ],
           },
           { path: 'review', element: <ReviewPage /> },

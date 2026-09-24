@@ -76,6 +76,12 @@ describe('route table', () => {
     expect(await screen.findByTestId('page-project-create')).toBeDefined();
   });
 
+  it('renders the project media tab with the uploader', async () => {
+    renderPath('/projects/prj_1/media');
+    expect(await screen.findByTestId('page-project-media')).toBeDefined();
+    expect(await screen.findByTestId('upload-uploader')).toBeDefined();
+  });
+
   it('renders unknown paths as NotFound', async () => {
     renderPath('/no-such-page');
     expect(await screen.findByTestId('page-not-found')).toBeDefined();

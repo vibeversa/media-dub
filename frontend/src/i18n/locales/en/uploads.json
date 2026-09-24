@@ -1,0 +1,97 @@
+{
+  "title": "Media upload",
+  "subtitle": "Upload the audio or video file for this project. Uploads resume after network drops and page refreshes.",
+  "picker": {
+    "label": "Media file",
+    "browse": "Choose a file",
+    "dropHint": "Or drag and drop a file here.",
+    "formats": "Accepted formats: MP4, QuickTime, Matroska, WAV, MP3, FLAC.",
+    "serverNote": "File-type checks here are a hint only — the server validates the media and has the final say."
+  },
+  "validation": {
+    "empty": "The selected file is empty. Pick a non-empty media file.",
+    "network": "The connection dropped before the upload started. Reconnect and try again."
+  },
+  "controls": {
+    "pause": "Pause",
+    "resume": "Resume",
+    "cancel": "Cancel upload",
+    "reattach": "Choose the file again to continue",
+    "cancelTitle": "Cancel this upload?",
+    "cancelDescription": "Uploaded parts are discarded server-side and the local session is cleared. This cannot be undone.",
+    "cancelConfirm": "Cancel upload"
+  },
+  "resumePrompt": {
+    "title": "An upload is waiting to resume",
+    "description": "{{done}} of {{total}} parts are already uploaded. Re-attach the same file to continue — completed parts are kept.",
+    "networkTitle": "The connection dropped",
+    "networkDescription": "The upload paused itself. Reconnect, then resume — {{done}} of {{total}} parts are already uploaded."
+  },
+  "reattachPrompt": {
+    "title": "Re-attach your file to continue",
+    "description": "The page was refreshed, so the file itself is gone but {{done}} of {{total}} uploaded parts are intact. Choose the same file to resume."
+  },
+  "fingerprint": {
+    "restarted": "The chosen file differs from the one that started this upload, so a fresh upload was started."
+  },
+  "duplicate": {
+    "title": "This exact file is already uploaded",
+    "description": "A completed upload with the same content already exists for this project.",
+    "useExisting": "Use the existing media"
+  },
+  "progress": {
+    "overall": "{{done}} of {{total}} parts uploaded",
+    "part": "Part {{number}}",
+    "state": {
+      "pending": "Waiting",
+      "uploading": "Uploading…",
+      "done": "Uploaded",
+      "error": "Failed"
+    }
+  },
+  "phases": {
+    "uploading": "Uploading parts…",
+    "paused": "Paused",
+    "uploaded": "Upload complete — waiting for server validation…",
+    "validating": "Server validation running…",
+    "analyzing": "Media analysis running…",
+    "ready": "Media is ready.",
+    "rejected": "Media was rejected.",
+    "aborted": "Upload cancelled.",
+    "error": "Upload failed."
+  },
+  "steps": {
+    "clientTitle": "Upload (this device)",
+    "serverTitle": "Validation (server)",
+    "uploaded": "Bytes received",
+    "validating": "Server validation",
+    "analyzing": "Media analysis",
+    "ready": "Ready"
+  },
+  "rejected": {
+    "title": "Media was rejected",
+    "duplicateTitle": "This media is already in the project",
+    "duplicateGuidance": "The same content was uploaded before. Use the existing media instead of uploading again.",
+    "unsupportedTitle": "This format is not supported",
+    "unsupportedGuidance": "Upload MP4, QuickTime, Matroska, WAV, MP3, or FLAC. Other containers and codecs are rejected.",
+    "corruptTitle": "This file looks corrupt",
+    "corruptGuidance": "Re-export the source from your editor and upload the fresh file. If it still fails, try a different export preset.",
+    "expiredTitle": "The upload session expired",
+    "expiredGuidance": "Sessions last 7 days. Start a new upload with the same file.",
+    "unknownTitle": "The server could not accept this media",
+    "unknownGuidance": "Report this reference to support and try again with a fresh export.",
+    "replace": "Choose a different file",
+    "startOver": "Start a new upload",
+    "reportRef": "Reference: {{ref}}"
+  },
+  "ready": {
+    "title": "Media is ready",
+    "description": "Validation and analysis passed. You can start processing from the workspace.",
+    "openWorkspace": "Open project"
+  },
+  "toasts": {
+    "ready": "Media upload complete and validated.",
+    "rejected": "Media was rejected. See the guidance below.",
+    "cancelled": "Upload cancelled."
+  }
+}

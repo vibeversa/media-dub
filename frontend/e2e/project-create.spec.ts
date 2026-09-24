@@ -166,9 +166,9 @@ test('full wizard creates and opens the workspace @project-create', async ({ pag
   await expect(page.getByTestId('wizard-immutable-repeat')).toContainText('es');
 
   await page.getByTestId('wizard-start').click();
-  // The media tab is a Task 025 placeholder: the details shell renders while
-  // the URL carries the deferred-upload `/media` deep link.
-  await expect(page.getByTestId('page-project-details')).toBeVisible();
+  // Deferred uploads land on the media tab, which hosts the Task 023
+  // resumable uploader (`page-project-media`).
+  await expect(page.getByTestId('page-project-media')).toBeVisible();
   expect(page.url()).toContain('/projects/prj_new/media');
   expect((posted as { name?: string })?.name).toBe('Pilot episode');
   expect((posted as { targetLanguage?: string })?.targetLanguage).toBe('es');
@@ -189,6 +189,6 @@ test('upload-later defers to the media tab @project-create', async ({ page }) =>
   await fillToReview(page, 'Deferred media');
   await expect(page.getByTestId('wizard-summary-upload')).toContainText('Upload later');
   await page.getByTestId('wizard-start').click();
-  await expect(page.getByTestId('page-project-details')).toBeVisible();
+  await expect(page.getByTestId('page-project-media')).toBeVisible();
   expect(page.url()).toContain('/projects/prj_new/media');
 });
