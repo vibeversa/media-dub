@@ -5,6 +5,7 @@ import { ToastProvider } from '../components/Toast/Toast.js';
 import { ChunkErrorBoundary } from './ChunkErrorBoundary.js';
 import { ConfigErrorScreen } from './ConfigErrorScreen.js';
 import { RouteFallback } from './RouteFallback.js';
+import { AuthProvider } from './providers/AuthProvider.js';
 import { LocaleProvider } from './providers/LocaleProvider.js';
 import { QueryProvider } from './providers/QueryProvider.js';
 import { StoreProvider } from './providers/StoreProvider.js';
@@ -18,7 +19,7 @@ import { tryGetEnv } from '../lib/env.js';
 // back inside the shell.
 const router = createAppRouter();
 
-/** App shell: env guard, then query/store/theme/locale/telemetry/toast providers + router. */
+/** App shell: env guard, then query/store/auth/theme/locale/telemetry/toast providers + router. */
 export function App(): ReactNode {
   const config = tryGetEnv();
   if (!config.ok) {
@@ -27,19 +28,21 @@ export function App(): ReactNode {
   return (
     <QueryProvider>
       <StoreProvider>
-        <ThemeProvider>
-          <LocaleProvider>
-            <TelemetryProvider>
-              <ToastProvider>
-                <ChunkErrorBoundary>
-                  <Suspense fallback={<RouteFallback />}>
-                    <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
-                  </Suspense>
-                </ChunkErrorBoundary>
-              </ToastProvider>
-            </TelemetryProvider>
-          </LocaleProvider>
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <LocaleProvider>
+              <TelemetryProvider>
+                <ToastProvider>
+                  <ChunkErrorBoundary>
+                    <Suspense fallback={<RouteFallback />}>
+                      <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
+                    </Suspense>
+                  </ChunkErrorBoundary>
+                </ToastProvider>
+              </TelemetryProvider>
+            </LocaleProvider>
+          </ThemeProvider>
+        </AuthProvider>
       </StoreProvider>
     </QueryProvider>
   );

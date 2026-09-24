@@ -1,11 +1,7 @@
 import type { ReactNode } from 'react';
+import { LoginPage as AuthLoginPage } from '../../features/auth/LoginPage.js';
 
-/** Sign-in screen. Auth wiring lands in later tasks. */
+/** Sign-in route: renders the Task 019 login form (one lazy chunk). */
 export default function LoginPage(): ReactNode {
-  return (
-    <section data-testid="page-login">
-      <h1 className="text-xl font-semibold">Sign in</h1>
-      <p className="mt-2 text-sm text-slate-600">Authentication is wired in a later task.</p>
-    </section>
-  );
+  return <AuthLoginPage />;
 }

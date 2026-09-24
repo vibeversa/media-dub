@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { RouteTracker } from '../../telemetry/RouteTracker.js';
+import { useAuthStore } from '../../features/auth/authStore.js';
 import { getEnv } from '../../lib/env.js';
 import { useAppStore } from '../../stores/index.js';
 import { ChunkErrorBoundary } from '../ChunkErrorBoundary.js';
@@ -73,14 +74,22 @@ function ThemeSwitcher(): ReactNode {
 
 function UserMenu({ onSignOut }: { readonly onSignOut?: () => void }): ReactNode {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const storeLogout = useAuthStore((s) => s.logout);
+  const handleSignOut =
+    onSignOut ??
+    ((): void => {
+      void (async (): Promise<void> => {
+        await storeLogout();
+        navigate('/logged-out');
+      })();
+    });
   return (
     <div data-testid="user-menu">
       <span>{t('nav:userMenu.label')}</span>
-      {onSignOut !== undefined && (
-        <button type="button" onClick={onSignOut}>
-          {t('nav:userMenu.signOut')}
-        </button>
-      )}
+      <button type="button" data-testid="user-menu-signout" onClick={handleSignOut}>
+        {t('nav:userMenu.signOut')}
+      </button>
     </div>
   );
 }
@@ -103,7 +112,10 @@ function NavItems({ items, testIdPrefix }: { readonly items: readonly TopNavItem
 export interface AppShellProps {
   /** Unread badge count; data wiring lands in Task 034 (defaults to none). */
   readonly unreadCount?: number;
-  /** Sign-out handler; session logic lands in Task 019 (menu omits it until then). */
+  /**
+   * Sign-out handler override (tests). Defaults to the Task 019 logout:
+   * server revocation + cache clear, then navigation to `/logged-out`.
+   */
   readonly onSignOut?: () => void;
 }
 

@@ -9,6 +9,7 @@ import {
   AdminPage,
   DashboardPage,
   ForbiddenPage,
+  LoggedOutPage,
   LoginPage,
   NotFoundPage,
   NotificationsPage,
@@ -31,11 +32,12 @@ const PROJECT_TAB_PATHS = [
 ] as const;
 
 export const routes: RouteObject[] = [
-  // Authenticated shell (Task 018): RequireAuth resolves the pre-shell /me
-  // session (Task 019; skeleton meanwhile), AppShell renders the IA from
-  // `getTopNavItems`, and /admin nests under RequireAdmin (route-guarded,
-  // never CSS-only hiding). Project tab outlets render the details
-  // placeholder until feature tasks (020+) fill them.
+  // Authenticated shell (Tasks 018/019): RequireAuth blocks until the
+  // pre-shell /me resolution settles and preserves the destination as
+  // `/login?next=...`; AppShell renders the IA from `getTopNavItems`, and
+  // /admin nests under RequireAdmin (route-guarded, never CSS-only hiding).
+  // Project tab outlets render the details placeholder until feature tasks
+  // (020+) fill them.
   {
     path: '/',
     element: <RequireAuth />,
@@ -69,7 +71,10 @@ export const routes: RouteObject[] = [
   {
     path: '/',
     element: <AuthLayout />,
-    children: [{ path: 'login', element: <LoginPage /> }],
+    children: [
+      { path: 'login', element: <LoginPage /> },
+      { path: 'logged-out', element: <LoggedOutPage /> },
+    ],
   },
   { path: '*', element: <NotFoundPage /> },
 ];
@@ -86,6 +91,7 @@ export const routePaths: readonly string[] = [
   '/admin',
   '/403',
   '/login',
+  '/logged-out',
 ];
 
 /** Browser router for production. Tests build memory routers from `routes`. */

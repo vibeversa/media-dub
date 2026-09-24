@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
 /**
- * 403 target for `RequireAdmin`. Rendered, never a blank redirect loop.
- * Pure render with a request-access hint: no fetching, no retries.
+ * 403 page (Task 019). Pure render: no data fetching, no retries (a retry
+ * loop against a denial is a defect). Reveals nothing about resource
+ * existence beyond the denial itself.
  */
-export default function ForbiddenPage(): ReactNode {
+export function AuthForbiddenPage(): ReactNode {
   const { t } = useTranslation();
   return (
     <section data-testid="page-forbidden">

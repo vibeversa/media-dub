@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type SessionStatus = 'loading' | 'authenticated' | 'anonymous';
+export type SessionStatus = 'loading' | 'unknown' | 'authenticated' | 'anonymous' | 'expired' | 'error';
 export type ThemeName = 'light' | 'dark';
 
 const THEME_KEY = 'dubbing.theme';

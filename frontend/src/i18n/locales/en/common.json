@@ -9,6 +9,7 @@
   "forbidden": {
     "title": "Not allowed",
     "description": "You do not have permission to view this page. Contact your tenant admin if you need access.",
+    "requestAccess": "If you need access, ask your tenant admin to grant it — this page reveals nothing further about the resource.",
     "backToDashboard": "Back to dashboard"
   },
   "items_one": "{{count}} item",
