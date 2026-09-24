@@ -139,7 +139,7 @@ test('empty-tenant CTA routes to the creation entry point @dashboard', async ({ 
   await expect(page.getByTestId('dashboard-empty')).toBeVisible();
   await expect(page.getByTestId('dashboard-grid')).toHaveCount(0);
   await page.getByTestId('dashboard-empty-cta').click();
-  await expect(page.getByTestId('page-projects')).toBeVisible();
+  await expect(page.getByTestId('page-project-create')).toBeVisible();
 });
 
 test('partial state isolates the failed card with retry @dashboard', async ({ page }) => {

@@ -4,6 +4,7 @@ import { lazy } from 'react';
 // module so router.tsx only exports route data (see react-refresh rule).
 export const DashboardPage = lazy(() => import('./DashboardPage.js'));
 export const ProjectsPage = lazy(() => import('./ProjectsPage.js'));
+export const ProjectCreatePage = lazy(() => import('./ProjectCreatePage.js'));
 export const ProjectDetailsPage = lazy(() => import('./ProjectDetailsPage.js'));
 export const ReviewPage = lazy(() => import('./ReviewPage.js'));
 export const NotificationsPage = lazy(() => import('./NotificationsPage.js'));

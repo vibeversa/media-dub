@@ -32,7 +32,7 @@ import {
  *   `useDashboardSummary` (R1 — no other aggregate calls; drill-downs are
  *   client-side links to existing routes).
  * - States: loading skeletons; empty-tenant onboarding (zero projects → CTA
- *   to the Task 022 creation entry point at `/projects`); per-card errors
+ *   to the Task 022 creation wizard at `/projects/new`); per-card errors
  *   with retry (R3); quota warning/blocked meter (R2); global error with
  *   retry. Stale cache renders stale data plus a background-refresh indicator.
  * - Security: storage/cost/quota cards render only with the usage permission
@@ -84,7 +84,7 @@ export function DashboardPage(): ReactNode {
           title={t('dashboard:empty.title')}
           description={t('dashboard:empty.description')}
           action={
-            <Link to="/projects" data-testid="dashboard-empty-cta">
+            <Link to="/projects/new" data-testid="dashboard-empty-cta">
               {t('dashboard:empty.cta')}
             </Link>
           }

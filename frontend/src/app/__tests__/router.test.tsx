@@ -6,6 +6,7 @@ import { RouteFallback } from '../RouteFallback.js';
 import { LocaleProvider } from '../providers/LocaleProvider.js';
 import { QueryProvider } from '../providers/QueryProvider.js';
 import { queryClient } from '../providers/queryClient.js';
+import { ToastProvider } from '../../components/Toast/Toast.js';
 import { ROUTER_FUTURE_FLAGS, ROUTER_PROVIDER_FUTURE_FLAGS, routePaths, routes } from '../router.js';
 import { useAppStore } from '../../stores/index.js';
 
@@ -26,6 +27,7 @@ afterEach(() => {
 const EXPECTED_PATHS: readonly string[] = [
   '/dashboard',
   '/projects',
+  '/projects/new',
   '/projects/:id/*',
   '/review',
   '/notifications',
@@ -42,9 +44,11 @@ function renderPath(path: string): void {
   render(
     <QueryProvider>
       <LocaleProvider>
-        <Suspense fallback={<RouteFallback />}>
-          <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
-        </Suspense>
+        <ToastProvider>
+          <Suspense fallback={<RouteFallback />}>
+            <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
+          </Suspense>
+        </ToastProvider>
       </LocaleProvider>
     </QueryProvider>,
   );
@@ -65,6 +69,11 @@ describe('route table', () => {
   it('renders the dashboard route', async () => {
     renderPath('/dashboard');
     expect(await screen.findByTestId('page-dashboard')).toBeDefined();
+  });
+
+  it('renders the project creation wizard route', async () => {
+    renderPath('/projects/new');
+    expect(await screen.findByTestId('page-project-create')).toBeDefined();
   });
 
   it('renders unknown paths as NotFound', async () => {

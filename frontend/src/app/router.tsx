@@ -13,6 +13,7 @@ import {
   LoginPage,
   NotFoundPage,
   NotificationsPage,
+  ProjectCreatePage,
   ProjectDetailsPage,
   ProjectsPage,
   ReviewPage,
@@ -48,6 +49,7 @@ export const routes: RouteObject[] = [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: 'dashboard', element: <DashboardPage /> },
           { path: 'projects', element: <ProjectsPage /> },
+          { path: 'projects/new', element: <ProjectCreatePage /> },
           {
             path: 'projects/:id/*',
             element: <ProjectLayout />,
@@ -84,6 +86,7 @@ export const routePaths: readonly string[] = [
   '/',
   '/dashboard',
   '/projects',
+  '/projects/new',
   '/projects/:id/*',
   '/review',
   '/notifications',

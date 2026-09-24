@@ -64,6 +64,7 @@ function renderDashboard(initialEntry = '/dashboard') {
     [
       { path: '/dashboard', element: <DashboardPage /> },
       { path: '/projects', element: <div data-testid="page-projects" /> },
+      { path: '/projects/new', element: <div data-testid="page-project-create" /> },
       { path: '/projects/:id', element: <div data-testid="page-project-details" /> },
       { path: '/review', element: <div data-testid="page-review" /> },
       { path: '/settings', element: <div data-testid="page-settings" /> },
@@ -171,9 +172,9 @@ describe('empty tenant (R4)', () => {
     expect(await screen.findByTestId('dashboard-empty')).toBeDefined();
     expect(screen.queryByTestId('dashboard-grid')).toBeNull();
     const cta = screen.getByTestId('dashboard-empty-cta');
-    expect(cta.getAttribute('href')).toBe('/projects');
+    expect(cta.getAttribute('href')).toBe('/projects/new');
     fireEvent.click(cta);
-    expect(await screen.findByTestId('page-projects')).toBeDefined();
+    expect(await screen.findByTestId('page-project-create')).toBeDefined();
   });
 });
 

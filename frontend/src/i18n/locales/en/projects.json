@@ -57,7 +57,8 @@
     "filteredTitle": "No projects match these filters",
     "filteredDescription": "Try widening the filters or clearing them.",
     "tenantTitle": "No projects yet",
-    "tenantDescription": "Projects appear here once created. The creation wizard lands in an upcoming release."
+    "tenantDescription": "Projects appear here once created. Start the wizard to dub your first media.",
+    "createCta": "New project"
   },
   "loadError": {
     "title": "Projects unavailable",
@@ -81,6 +82,122 @@
     "archived": "Project archived.",
     "unarchived": "Project unarchived.",
     "cancelled": "Active run cancellation requested.",
-    "retried": "Processing retry started."
+    "retried": "Processing retry started.",
+    "created": "Project created."
+  },
+  "create": {
+    "title": "New project",
+    "subtitle": "Set up a dubbing project in a few steps. Languages cannot be changed later — everything else stays adjustable in the workspace.",
+    "newButton": "New project",
+    "step": "Step {{current}} of {{total}}",
+    "steps": {
+      "basics": "Basics",
+      "language": "Languages",
+      "settings": "Settings",
+      "upload": "Media",
+      "review": "Review"
+    },
+    "basics": {
+      "name": "Project name",
+      "namePlaceholder": "e.g. Pilot episode",
+      "nameHint": "Required. 1–200 characters.",
+      "duplicateHint": "Duplicate names are allowed — the list shows created dates to tell them apart.",
+      "description": "Description",
+      "descriptionPlaceholder": "Optional context for collaborators."
+    },
+    "language": {
+      "source": "Source language",
+      "sourceHelp": "The main spoken language of your media.",
+      "autoDetectNote": "The pipeline confirms the spoken language from the media on upload — pick your best guess here.",
+      "target": "Target language",
+      "targetHelp": "The dubbing language for this project.",
+      "immutableWarning": "The target language cannot be changed after creation. Double-check it before continuing."
+    },
+    "settings": {
+      "intro": "Sensible defaults are preselected. Open a section only to fine-tune it.",
+      "separation": "Dialogue handling",
+      "separationHelp": "How foreground speech is treated against background sound.",
+      "separationAuto": "Automatic",
+      "separationDialogue": "Prefer dialogue clarity",
+      "separationMusic": "Preserve background sound",
+      "profile": "Output profile",
+      "profileHelp": "Loudness and pacing conventions for the finished audio.",
+      "profileStandard": "Standard",
+      "profileBroadcast": "Broadcast loudness",
+      "profileSocial": "Short social clip",
+      "timing": "Timing strictness",
+      "timingHelp": "How tightly dubbed lines must match the original timing.",
+      "timingFlexible": "Flexible",
+      "timingBalanced": "Balanced",
+      "timingStrict": "Strict",
+      "voice": "Voice direction",
+      "voiceHelp": "How voices are picked for speakers across the project.",
+      "voiceMatched": "Matched to the source",
+      "voiceConsistent": "Consistent across the project",
+      "voiceExpressive": "Expressive range",
+      "threshold": "Review threshold",
+      "thresholdHelp": "Segments scoring below this (0–1) are flagged for human review.",
+      "glossary": "Terms",
+      "glossaryHelp": "Fixed translations for names and terms, applied during translation.",
+      "glossarySource": "Source term",
+      "glossaryTarget": "Target term",
+      "glossaryNotes": "Notes",
+      "glossaryAdd": "Add term",
+      "glossaryRemove": "Remove term",
+      "glossaryEmpty": "No fixed terms yet.",
+      "style": "Style instructions",
+      "styleHelp": "Tone and phrasing guidance for translators, up to 4000 characters.",
+      "stylePlaceholder": "e.g. Keep it casual and upbeat."
+    },
+    "upload": {
+      "mode": "Media source",
+      "later": "Upload later",
+      "laterHelp": "Create the project now and add media from the workspace afterwards.",
+      "now": "Attach media now",
+      "nowHelp": "Pick the audio or video file to dub. Only the file name is kept until the workspace upload runs.",
+      "file": "Media file",
+      "changeFile": "Choose a different file",
+      "reattachNote": "The file itself is kept in memory only — after a refresh, re-attach it here. All other entries survive.",
+      "workspaceNote": "The actual upload runs from the project workspace, which opens right after creation.",
+      "missingFile": "Choose a media file or switch to “Upload later”."
+    },
+    "review": {
+      "title": "Review and start",
+      "summaryTitle": "Your choices",
+      "rowName": "Name",
+      "rowDescription": "Description",
+      "rowSource": "Source language",
+      "rowTarget": "Target language",
+      "rowSeparation": "Dialogue handling",
+      "rowProfile": "Output profile",
+      "rowTiming": "Timing strictness",
+      "rowVoice": "Voice direction",
+      "rowThreshold": "Review threshold",
+      "rowGlossary": "Fixed terms",
+      "rowGlossaryCount": "{{count}} terms",
+      "rowStyle": "Style instructions (characters)",
+      "rowUpload": "Media",
+      "rowUploadLater": "Upload later from the workspace",
+      "rowUploadNow": "Attached: {{name}}",
+      "version": "Settings version",
+      "hash": "Configuration hash",
+      "hashPreviewNote": "Preview — the server computes the final hash when the project is created.",
+      "immutableRepeat": "Reminder: the target language ({{language}}) cannot be changed after creation."
+    },
+    "actions": {
+      "back": "Back",
+      "next": "Continue",
+      "start": "Create project",
+      "starting": "Creating…",
+      "discard": "Discard",
+      "discardTitle": "Discard this project?",
+      "discardDescription": "Your draft entries will be cleared and cannot be restored.",
+      "discardConfirm": "Discard draft",
+      "editStep": "Edit {{step}}"
+    },
+    "errors": {
+      "fixFields": "Check the highlighted fields and try again.",
+      "formError": "The project could not be created."
+    }
   }
 }

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppMutation } from '../../api/hooks.js';
 import { apiClient } from '../../api/client/index.js';
 import { queryKeys } from '../../api/queryKeys/index.js';
@@ -41,13 +41,15 @@ import type { Project, ProjectAction, ProjectFilters as FilterState } from './ap
  * - R3: row actions come strictly from `getAllowedActions`; the server
  *   stays authoritative — 403/409 surfaces as toast + list refresh.
  * - R4: archived rows excluded by default (no `archived` param sent).
- * - Creation belongs to Task 022: the tenant-empty state carries no dead
- *   CTA (a link to a nonexistent wizard would 404).
+ * - Creation (Task 022) enters via `/projects/new`, permission-hinted on
+ *   `project.edit` (the server re-authorizes; the link simply stays absent
+ *   for viewers, matching the valid-actions-only rule).
  */
 export function ProjectsPage(): ReactNode {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const permissions = useAppStore((s) => s.permissions);
+  const canCreate = permissions.includes('project.edit');
   const { push } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => parseFilters(searchParams), [searchParams]);
@@ -268,7 +270,17 @@ export function ProjectsPage(): ReactNode {
   } else if (rows.length === 0 && total === 0) {
     body = (
       <div data-testid="projects-empty">
-        <EmptyState title={t('projects:empty.tenantTitle')} description={t('projects:empty.tenantDescription')} />
+        <EmptyState
+          title={t('projects:empty.tenantTitle')}
+          description={t('projects:empty.tenantDescription')}
+          action={
+            canCreate ? (
+              <Link to="/projects/new" data-testid="projects-empty-new">
+                {t('projects:empty.createCta')}
+              </Link>
+            ) : undefined
+          }
+        />
       </div>
     );
   } else {
@@ -301,6 +313,11 @@ export function ProjectsPage(): ReactNode {
     <section data-testid="page-projects">
       <h1 className="text-xl font-semibold">{t('projects:title')}</h1>
       <p className="mt-2 text-sm text-slate-600">{t('projects:subtitle')}</p>
+      {canCreate ? (
+        <Link to="/projects/new" data-testid="projects-new">
+          {t('projects:create.newButton')}
+        </Link>
+      ) : null}
       {showStale ? (
         <p role="status" data-testid="projects-stale-indicator">
           {t('projects:stale')}
