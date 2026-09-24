@@ -20,6 +20,23 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
+      // Task 017: generated API shapes flow through the api/client barrel
+      // only; deep imports bypass the token/correlation/idempotency wiring.
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/api/generated/**'],
+              message: 'Import generated API types only via src/api/client (Task 017 barrel).',
+            },
+            {
+              group: ['**/generated/schemas.js', '**/generated/client.js', '**/generated/index.js'],
+              message: 'Import generated API types only via src/api/client (Task 017 barrel).',
+            },
+          ],
+        },
+      ],
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'error',
       'react-refresh/only-export-components': ['error', { allowConstantExport: true }],
@@ -38,6 +55,14 @@ export default tseslint.config(
           message: 'dangerouslySetInnerHTML is banned in primitives; render untrusted strings as plain text.',
         },
       ],
+    },
+  },
+  {
+    // The transport barrel owns generated-code access; these files re-export
+    // or prove the generated output and stay exempt from the barrel rule.
+    files: ['src/api/client/**', 'src/api/smoke.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
     },
   },
   {

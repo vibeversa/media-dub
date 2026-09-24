@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { ProviderHealth } from '../../../api/generated/schemas.js';
+import type { ProviderHealth } from '../../../api/client/index.js';
 import { StatusBadge } from '../../StatusBadge/StatusBadge.js';
 
 export type ProviderHealthStatus = NonNullable<ProviderHealth['status']>;

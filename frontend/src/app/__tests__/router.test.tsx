@@ -1,12 +1,22 @@
 import { Suspense } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { RouterProvider, createMemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RouteFallback } from '../RouteFallback.js';
+import { LocaleProvider } from '../providers/LocaleProvider.js';
 import { ROUTER_FUTURE_FLAGS, ROUTER_PROVIDER_FUTURE_FLAGS, routePaths, routes } from '../router.js';
+import { useAppStore } from '../../stores/index.js';
+
+beforeEach(() => {
+  // Authenticated shell for route renders; guard-specific states are set
+  // per test (Task 018 guards wrap every authenticated route).
+  useAppStore.getState().resetForTests();
+  useAppStore.getState().setSession('authenticated', []);
+});
 
 afterEach(() => {
   cleanup();
+  useAppStore.getState().resetForTests();
 });
 
 const EXPECTED_PATHS: readonly string[] = [
@@ -19,6 +29,20 @@ const EXPECTED_PATHS: readonly string[] = [
   '/admin',
   '/login',
 ];
+
+function renderPath(path: string): void {
+  const router = createMemoryRouter(routes, {
+    initialEntries: [path],
+    future: { ...ROUTER_FUTURE_FLAGS },
+  });
+  render(
+    <LocaleProvider>
+      <Suspense fallback={<RouteFallback />}>
+        <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
+      </Suspense>
+    </LocaleProvider>,
+  );
+}
 
 describe('route table', () => {
   it('exposes every top-level path', () => {
@@ -33,28 +57,29 @@ describe('route table', () => {
   });
 
   it('renders the dashboard route', async () => {
-    const router = createMemoryRouter(routes, {
-      initialEntries: ['/dashboard'],
-      future: { ...ROUTER_FUTURE_FLAGS },
-    });
-    render(
-      <Suspense fallback={<RouteFallback />}>
-        <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
-      </Suspense>,
-    );
+    renderPath('/dashboard');
     expect(await screen.findByTestId('page-dashboard')).toBeDefined();
   });
 
   it('renders unknown paths as NotFound', async () => {
-    const router = createMemoryRouter(routes, {
-      initialEntries: ['/no-such-page'],
-      future: { ...ROUTER_FUTURE_FLAGS },
-    });
-    render(
-      <Suspense fallback={<RouteFallback />}>
-        <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
-      </Suspense>,
-    );
+    renderPath('/no-such-page');
     expect(await screen.findByTestId('page-not-found')).toBeDefined();
+  });
+
+  it('shows the shell skeleton while the session resolves', async () => {
+    useAppStore.getState().setSession('loading', []);
+    renderPath('/dashboard');
+    expect(await screen.findByTestId('session-skeleton')).toBeDefined();
+  });
+
+  it('redirects anonymous users to login', async () => {
+    useAppStore.getState().setSession('anonymous', []);
+    renderPath('/dashboard');
+    expect(await screen.findByTestId('page-login')).toBeDefined();
+  });
+
+  it('redirects non-admin users away from /admin', async () => {
+    renderPath('/admin');
+    expect(await screen.findByTestId('page-forbidden')).toBeDefined();
   });
 });

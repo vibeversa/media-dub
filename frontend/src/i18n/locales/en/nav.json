@@ -1,0 +1,55 @@
+{
+  "brand": "Dubbing Platform",
+  "primary": "Primary",
+  "secondary": "Secondary",
+  "dashboard": "Dashboard",
+  "projects": "Projects",
+  "review": "Review",
+  "notifications": "Notifications",
+  "settings": "Settings",
+  "admin": "Admin",
+  "bell": {
+    "label": "Notifications",
+    "unread_one": "{{count}} unread notification",
+    "unread_other": "{{count}} unread notifications"
+  },
+  "userMenu": {
+    "label": "Account",
+    "signOut": "Sign out"
+  },
+  "localeSwitcher": {
+    "label": "Language",
+    "languages": {
+      "en": "English",
+      "ar": "العربية"
+    }
+  },
+  "themeSwitcher": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "projectTabs": {
+    "header": "Project",
+    "overview": "Overview",
+    "media": "Media",
+    "transcript": "Transcript",
+    "translation": "Translation",
+    "voices": "Voices",
+    "timeline": "Timeline",
+    "quality": "Quality",
+    "exports": "Exports",
+    "activity": "Activity",
+    "disabledReason": {
+      "needsTranscript": "Available after the transcript is ready",
+      "needsMedia": "Available after media upload completes",
+      "nothingToExport": "Available when output is ready"
+    },
+    "badge": {
+      "readyCount_one": "{{count}} ready",
+      "readyCount_other": "{{count}} ready",
+      "openReviews_one": "{{count}} open",
+      "openReviews_other": "{{count}} open"
+    }
+  }
+}

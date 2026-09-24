@@ -1,2 +1,3 @@
-// Telemetry sinks land in Task 018. Disabled unless VITE_TELEMETRY_ENABLED=true.
-export {};
+export * from './correlation.js';
+export * from './telemetry.js';
+export * from './telemetryContext.js';

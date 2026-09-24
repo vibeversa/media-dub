@@ -1,0 +1,16 @@
+{
+  "skipToContent": "Skip to main content",
+  "loading": "Loading…",
+  "retry": "Retry",
+  "dismiss": "Dismiss",
+  "footer": {
+    "version": "Version {{version}}"
+  },
+  "forbidden": {
+    "title": "Not allowed",
+    "description": "You do not have permission to view this page. Contact your tenant admin if you need access.",
+    "backToDashboard": "Back to dashboard"
+  },
+  "items_one": "{{count}} item",
+  "items_other": "{{count}} items"
+}

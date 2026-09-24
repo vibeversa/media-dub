@@ -1,5 +1,6 @@
-import type { OutputState, ProviderHealth, ReviewStatus as GeneratedReviewStatus, VoicePreviewStatus as GeneratedVoicePreviewStatus } from '../../api/generated/schemas.js';
+import type { OutputState, ProviderHealth, ReviewStatus as GeneratedReviewStatus, VoicePreviewStatus as GeneratedVoicePreviewStatus } from '../../api/client/index.js';
 import type { BadgeTone } from '../Badge/Badge.js';
+import { trackUnknownStatus } from '../../telemetry/telemetry.js';
 
 export type ProviderStatus = NonNullable<ProviderHealth['status']>;
 export type CircuitBreakerState = NonNullable<ProviderHealth['circuitBreakerState']>;
@@ -136,6 +137,8 @@ export function isKnownStatus(status: string): boolean {
 }
 
 export function warnUnknownStatus(status: string): void {
-  // Task 018 wires real telemetry; until then a console warning is the signal.
+  // Task 018: unknown statuses emit telemetry (allowlisted status-only event)
+  // in addition to the dev-visible console warning.
+  trackUnknownStatus(status);
   console.warn(`[StatusBadge] unknown status: ${status}`);
 }
