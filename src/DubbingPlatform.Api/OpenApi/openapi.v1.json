@@ -1,0 +1,5294 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Dubbing Platform API",
+    "version": "v1",
+    "description": "Tenant-scoped dubbing pipeline (Tasks 006-013, frozen). Auth: JWT bearer with tid (tenant), sub (user), roles[] claims; SSE /progress/stream additionally accepts ?access_token= (same policy, short-TTL, never logged). Tenant isolation: cross-tenant ids return 404 (no existence leak), except project-scoped reads which return 403 and admin per-resource reads which return 404. Errors: every failure is { error: { code, message, correlationId, details } } with exactly one catalog code (see ErrorCode; mapping: validation 400, auth 401, forbidden 403, not-found 404 incl. cross-tenant, conflict 409, quota 429, provider 502/504, unknown 500 INTERNAL_ERROR with a generic message). Pagination is page-based: { items, page, pageSize, total, hasMore } (generic lists default 20/max 100; segments default 50/max 200; admin diagnostics default 50/max 200). Mutations accept Idempotency-Key (required on processing start, exports, review mutations, voice previews; same key+body replays with Idempotent-Replayed:true, same key+different body is 409). Concurrency: PATCH projects uses If-Match (settings version); segment selection and review mutations use expectedVersion bodies (stale is 409 with current version in details). SSE: GET .../progress/stream emits frozen SseEnvelope frames (14 event types, schemaVersion 1, allowlisted payload, Last-Event-ID resume with last-100 headers-only replay; hint only, HTTP APIs are source of truth)."
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "Versioned API root (relative; tenant comes from the JWT tid claim)."
+    }
+  ],
+  "security": [
+    {
+      "Bearer": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "auth",
+      "description": "Login, refresh, logout (never take Idempotency-Key; every call mints fresh secrets)."
+    },
+    {
+      "name": "me",
+      "description": "Identity and preferences (naturally idempotent; no Idempotency-Key)."
+    },
+    {
+      "name": "dashboard",
+      "description": "Seven-section tenant summary."
+    },
+    {
+      "name": "projects",
+      "description": "Project CRUD, settings patch with concurrency, archive lifecycle."
+    },
+    {
+      "name": "uploads",
+      "description": "Multipart media upload sessions."
+    },
+    {
+      "name": "processing",
+      "description": "Run lifecycle (idempotent start), progress, frozen SSE stream."
+    },
+    {
+      "name": "workspace",
+      "description": "Aggregates and thin projections over a project."
+    },
+    {
+      "name": "segments",
+      "description": "Transcript/translation versions, selection with optimistic concurrency, edits."
+    },
+    {
+      "name": "speakers",
+      "description": "Speaker roster, compatible voices, voice assignment, previews."
+    },
+    {
+      "name": "reviews",
+      "description": "Review queues, frozen context aggregate, idempotent mutations."
+    },
+    {
+      "name": "output",
+      "description": "Output readiness aggregate and download."
+    },
+    {
+      "name": "exports",
+      "description": "Export jobs (7-day idempotency) and signed-URL download."
+    },
+    {
+      "name": "notifications",
+      "description": "Durable inbox (page-based); notification.created SSE is hint only."
+    },
+    {
+      "name": "admin",
+      "description": "Elevated read-only diagnostics (admin.manage or diagnostics.view; audited admin.access)."
+    }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "authLogin",
+        "tags": ["auth"],
+        "summary": "Log in with tenant credentials",
+        "description": "Mints a 15-minute access JWT plus a 7-day refresh session. Never idempotent: every call mints fresh secrets. Failures use INVALID_CREDENTIALS / USER_DISABLED.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthLoginRequest"
+              },
+              "example": {
+                "tenantSlug": "acme",
+                "email": "owner@example.com",
+                "password": "***"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Access token, refresh token, and identity.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthLoginResponse"
+                },
+                "example": {
+                  "accessToken": "***",
+                  "refreshToken": "***",
+                  "tokenType": "Bearer",
+                  "expiresInSeconds": 900,
+                  "userId": "usr_01JABCDEF",
+                  "tenantId": "t_01JABCDEF"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "operationId": "authRefresh",
+        "tags": ["auth"],
+        "summary": "Rotate a refresh session",
+        "description": "Rotates {sessionId:N}.{secret}; reuse of a rotated secret revokes the family (TOKEN_REUSED, 401). Never idempotent.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthRefreshRequest"
+              },
+              "example": {
+                "refreshToken": "***"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rotated token pair.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthLoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "authLogout",
+        "tags": ["auth"],
+        "summary": "Revoke the current refresh session",
+        "description": "Revokes the caller's refresh family. Idempotent: unknown sessions still return 200.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthRefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Logged out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "loggedOut": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "operationId": "getMe",
+        "tags": ["me"],
+        "summary": "Current identity with permissions",
+        "description": "Returns tenant/user identity plus resolved UX-hint permission strings (never a security boundary; endpoints re-authorize).",
+        "responses": {
+          "200": {
+            "description": "Identity and permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/me/preferences": {
+      "get": {
+        "operationId": "getPreferences",
+        "tags": ["me"],
+        "summary": "Read identity preferences",
+        "description": "Last-writer-wins per key. Unknown keys read as null (never 404).",
+        "responses": {
+          "200": {
+            "description": "Preference map.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updatePreferences",
+        "tags": ["me"],
+        "summary": "Write identity preferences",
+        "description": "Naturally idempotent PUT (no Idempotency-Key). Unknown keys are 400 PREFERENCE_KEY_UNKNOWN; oversize values are 413 PREFERENCE_VALUE_TOO_LARGE.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesResponse"
+              },
+              "example": {
+                "locale": "en",
+                "theme": "dark"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stored preference map.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "413": {
+            "description": "Preference value too large.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "code": "PREFERENCE_VALUE_TOO_LARGE",
+                    "message": "Preference value exceeds the size limit.",
+                    "correlationId": "corr-01JABCDEF",
+                    "details": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dashboard/summary": {
+      "get": {
+        "operationId": "getDashboardSummary",
+        "tags": ["dashboard"],
+        "summary": "Seven-section tenant summary",
+        "description": "Sections: projectCounts, recentOutputs (<=5, newest first), storage, cost (month-to-date USD), quota (projects-per-day remaining), warnings[], backlog. Counts and bytes only.",
+        "responses": {
+          "200": {
+            "description": "Dashboard summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects": {
+      "post": {
+        "operationId": "createProject",
+        "tags": ["projects"],
+        "summary": "Create a project",
+        "description": "TenantAdmin/ProjectOwner/ProjectEditor. Name optional (absent renders Untitled project, 1..200 chars). Languages immutable after creation. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateRequest"
+              },
+              "example": {
+                "name": "Pilot episode",
+                "sourceLanguage": "en",
+                "targetLanguage": "es"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listProjects",
+        "tags": ["projects"],
+        "summary": "List projects (page-based)",
+        "description": "Envelope { items, page, pageSize, total, sort, sortDir, hasMore, clamped }. Archived excluded by default.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["createdAt", "updatedAt", "name"],
+              "default": "createdAt"
+            }
+          },
+          {
+            "name": "sortDir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"],
+              "default": "desc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project list envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "prj_01JABCDEF",
+                      "name": "Pilot episode",
+                      "status": "Draft"
+                    }
+                  ],
+                  "page": 1,
+                  "pageSize": 20,
+                  "total": 1,
+                  "sort": "createdAt",
+                  "sortDir": "desc",
+                  "hasMore": false,
+                  "clamped": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}": {
+      "get": {
+        "operationId": "getProject",
+        "tags": ["projects"],
+        "summary": "Project detail",
+        "description": "Cross-tenant ids return 403 FORBIDDEN. Archived projects read normally.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchProject",
+        "tags": ["projects"],
+        "summary": "Patch project settings (optimistic concurrency)",
+        "description": "Strict patch: languages immutable (LANGUAGE_IMMUTABLE 400); processingSettings changes while a run is active are 409 SETTINGS_LOCKED_ACTIVE_RUN. Concurrency: send If-Match with the settings version (else settingsVersion body field); stale versions are 409 SETTINGS_VERSION_CONFLICT. Version bumps only on processingSettings change; hash recomputed.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPatchRequest"
+              },
+              "example": {
+                "name": "Pilot episode (final)",
+                "settingsVersion": 3
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Patched project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteProject",
+        "tags": ["projects"],
+        "summary": "Delete a project (guarded)",
+        "description": "TenantAdmin/Owner only. Projects with an active run are 409 PROJECT_HAS_ACTIVE_RUN. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/archive": {
+      "post": {
+        "operationId": "archiveProject",
+        "tags": ["projects"],
+        "summary": "Archive a project",
+        "description": "Archived projects reject processing start with 409 PROJECT_ARCHIVED. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archived project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/unarchive": {
+      "post": {
+        "operationId": "unarchiveProject",
+        "tags": ["projects"],
+        "summary": "Unarchive a project",
+        "description": "Restores an archived project. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unarchived project.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/uploads": {
+      "post": {
+        "operationId": "initiateUpload",
+        "tags": ["uploads"],
+        "summary": "Initiate a multipart upload",
+        "description": "Returns an upload session with part URLs. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadInitiateRequest"
+              },
+              "example": {
+                "fileName": "episode01.wav",
+                "contentType": "audio/wav",
+                "sizeBytes": 104857600,
+                "partCount": 4
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Upload session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listUploads",
+        "tags": ["uploads"],
+        "summary": "List upload sessions",
+        "description": "Page-based list, newest first.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload list envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/uploads/{uploadId}": {
+      "get": {
+        "operationId": "getUpload",
+        "tags": ["uploads"],
+        "summary": "Upload session detail",
+        "description": "Includes received parts and completion state (never media bytes).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/UploadId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/uploads/{uploadId}/parts": {
+      "post": {
+        "operationId": "authorizeUploadPart",
+        "tags": ["uploads"],
+        "summary": "Authorize one upload part",
+        "description": "Returns a short-lived part URL. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/UploadId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["partNumber"],
+                "properties": {
+                  "partNumber": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "example": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Part authorization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadPartAuth"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/uploads/{uploadId}/complete": {
+      "post": {
+        "operationId": "completeUpload",
+        "tags": ["uploads"],
+        "summary": "Complete a multipart upload",
+        "description": "Validates checksums and materializes the media asset. Incomplete part sets are 400 UPLOAD_INCOMPLETE. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/UploadId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Completed upload session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/uploads/{uploadId}/abort": {
+      "post": {
+        "operationId": "abortUpload",
+        "tags": ["uploads"],
+        "summary": "Abort a multipart upload",
+        "description": "Discards staged parts. Idempotent. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/UploadId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aborted upload session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/processing": {
+      "post": {
+        "operationId": "startProcessing",
+        "tags": ["processing"],
+        "summary": "Start a processing run (idempotent, 24h key scope)",
+        "description": "Returns 202 on first start; same key+body replays 200 with Idempotent-Replayed:true. Missing key is 400 IDEMPOTENCY_KEY_REQUIRED; archived project is 409 PROJECT_ARCHIVED; active run is 409 RUN_ALREADY_ACTIVE unless ?force=true with processing.retry. Changed settings since the last run are 409 CONFIG_CHANGED_SINCE_RUN.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Bypass the active-run check (requires processing.retry)."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessingStartRequest"
+              },
+              "example": {
+                "configHash": "cfg_01JABCDEF"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Run started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingRun"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay of the same key+body (Idempotent-Replayed:true header).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listProcessingRuns",
+        "tags": ["processing"],
+        "summary": "List processing runs (page-based)",
+        "description": "Envelope { items[{ runId, status, retryOfRunId? }], page, pageSize, total, hasMore }.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run list envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingRunListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/processing/active": {
+      "get": {
+        "operationId": "getActiveProcessingRun",
+        "tags": ["processing"],
+        "summary": "Active processing run (legacy)",
+        "description": "Returns the active run or 404 when none is active.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/processing/{runId}": {
+      "get": {
+        "operationId": "getProcessingRun",
+        "tags": ["processing"],
+        "summary": "Processing run detail",
+        "description": "Run detail with stage states. Cross-tenant run ids return 404.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/processing/{runId}/cancel": {
+      "post": {
+        "operationId": "cancelProcessingRun",
+        "tags": ["processing"],
+        "summary": "Cancel a run (idempotent, 202)",
+        "description": "Terminal runs are 409 RUN_ALREADY_TERMINAL. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Cancellation accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/processing/{runId}/retry": {
+      "post": {
+        "operationId": "retryProcessingRun",
+        "tags": ["processing"],
+        "summary": "Retry a run as a new linked run",
+        "description": "Creates a new run linked via retryOfRunId, copying the config hash. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Retry run started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/processing/cancel": {
+      "post": {
+        "operationId": "cancelActiveProcessingRun",
+        "tags": ["processing"],
+        "summary": "Cancel the active run (legacy)",
+        "description": "Legacy per-project cancel; prefers per-run cancel. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Cancellation accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/processing/retry": {
+      "post": {
+        "operationId": "retryActiveProcessingRun",
+        "tags": ["processing"],
+        "summary": "Retry the active run (legacy)",
+        "description": "Legacy per-project retry; prefers per-run retry. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Retry run started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/progress": {
+      "get": {
+        "operationId": "getProgress",
+        "tags": ["processing"],
+        "summary": "Run progress snapshot",
+        "description": "Source of truth for progress; percentApproximate is display-only. SSE stream emits the same shape as hints.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Progress snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressResponse"
+                },
+                "example": {
+                  "projectId": "prj_01JABCDEF",
+                  "status": "Running",
+                  "phase": "Transcription",
+                  "percentApproximate": 42,
+                  "currentStage": "Transcription",
+                  "completedUnits": 21,
+                  "failedUnits": 0,
+                  "expectedUnits": 50
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/progress/stream": {
+      "get": {
+        "operationId": "streamProgress",
+        "tags": ["processing"],
+        "summary": "Stream progress as frozen SSE envelopes",
+        "description": "text/event-stream of SseEnvelope frames (eventType stage.progress, schemaVersion 1, allowlisted payload). Auth: Authorization Bearer or ?access_token= (same policy, short-TTL, never logged). Last-Event-ID resume replays missed envelope headers from the last-100 buffer (no payload backfill); replay beyond the window sets the replayTruncated:true response header and the client falls back to polling. Oversize payloads are dropped (counted in sse.payload_dropped_total); the stream stays open. Cross-tenant ids return 404. Frames are invalidation hints; GET .../progress is the source of truth.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/LastEventId"
+          },
+          {
+            "$ref": "#/components/parameters/AccessToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream of SseEnvelope frames.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SseEnvelope"
+                },
+                "example": "id: e01JABCDEF\nevent: stage.progress\ndata: {\"eventId\":\"e01JABCDEF\",\"schemaVersion\":1,\"eventType\":\"stage.progress\",\"tenantId\":\"t01JABCDEF\",\"projectId\":\"prj_01JABCDEF\",\"occurredAt\":\"2026-09-23T00:00:00Z\",\"payload\":{\"projectId\":\"prj_01JABCDEF\",\"status\":\"Running\",\"percentApproximate\":42},\"correlationId\":\"corr-01JABCDEF\"}\n\n"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/workspace": {
+      "get": {
+        "operationId": "getWorkspace",
+        "tags": ["workspace"],
+        "summary": "Workspace aggregate (single call, ten sections)",
+        "description": "Sections: project, media, run, phase, stage, progress{percentApproximate}, review, warnings[], output, cost, activity[<=10], permissions. Ten batched queries, ceiling 12.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace aggregate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/activity": {
+      "get": {
+        "operationId": "listWorkspaceActivity",
+        "tags": ["workspace"],
+        "summary": "Project activity feed (page-based)",
+        "description": "Audit/activity summaries, newest first. Sanitized summaries only.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Activity page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/quality": {
+      "get": {
+        "operationId": "getWorkspaceQuality",
+        "tags": ["workspace"],
+        "summary": "Quality projection (counts and codes only)",
+        "description": "Failed/blocked counts plus distinct QC codes; never payload text.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Quality projection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "failedCount": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "blockedCount": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "codes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["QC_BLOCKED"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/segments": {
+      "get": {
+        "operationId": "listSegments",
+        "tags": ["segments"],
+        "summary": "List segments (default 50, max 200, sort startMs)",
+        "description": "Filters: speakerId, reviewStatus, qualityFlag, syncIssue, text (substring), startMs, endMs. Cross-tenant segment reads are 404; project mismatch is 403.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "name": "speakerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reviewStatus",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ReviewStatus"
+            }
+          },
+          {
+            "name": "qualityFlag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "syncIssue",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "text",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startMs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "endMs",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize50"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Segment list envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/segments/{segmentId}": {
+      "get": {
+        "operationId": "getSegment",
+        "tags": ["segments"],
+        "summary": "Segment detail with versions",
+        "description": "Detail plus transcript/translation versions and selection state. Cross-tenant ids return 404.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SegmentId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Segment detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/segments/{segmentId}/retry": {
+      "post": {
+        "operationId": "retrySegment",
+        "tags": ["segments"],
+        "summary": "Retry segment synthesis",
+        "description": "Requires the editor role. A retry already active is 409 SEGMENT_RETRY_ACTIVE. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SegmentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Retry accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentMutationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/segments/{segmentId}/transcript-selection": {
+      "post": {
+        "operationId": "selectTranscriptVersion",
+        "tags": ["segments"],
+        "summary": "Select transcript version (optimistic concurrency)",
+        "description": "Body carries expectedVersion (selection version). Stale writes are 409 SELECTION_CONFLICT with { currentSelectionVersion, currentVersionIds } in details. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SegmentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentSelectionRequest"
+              },
+              "example": {
+                "expectedVersion": 4,
+                "selectedVersionIds": ["ver_01JABCDEF"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Selection result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/segments/{segmentId}/translation-selection": {
+      "post": {
+        "operationId": "selectTranslationVersion",
+        "tags": ["segments"],
+        "summary": "Select translation version (optimistic concurrency)",
+        "description": "Same concurrency contract as transcript selection: expectedVersion body, stale is 409 SELECTION_CONFLICT with current versions. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SegmentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentSelectionRequest"
+              },
+              "example": {
+                "expectedVersion": 4,
+                "selectedVersionIds": ["ver_01JABCDEF"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Selection result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/segments/{segmentId}/transcript-edits": {
+      "post": {
+        "operationId": "editTranscript",
+        "tags": ["segments"],
+        "summary": "Submit a manual transcript edit",
+        "description": "HTML is stripped server-side; empty results are 400 SEGMENT_TEXT_EMPTY. Creates a manual version. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SegmentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentEditRequest"
+              },
+              "example": {
+                "expectedVersion": 4,
+                "text": "Corrected line of dialogue."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Edit result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/segments/{segmentId}/translation-edits": {
+      "post": {
+        "operationId": "editTranslation",
+        "tags": ["segments"],
+        "summary": "Submit a manual translation edit",
+        "description": "Same contract as transcript edits: HTML stripped, blank is 400 SEGMENT_TEXT_EMPTY, manual version created. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SegmentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentEditRequest"
+              },
+              "example": {
+                "expectedVersion": 4,
+                "text": "Linea de dialogo corregida."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Edit result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/speakers": {
+      "get": {
+        "operationId": "listSpeakers",
+        "tags": ["speakers"],
+        "summary": "List speakers (default 20, max 100)",
+        "description": "Rows carry segmentCount and the assigned voice, if any. Page-based.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Speaker list envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeakerListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/speakers/{speakerId}": {
+      "get": {
+        "operationId": "getSpeaker",
+        "tags": ["speakers"],
+        "summary": "Speaker detail",
+        "description": "Detail with appearance window, segment count, and assigned voice. Cross-tenant ids return 404.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SpeakerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Speaker detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeakerDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/speakers/{speakerId}/available-voices": {
+      "get": {
+        "operationId": "listAvailableVoices",
+        "tags": ["speakers"],
+        "summary": "Compatible-only voices with exclusion reasons",
+        "description": "Returns { voices[], excludedCount, excluded[{ voiceId, reasons }] }. Excluded voices are never selectable; direct assignment returns 422 VOICE_INCOMPATIBLE.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SpeakerId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available voices.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailableVoicesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/speakers/{speakerId}/voice-assignment": {
+      "put": {
+        "operationId": "assignSpeakerVoice",
+        "tags": ["speakers"],
+        "summary": "Assign a voice to a speaker",
+        "description": "Project-stable assignment (latest run, else project pseudo-run; single-row invariant). Incompatible voices are 422 VOICE_INCOMPATIBLE; missing consent is 403 VOICE_CONSENT_REQUIRED; assigning the current voice returns 200 with changed:false. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SpeakerId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceAssignmentRequest"
+              },
+              "example": {
+                "voiceId": "voi_01JABCDEF",
+                "reason": "Matches pilot tone."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Assignment result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceAssignmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/voice-previews": {
+      "post": {
+        "operationId": "requestVoicePreview",
+        "tags": ["speakers"],
+        "summary": "Request a voice preview (202 first, 200 duplicate)",
+        "description": "Fast-lane synthesis independent of final dub audio. Duplicate idempotency keys return the existing row (200, isDuplicate:true) without a second provider call. Quota exhaustion is 429 PREVIEW_QUOTA_EXCEEDED; invalid text is 400 PREVIEW_TEXT_INVALID. Idempotency-Key required.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoicePreviewRequest"
+              },
+              "example": {
+                "voiceId": "voi_01JABCDEF",
+                "text": "Preview line for approval."
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Preview requested.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoicePreviewResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Duplicate key: existing preview (isDuplicate:true).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoicePreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooMany"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listVoicePreviews",
+        "tags": ["speakers"],
+        "summary": "List voice previews (default 20, max 100)",
+        "description": "Newest first, page-based.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preview list envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/voice-previews/{previewId}": {
+      "get": {
+        "operationId": "getVoicePreview",
+        "tags": ["speakers"],
+        "summary": "Voice preview detail (15-min presigned URL)",
+        "description": "Detail mints a 15-minute presigned download URL (null when the artifact is missing; never internal paths).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/PreviewId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preview detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoicePreviewDetailResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/reviews": {
+      "get": {
+        "operationId": "listProjectReviews",
+        "tags": ["reviews"],
+        "summary": "List project reviews (page-based)",
+        "description": "Open reviews oldest-first by default; versions/history capped at 50 with truncated flags.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Review list envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/reviews/{reviewId}": {
+      "get": {
+        "operationId": "getProjectReview",
+        "tags": ["reviews"],
+        "summary": "Project-scoped review detail",
+        "description": "Same shape as GET /reviews/{reviewId} with the project ownership check. Cross-tenant ids return 404.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Review detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewContextResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/reviews/{reviewId}": {
+      "get": {
+        "operationId": "getReview",
+        "tags": ["reviews"],
+        "summary": "Review detail",
+        "description": "Review item with decision history. Cross-tenant ids return 404.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Review detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewContextResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/reviews/{reviewId}/approve": {
+      "post": {
+        "operationId": "approveReview",
+        "tags": ["reviews"],
+        "summary": "Approve a review (legacy)",
+        "description": "Reviewer and above. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mutation result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMutationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/reviews/{reviewId}/reject": {
+      "post": {
+        "operationId": "rejectReview",
+        "tags": ["reviews"],
+        "summary": "Reject a review (legacy)",
+        "description": "Reviewer and above. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mutation result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMutationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/reviews/{reviewId}/requeue": {
+      "post": {
+        "operationId": "requeueReview",
+        "tags": ["reviews"],
+        "summary": "Requeue a review (legacy)",
+        "description": "Sends the item back for rework without touching the run. Idempotency-Key supported.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mutation result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMutationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/reviews/{reviewId}/context": {
+      "get": {
+        "operationId": "getReviewContext",
+        "tags": ["reviews"],
+        "summary": "Frozen review context (eleven sections)",
+        "description": "Sections: item, project, run, segment, versions, voice, audio, sync, qc, actions/permissions, history (~13 batched reads). Never review payload text beyond selected snippets; signed URLs null.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Review context aggregate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewContextResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/reviews/{reviewId}/resolve": {
+      "post": {
+        "operationId": "resolveReview",
+        "tags": ["reviews"],
+        "summary": "Resolve a review (hardened, idempotent)",
+        "description": "Body carries expectedVersion (decision-row count) and a required reason (max 500, HTML stripped; blank is 400 REVIEW_REASON_REQUIRED). Stale versions are 409 REVIEW_VERSION_CONFLICT with { currentVersion }. Per-review idempotency (tenant, review-mutation:{id:N}, key, 24h); replay returns 200 with Idempotent-Replayed:true; same key with a different body is 409 CONFLICT.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewMutationRequest"
+              },
+              "example": {
+                "expectedVersion": 2,
+                "reason": "Timing verified against picture."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutation result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/reviews/{reviewId}/dismiss": {
+      "post": {
+        "operationId": "dismissReview",
+        "tags": ["reviews"],
+        "summary": "Dismiss a review (hardened, idempotent)",
+        "description": "Same concurrency/idempotency contract as resolve; records a Reject decision. Already-resolved items are 409 REVIEW_ALREADY_RESOLVED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewMutationRequest"
+              },
+              "example": {
+                "expectedVersion": 2,
+                "reason": "False positive from QC."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutation result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/reviews/{reviewId}/reopen": {
+      "post": {
+        "operationId": "reopenReview",
+        "tags": ["reviews"],
+        "summary": "Reopen a resolved review (hardened, idempotent)",
+        "description": "Bypasses the state machine via a conditional reopen (Requeue decision); reopening an open item is 409 REVIEW_ALREADY_RESOLVED semantics; resolving state errors use REVIEW_NOT_RESOLVED. Same idempotency contract as resolve. Never touches the run or publishes.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewMutationRequest"
+              },
+              "example": {
+                "expectedVersion": 3,
+                "reason": "Director requested another pass."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutation result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/reviews/{reviewId}/resolve-with-edit": {
+      "post": {
+        "operationId": "resolveReviewWithEdit",
+        "tags": ["reviews"],
+        "summary": "Resolve with a manual edit (hardened, idempotent)",
+        "description": "Same contract as resolve plus editText (HTML stripped; blank is 400 REVIEW_EDIT_EMPTY); creates a manual version. Same idempotency contract as resolve.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReviewId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewMutationRequest"
+              },
+              "example": {
+                "expectedVersion": 2,
+                "reason": "Fixed with editor wording.",
+                "editText": "Corrected line of dialogue."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mutation result (includes manualVersionId).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMutationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/output": {
+      "get": {
+        "operationId": "getOutput",
+        "tags": ["output"],
+        "summary": "Output readiness aggregate",
+        "description": "Shape { state Ready|Generating|Failed|Partial|Unavailable, generationState (alias of state), reason? (NO_RUNS_YET when no runs), completeness{ready,total}, progressApproximate? (Generating), errorCode? (Failed), items{video?,audio?,subtitles[],transcript?,translation?,timeline?,speakers?,qc{summary,issuesUrl?}} each with state+generationState, warnings[], updatedAt }. Signed URLs are 15-minute only, never storage keys. Cross-tenant aggregate reads are 404. Note: WorkspaceController exposes a same-path thin projection (paginated OutputAsset rows); the readiness aggregate pinned here is the authoritative output contract (Tasks 012/012A).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Output aggregate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutputResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/output/download": {
+      "get": {
+        "operationId": "downloadOutput",
+        "tags": ["output"],
+        "summary": "Output download descriptor (200 JSON)",
+        "description": "Returns a 200 JSON descriptor with the download URL (15-minute presigned). Incomplete outputs are 409 OUTPUT_INCOMPLETE.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Download descriptor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "downloadUrl": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "15-minute presigned URL (never a storage key)."
+                    },
+                    "expiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/exports": {
+      "post": {
+        "operationId": "createExport",
+        "tags": ["exports"],
+        "summary": "Create an export job (idempotent, 7-day key scope)",
+        "description": "Body { format, profile? (normalized kebab, max 64, no traversal), allowPartial? }. Returns 202; replay of the same key+body returns the single row. Incomplete output without allowPartial is 409 EXPORT_INCOMPLETE/OUTPUT_INCOMPLETE with a partial offer. Idempotency-Key required.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportCreateRequest"
+              },
+              "example": {
+                "format": "Srt",
+                "profile": "broadcast-hd",
+                "allowPartial": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Export job created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Export"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay of the same key+body (Idempotent-Replayed:true header).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Export"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listExports",
+        "tags": ["exports"],
+        "summary": "List export jobs (page-based)",
+        "description": "Newest first. Export retention surfaces via idempotency (7d).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export list envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/exports/{exportId}": {
+      "get": {
+        "operationId": "getExport",
+        "tags": ["exports"],
+        "summary": "Export job detail",
+        "description": "Cross-tenant export ids return 404.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/ExportId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Export job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Export"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/exports/{exportId}/download": {
+      "get": {
+        "operationId": "downloadExport",
+        "tags": ["exports"],
+        "summary": "Export download (302 to signed URL)",
+        "description": "302 redirect to a 15-minute signed URL with an export.download audit. Not-ready jobs are 409 EXPORT_NOT_READY; expired URLs are 410 URL_EXPIRED.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/ExportId"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the signed URL."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "operationId": "listNotifications",
+        "tags": ["notifications"],
+        "summary": "Notification inbox (page-based, newest first)",
+        "description": "Strict recipient scoping (TenantId + RecipientUserId == caller); expired rows excluded. ?unreadOnly=true filters unread. Payloads carry short summaries only. Deep links (resourceType/resourceId/projectId) route the frontend; when the linked row is gone, fall back to projectId then the list. notification.created SSE is a hint only; this API is the source of truth.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "name": "unreadOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification list envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "operationId": "getUnreadNotificationCount",
+        "tags": ["notifications"],
+        "summary": "Unread notification count (same scope as list)",
+        "description": "Lightweight count over the inbox scope (unread, unexpired, recipient-owned).",
+        "responses": {
+          "200": {
+            "description": "Unread count.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCountResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/notifications/{notificationId}/read": {
+      "post": {
+        "operationId": "markNotificationRead",
+        "tags": ["notifications"],
+        "summary": "Mark one notification read (idempotent)",
+        "description": "Idempotent; cross-user/cross-tenant/expired ids return 404 without leak. No Idempotency-Key (naturally idempotent).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/NotificationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "marked": {
+                      "type": "boolean",
+                      "example": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/notifications/read-all": {
+      "post": {
+        "operationId": "markAllNotificationsRead",
+        "tags": ["notifications"],
+        "summary": "Mark all notifications read (idempotent)",
+        "description": "Idempotent; returns both markedCount and marked for compatibility. No Idempotency-Key (naturally idempotent).",
+        "responses": {
+          "200": {
+            "description": "Bulk read receipt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "markedCount": {
+                      "type": "integer",
+                      "example": 3
+                    },
+                    "marked": {
+                      "type": "integer",
+                      "example": 3
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/admin/status": {
+      "get": {
+        "operationId": "getAdminStatus",
+        "tags": ["admin"],
+        "summary": "Operator status probe",
+        "description": "Requires TenantAdmin/Service JWT role. Appends an admin.access audit event.",
+        "responses": {
+          "200": {
+            "description": "Status probe.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "time": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/stages/{execId}": {
+      "get": {
+        "operationId": "getAdminStage",
+        "tags": ["admin"],
+        "summary": "Stage execution detail (no lease token)",
+        "description": "TenantAdmin/Service only. Cross-tenant ids return 404 (no existence leak).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExecId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stage execution diagnostics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "stageType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "leaseOwner": {
+                      "type": "string"
+                    },
+                    "leaseExpiresAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "attempt": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/admin/provider-executions/{id}": {
+      "get": {
+        "operationId": "getAdminProviderExecution",
+        "tags": ["admin"],
+        "summary": "Provider execution detail (ids/hashes only)",
+        "description": "TenantAdmin/Service only. Never secrets. Cross-tenant ids return 404.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider execution diagnostics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "type": "string"
+                    },
+                    "capability": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "type": "string"
+                    },
+                    "latencyMs": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/admin/dlq/summary": {
+      "get": {
+        "operationId": "getAdminDlqSummary",
+        "tags": ["admin"],
+        "summary": "DLQ summary (DB-free operator guidance)",
+        "description": "TenantAdmin/Service only. Documents queues, metric names, and SLO thresholds. Broker queue depth remains the alerting source of truth.",
+        "responses": {
+          "200": {
+            "description": "DLQ guidance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "queues": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["_skipped", "_error"]
+                    },
+                    "metrics": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["dlq.depth", "messaging.schema_mismatch_total"]
+                    },
+                    "slo": {
+                      "type": "string"
+                    },
+                    "guidance": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/leases/status": {
+      "get": {
+        "operationId": "getAdminLeases",
+        "tags": ["admin"],
+        "summary": "Lease status (paginated, max 100)",
+        "description": "TenantAdmin/Service only. Running executions with lease owner/expiry; never tokens.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lease page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/reviews/backlog": {
+      "get": {
+        "operationId": "getAdminReviewBacklogLegacy",
+        "tags": ["admin"],
+        "summary": "Review backlog rows (paginated, max 100)",
+        "description": "TenantAdmin/Service only. Open reviews oldest-first; no payload text.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backlog page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/usage": {
+      "get": {
+        "operationId": "getAdminUsage",
+        "tags": ["admin"],
+        "summary": "Tenant usage aggregate",
+        "description": "Elevated: admin.manage or diagnostics.view (TenantAdmin/Service/Operator JWT roles pass; ProjectOwner membership grants diagnostics.view; service guard re-checks). Counts and bytes only: storage, month cost, daily quota remaining, active runs, pending reviews. Audited admin.access.",
+        "responses": {
+          "200": {
+            "description": "Usage aggregate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUsageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/quotas": {
+      "get": {
+        "operationId": "getAdminQuotas",
+        "tags": ["admin"],
+        "summary": "Tenant quota limits (frozen Quota options)",
+        "description": "Elevated (admin.manage or diagnostics.view). Limits only, never secrets. Audited admin.access.",
+        "responses": {
+          "200": {
+            "description": "Quota limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminQuotasResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/provider-health": {
+      "get": {
+        "operationId": "getAdminProviderHealth",
+        "tags": ["admin"],
+        "summary": "Provider health snapshots (secret-free)",
+        "description": "Elevated (admin.manage or diagnostics.view). Per-provider status, p95 latency, error rate, last success, routes, circuit state. Never keys or endpoints with credentials.",
+        "responses": {
+          "200": {
+            "description": "Provider health list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderHealth"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/provider-routes": {
+      "get": {
+        "operationId": "getAdminProviderRoutes",
+        "tags": ["admin"],
+        "summary": "Provider routes (names only)",
+        "description": "Elevated (admin.manage or diagnostics.view). Capability to provider with priority and enablement; never keys.",
+        "responses": {
+          "200": {
+            "description": "Provider route list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderRoute"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/diagnostics/queues": {
+      "get": {
+        "operationId": "getDiagnosticsQueues",
+        "tags": ["admin"],
+        "summary": "Queue depths (frozen taxonomy)",
+        "description": "Elevated (admin.manage or diagnostics.view). Pending depth per queue, zero-filled. Counts only, never bodies.",
+        "responses": {
+          "200": {
+            "description": "Queue depth list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QueueDepth"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/diagnostics/dlq": {
+      "get": {
+        "operationId": "getDiagnosticsDlq",
+        "tags": ["admin"],
+        "summary": "DLQ summary (empty is a 200 zero-shape)",
+        "description": "Elevated (admin.manage or diagnostics.view). Depth, oldest age, top reasons; reasons paginated (?page/?pageSize, default 50, max 200) while depth/oldest stay totals. Never 404.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize50"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "DLQ summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DlqSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/diagnostics/leases": {
+      "get": {
+        "operationId": "getDiagnosticsLeases",
+        "tags": ["admin"],
+        "summary": "Stale leases (page-based, default 50, max 200)",
+        "description": "Elevated (admin.manage or diagnostics.view). Running leases past TTL with expired heartbeat. Empty is a 200 zero page. Never lease tokens.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize50"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stale lease page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/diagnostics/orphans": {
+      "get": {
+        "operationId": "getDiagnosticsOrphans",
+        "tags": ["admin"],
+        "summary": "Orphan artifacts (cursor pagination)",
+        "description": "Elevated (admin.manage or diagnostics.view). Content objects with no owning reference. Cursor pagination (?pageSize default 50 max 200, opaque ?cursor); empty is a 200 zero page. Never storage keys or bytes.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageSize50"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque skip cursor from the previous page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Orphan page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrphanPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/diagnostics/review-backlog": {
+      "get": {
+        "operationId": "getDiagnosticsReviewBacklog",
+        "tags": ["admin"],
+        "summary": "Review backlog aggregation",
+        "description": "Elevated (admin.manage or diagnostics.view). Status/severity counts, oldest wait, per-project open breakdown. Counts and ids only, never payload text.",
+        "responses": {
+          "200": {
+            "description": "Review backlog.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewBacklog"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT bearer with tid (tenant), sub (user), roles[] claims."
+      }
+    },
+    "parameters": {
+      "ProjectId": {
+        "name": "projectId",
+        "in": "path",
+        "required": true,
+        "description": "Project id (prj_ public id or GUID). Cross-tenant ids are 403 on project reads.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RunId": {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "description": "Processing run id. Cross-tenant ids are 404.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SegmentId": {
+        "name": "segmentId",
+        "in": "path",
+        "required": true,
+        "description": "Segment id. Cross-tenant ids are 404.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SpeakerId": {
+        "name": "speakerId",
+        "in": "path",
+        "required": true,
+        "description": "Speaker id. Cross-tenant ids are 404.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ReviewId": {
+        "name": "reviewId",
+        "in": "path",
+        "required": true,
+        "description": "Review id. Cross-tenant ids are 404.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ExportId": {
+        "name": "exportId",
+        "in": "path",
+        "required": true,
+        "description": "Export id (exp_ public id). Cross-tenant ids are 404.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "UploadId": {
+        "name": "uploadId",
+        "in": "path",
+        "required": true,
+        "description": "Upload session id.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "NotificationId": {
+        "name": "notificationId",
+        "in": "path",
+        "required": true,
+        "description": "Notification id (ntf_ public id). Cross-user/cross-tenant ids are 404.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PreviewId": {
+        "name": "previewId",
+        "in": "path",
+        "required": true,
+        "description": "Voice preview id (vpv_ public id). Cross-tenant ids are 404.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ExecId": {
+        "name": "execId",
+        "in": "path",
+        "required": true,
+        "description": "Stage execution id. Cross-tenant ids are 404.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "description": "1-based page number.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        }
+      },
+      "PageSize": {
+        "name": "pageSize",
+        "in": "query",
+        "required": false,
+        "description": "Rows per page (generic lists: default 20, max 100).",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      },
+      "PageSize50": {
+        "name": "pageSize",
+        "in": "query",
+        "required": false,
+        "description": "Rows per page (segments/admin diagnostics: default 50, max 200).",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Idempotency key for safe retries. Required on processing start (24h scope), export create (7d), review mutations (24h per-review scope), and voice preview requests. Same key+body replays (200 + Idempotent-Replayed:true); same key+different body is 409. Auth (/auth/*) and identity (/me*) routes never take this header.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": false,
+        "description": "Expected settings version for PATCH /projects/{projectId} (optimistic concurrency; alternative to the settingsVersion body field). Stale versions are 409 SETTINGS_VERSION_CONFLICT.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "LastEventId": {
+        "name": "Last-Event-ID",
+        "in": "header",
+        "required": false,
+        "description": "Resume cursor for the SSE stream. Missed envelope headers replay from the last-100 buffer; replay beyond the window sets replayTruncated:true and the client falls back to polling.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "AccessToken": {
+        "name": "access_token",
+        "in": "query",
+        "required": false,
+        "description": "Short-TTL bearer for /progress/stream only (EventSource cannot set headers). Same policy as Authorization; never logged.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Validation failure (400) with a catalog code.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "VALIDATION_FAILED",
+                "message": "Request validation failed.",
+                "correlationId": "corr-01JABCDEF",
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid credentials (401).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "UNAUTHORIZED",
+                "message": "Authentication is required.",
+                "correlationId": "corr-01JABCDEF",
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Caller lacks permission (403; cross-tenant project reads).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "FORBIDDEN",
+                "message": "The caller is not allowed to access this resource.",
+                "correlationId": "corr-01JABCDEF",
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Missing resource (404; cross-tenant ids, no existence leak).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "The requested resource was not found.",
+                "correlationId": "corr-01JABCDEF",
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "State conflict (409) with a catalog code and current-state details.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "SELECTION_CONFLICT",
+                "message": "Selection version is stale.",
+                "correlationId": "corr-01JABCDEF",
+                "details": {
+                  "currentSelectionVersion": 5,
+                  "currentVersionIds": ["ver_01JABCDEF"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "Unprocessable": {
+        "description": "Semantic failure (422) with a catalog code.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "VOICE_INCOMPATIBLE",
+                "message": "Voice is not compatible with this speaker.",
+                "correlationId": "corr-01JABCDEF",
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "TooMany": {
+        "description": "Quota or rate rejection (429) with a catalog code.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "RATE_LIMITED",
+                "message": "Rate limit exceeded.",
+                "correlationId": "corr-01JABCDEF",
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "Gone": {
+        "description": "Expired URL (410 URL_EXPIRED).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "URL_EXPIRED",
+                "message": "The signed URL has expired.",
+                "correlationId": "corr-01JABCDEF",
+                "details": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorCode": {
+        "type": "string",
+        "description": "Frozen public error-code catalog (65 codes). Status mapping: VALIDATION_FAILED 400, UNAUTHORIZED/INVALID_CREDENTIALS/TOKEN_EXPIRED/TOKEN_REUSED 401, FORBIDDEN/CONSENT_REQUIRED/POLICY_DENIED/USER_DISABLED/VOICE_CONSENT_REQUIRED 403, NOT_FOUND/PROJECT_NOT_FOUND/VERSION_NOT_FOUND/VOICE_NOT_FOUND/ARTIFACT_UNAVAILABLE 404, MEDIA_UNSUPPORTED 415, MEDIA_CORRUPT/QC_BLOCKED/ARTIFACT_CHECKSUM_MISMATCH/VOICE_INCOMPATIBLE/IDEMPOTENCY_KEY_REUSED 422, PROVIDER_RATE_LIMITED/PROVIDER_QUOTA_EXHAUSTED/QUOTA_EXCEEDED/RATE_LIMITED 429, RESOURCE_EXHAUSTED/STORAGE_UNAVAILABLE 503, PROVIDER_TIMEOUT 504, PROVIDER_INVALID_RESPONSE/PROVIDER_FAILED 502, PROVIDER_CONFIGURATION_ERROR/PIPELINE_INVARIANT_VIOLATION/INTERNAL_ERROR 500, PREFERENCE_VALUE_TOO_LARGE 413, URL_EXPIRED 410, all other *_CONFLICT/*_ACTIVE/*_LOCKED/SELECTION_CONFLICT/LEASE_LOST/MANUAL_REVIEW_REQUIRED/EXPORT_NOT_READY/EXPORT_INCOMPLETE/OUTPUT_INCOMPLETE/SEGMENT_RETRY_ACTIVE/REVIEW_*_RESOLVED 409, UPLOAD_INCOMPLETE/LANGUAGE_IMMUTABLE/VERSION_SEGMENT_MISMATCH/SEGMENT_TEXT_EMPTY/PREVIEW_TEXT_INVALID/REVIEW_REASON_REQUIRED/REVIEW_EDIT_EMPTY/PREFERENCE_KEY_UNKNOWN/IDEMPOTENCY_KEY_REQUIRED/DUPLICATE_MEDIA 400-or-409 per catalog, TENANT_REQUIRED 401.",
+        "enum": [
+          "VALIDATION_FAILED",
+          "UNAUTHORIZED",
+          "FORBIDDEN",
+          "NOT_FOUND",
+          "CONFLICT",
+          "MEDIA_UNSUPPORTED",
+          "MEDIA_CORRUPT",
+          "UPLOAD_INCOMPLETE",
+          "DUPLICATE_MEDIA",
+          "PROVIDER_CONFIGURATION_ERROR",
+          "PROVIDER_RATE_LIMITED",
+          "PROVIDER_TIMEOUT",
+          "PROVIDER_INVALID_RESPONSE",
+          "PROVIDER_QUOTA_EXHAUSTED",
+          "PROVIDER_FAILED",
+          "QC_BLOCKED",
+          "QUOTA_EXCEEDED",
+          "RATE_LIMITED",
+          "RESOURCE_EXHAUSTED",
+          "ARTIFACT_UNAVAILABLE",
+          "ARTIFACT_CHECKSUM_MISMATCH",
+          "LEASE_LOST",
+          "PIPELINE_INVARIANT_VIOLATION",
+          "MANUAL_REVIEW_REQUIRED",
+          "EXPORT_NOT_READY",
+          "STORAGE_UNAVAILABLE",
+          "CONSENT_REQUIRED",
+          "POLICY_DENIED",
+          "INTERNAL_ERROR",
+          "INVALID_CREDENTIALS",
+          "TOKEN_EXPIRED",
+          "TOKEN_REUSED",
+          "USER_DISABLED",
+          "PREFERENCE_KEY_UNKNOWN",
+          "PREFERENCE_VALUE_TOO_LARGE",
+          "TENANT_REQUIRED",
+          "LANGUAGE_IMMUTABLE",
+          "SETTINGS_LOCKED_ACTIVE_RUN",
+          "PROJECT_NOT_FOUND",
+          "PROJECT_HAS_ACTIVE_RUN",
+          "SETTINGS_VERSION_CONFLICT",
+          "IDEMPOTENCY_KEY_REQUIRED",
+          "IDEMPOTENCY_KEY_REUSED",
+          "PROJECT_ARCHIVED",
+          "RUN_ALREADY_TERMINAL",
+          "RUN_ALREADY_ACTIVE",
+          "CONFIG_CHANGED_SINCE_RUN",
+          "SELECTION_CONFLICT",
+          "VERSION_NOT_FOUND",
+          "VERSION_SEGMENT_MISMATCH",
+          "SEGMENT_TEXT_EMPTY",
+          "SEGMENT_RETRY_ACTIVE",
+          "VOICE_INCOMPATIBLE",
+          "VOICE_CONSENT_REQUIRED",
+          "PREVIEW_QUOTA_EXCEEDED",
+          "VOICE_NOT_FOUND",
+          "PREVIEW_TEXT_INVALID",
+          "REVIEW_VERSION_CONFLICT",
+          "REVIEW_REASON_REQUIRED",
+          "REVIEW_ALREADY_RESOLVED",
+          "REVIEW_NOT_RESOLVED",
+          "REVIEW_EDIT_EMPTY",
+          "EXPORT_INCOMPLETE",
+          "OUTPUT_INCOMPLETE",
+          "URL_EXPIRED"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Uniform error envelope: { error: { code, message, correlationId, details } }. details carries field errors only; 500s carry a generic message.",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "correlationId", "details"],
+            "properties": {
+              "code": {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              "message": {
+                "type": "string"
+              },
+              "correlationId": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "PaginatedResult": {
+        "type": "object",
+        "description": "Page-based list envelope: { items, page, pageSize, total, hasMore }. hasMore is page * pageSize < total.",
+        "required": ["items", "page", "pageSize", "total", "hasMore"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SseEventType": {
+        "type": "string",
+        "description": "Frozen SSE event-type set (exactly these 14; additions require updating the Task 013 contract first).",
+        "enum": [
+          "project.status_changed",
+          "run.status_changed",
+          "stage.started",
+          "stage.progress",
+          "stage.completed",
+          "stage.failed",
+          "stage.review_required",
+          "review.created",
+          "review.resolved",
+          "export.created",
+          "export.completed",
+          "export.failed",
+          "notification.created",
+          "output.ready"
+        ]
+      },
+      "SseEnvelope": {
+        "type": "object",
+        "description": "Frozen SSE envelope: { eventId, schemaVersion:1, eventType, tenantId, projectId?, processingRunId?, occurredAt, payload, correlationId }. Payload allowlist: IDs, statuses, percents, counts, codes, timestamps only.",
+        "required": ["eventId", "schemaVersion", "eventType", "tenantId", "occurredAt", "payload", "correlationId"],
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "enum": [1]
+          },
+          "eventType": {
+            "$ref": "#/components/schemas/SseEventType"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string",
+            "nullable": true
+          },
+          "processingRunId": {
+            "type": "string",
+            "nullable": true
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        }
+      },
+      "AuthLoginRequest": {
+        "type": "object",
+        "required": ["tenantSlug", "email", "password"],
+        "properties": {
+          "tenantSlug": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "format": "password"
+          }
+        }
+      },
+      "AuthLoginResponse": {
+        "type": "object",
+        "required": ["accessToken", "refreshToken", "tokenType", "expiresInSeconds", "userId", "tenantId"],
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "15-minute HS256 JWT (sub is the GUID user id)."
+          },
+          "refreshToken": {
+            "type": "string",
+            "description": "Opaque 7-day refresh secret ({sessionId:N}.{secret}; never logged)."
+          },
+          "tokenType": {
+            "type": "string",
+            "example": "Bearer"
+          },
+          "expiresInSeconds": {
+            "type": "integer",
+            "example": 900
+          },
+          "userId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          }
+        }
+      },
+      "AuthRefreshRequest": {
+        "type": "object",
+        "required": ["refreshToken"],
+        "properties": {
+          "refreshToken": {
+            "type": "string"
+          }
+        }
+      },
+      "MeResponse": {
+        "type": "object",
+        "required": ["userId", "tenantId", "permissions"],
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "12 UX-hint permission strings (never a security boundary)."
+          }
+        }
+      },
+      "PreferencesResponse": {
+        "type": "object",
+        "description": "Identity preference map (last-writer-wins per key).",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "DashboardSummary": {
+        "type": "object",
+        "description": "Seven-section summary: projectCounts, recentOutputs[<=5], storage, cost, quota, warnings[], backlog.",
+        "required": ["projectCounts", "recentOutputs", "storage", "cost", "quota", "warnings", "backlog"],
+        "properties": {
+          "projectCounts": {
+            "type": "object",
+            "properties": {
+              "active": {
+                "type": "integer"
+              },
+              "archived": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              }
+            }
+          },
+          "recentOutputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "storage": {
+            "type": "object",
+            "properties": {
+              "usedBytes": {
+                "type": "integer"
+              },
+              "quotaBytes": {
+                "type": "integer"
+              }
+            }
+          },
+          "cost": {
+            "type": "object",
+            "properties": {
+              "monthToDate": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string",
+                "example": "USD"
+              }
+            }
+          },
+          "quota": {
+            "type": "object",
+            "properties": {
+              "remaining": {
+                "type": "integer"
+              },
+              "resetsAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "backlog": {
+            "type": "object",
+            "properties": {
+              "pendingReviews": {
+                "type": "integer"
+              },
+              "runningJobs": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "required": ["id", "name", "status", "settingsVersion"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Public id (prj_ prefix)."
+          },
+          "name": {
+            "type": "string"
+          },
+          "sourceLanguage": {
+            "type": "string",
+            "example": "en"
+          },
+          "targetLanguage": {
+            "type": "string",
+            "example": "es"
+          },
+          "status": {
+            "type": "string",
+            "example": "Draft"
+          },
+          "isArchived": {
+            "type": "boolean"
+          },
+          "settingsVersion": {
+            "type": "integer",
+            "description": "Optimistic-concurrency version for processingSettings (If-Match)."
+          },
+          "configHash": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProjectCreateRequest": {
+        "type": "object",
+        "required": ["sourceLanguage", "targetLanguage"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Optional; absent renders Untitled project."
+          },
+          "sourceLanguage": {
+            "type": "string"
+          },
+          "targetLanguage": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectPatchRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "settingsVersion": {
+            "type": "integer",
+            "description": "Expected settings version (alternative to If-Match header)."
+          },
+          "processingSettings": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Only this section bumps the version and recomputes the hash."
+          }
+        }
+      },
+      "ProjectListResponse": {
+        "type": "object",
+        "description": "Project list envelope with sort metadata.",
+        "required": ["items", "page", "pageSize", "total", "sort", "sortDir", "hasMore", "clamped"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "sort": {
+            "type": "string"
+          },
+          "sortDir": {
+            "type": "string",
+            "enum": ["asc", "desc"]
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "clamped": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UploadInitiateRequest": {
+        "type": "object",
+        "required": ["fileName", "contentType", "sizeBytes", "partCount"],
+        "properties": {
+          "fileName": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          },
+          "partCount": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "UploadSession": {
+        "type": "object",
+        "required": ["id", "status"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "partUrls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Short-lived part URLs (placeholders in docs)."
+          },
+          "receivedParts": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "UploadPartAuth": {
+        "type": "object",
+        "properties": {
+          "partNumber": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string",
+            "description": "Short-lived part URL."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProcessingStartRequest": {
+        "type": "object",
+        "properties": {
+          "configHash": {
+            "type": "string",
+            "description": "Expected config hash; mismatches are 409 CONFIG_CHANGED_SINCE_RUN."
+          }
+        }
+      },
+      "ProcessingRun": {
+        "type": "object",
+        "required": ["runId", "status"],
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "retryOfRunId": {
+            "type": "string",
+            "nullable": true
+          },
+          "configHash": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProcessingRunListResponse": {
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total", "hasMore"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProcessingRun"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProgressResponse": {
+        "type": "object",
+        "required": ["projectId", "status", "percentApproximate"],
+        "properties": {
+          "projectId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "percentApproximate": {
+            "type": "number",
+            "description": "Display-only approximation."
+          },
+          "currentStage": {
+            "type": "string",
+            "nullable": true
+          },
+          "completedUnits": {
+            "type": "integer"
+          },
+          "failedUnits": {
+            "type": "integer"
+          },
+          "expectedUnits": {
+            "type": "integer"
+          }
+        }
+      },
+      "Workspace": {
+        "type": "object",
+        "description": "Workspace aggregate: project, media, run, phase, stage, progress, review, warnings, output, cost, activity, permissions.",
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ProgressResponse"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "SegmentListResponse": {
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total", "hasMore"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SegmentDetailResponse": {
+        "type": "object",
+        "description": "Segment detail: id, selectionVersion, transcript/translation versions, review status, quality codes, sync status, outputStale.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "selectionVersion": {
+            "type": "integer"
+          },
+          "transcriptVersions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "translationVersions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "reviewStatus": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          },
+          "qualityCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outputStale": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SegmentSelectionRequest": {
+        "type": "object",
+        "required": ["expectedVersion", "selectedVersionIds"],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "description": "Expected selection version (optimistic concurrency)."
+          },
+          "selectedVersionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SegmentEditRequest": {
+        "type": "object",
+        "required": ["expectedVersion", "text"],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string",
+            "description": "Manual text; HTML stripped server-side, blank rejected."
+          }
+        }
+      },
+      "SegmentMutationResponse": {
+        "type": "object",
+        "properties": {
+          "segmentId": {
+            "type": "string"
+          },
+          "selectionVersion": {
+            "type": "integer"
+          },
+          "selectedVersionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "newVersionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "outputStale": {
+            "type": "boolean"
+          },
+          "warningCode": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "ReviewStatus": {
+        "type": "string",
+        "enum": ["Open", "Approved", "Rejected"]
+      },
+      "SpeakerListResponse": {
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total", "hasMore"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SpeakerDetailResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "speakerKey": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "segmentCount": {
+            "type": "integer"
+          },
+          "assignedVoice": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true
+          }
+        }
+      },
+      "AvailableVoicesResponse": {
+        "type": "object",
+        "description": "Compatible-only voices plus exclusion reasons.",
+        "properties": {
+          "voices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "excludedCount": {
+            "type": "integer"
+          },
+          "excluded": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "voiceId": {
+                  "type": "string"
+                },
+                "reasons": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "VoiceAssignmentRequest": {
+        "type": "object",
+        "required": ["voiceId"],
+        "properties": {
+          "voiceId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "VoiceAssignmentResponse": {
+        "type": "object",
+        "properties": {
+          "speakerId": {
+            "type": "string"
+          },
+          "voiceProfileId": {
+            "type": "string"
+          },
+          "voiceId": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "outputStale": {
+            "type": "boolean"
+          },
+          "warningCode": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "VoicePreviewRequest": {
+        "type": "object",
+        "required": ["voiceId", "text"],
+        "properties": {
+          "voiceId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "VoicePreviewResponse": {
+        "type": "object",
+        "properties": {
+          "previewId": {
+            "type": "string",
+            "description": "Public id (vpv_ prefix)."
+          },
+          "status": {
+            "$ref": "#/components/schemas/VoicePreviewStatus"
+          },
+          "isDuplicate": {
+            "type": "boolean"
+          }
+        }
+      },
+      "VoicePreviewDetailResponse": {
+        "type": "object",
+        "properties": {
+          "previewId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/VoicePreviewStatus"
+          },
+          "artifactId": {
+            "type": "string",
+            "nullable": true
+          },
+          "downloadUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "15-minute presigned URL (never an internal path)."
+          }
+        }
+      },
+      "VoicePreviewStatus": {
+        "type": "string",
+        "enum": ["Queued", "Running", "Completed", "Failed", "Cancelled"]
+      },
+      "ReviewContextResponse": {
+        "type": "object",
+        "description": "Eleven sections: item, project, run, segment, versions, voice, audio, sync, qc, actions/permissions, history.",
+        "properties": {
+          "item": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "run": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true
+          },
+          "segment": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true
+          },
+          "versions": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "voice": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true
+          },
+          "audio": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true
+          },
+          "sync": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true
+          },
+          "qc": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "permissions": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReviewMutationRequest": {
+        "type": "object",
+        "required": ["expectedVersion", "reason"],
+        "properties": {
+          "expectedVersion": {
+            "type": "integer",
+            "description": "Expected decision-row count (optimistic concurrency)."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Required; HTML stripped, blank rejected."
+          },
+          "editText": {
+            "type": "string",
+            "description": "resolve-with-edit only; blank rejected."
+          }
+        }
+      },
+      "ReviewMutationResponse": {
+        "type": "object",
+        "properties": {
+          "reviewId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "manualVersionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "versionKind": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "OutputResponse": {
+        "type": "object",
+        "description": "Output aggregate with per-asset state+generationState aliases.",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/OutputState"
+          },
+          "generationState": {
+            "$ref": "#/components/schemas/OutputState",
+            "description": "Alias of state."
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "example": "NO_RUNS_YET"
+          },
+          "completeness": {
+            "type": "object",
+            "properties": {
+              "ready": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              }
+            }
+          },
+          "progressApproximate": {
+            "type": "number",
+            "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "OutputState": {
+        "type": "string",
+        "enum": ["Ready", "Generating", "Failed", "Partial", "Unavailable"]
+      },
+      "ExportCreateRequest": {
+        "type": "object",
+        "required": ["format"],
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "profile": {
+            "type": "string",
+            "description": "Normalized kebab-case profile (max 64, no traversal)."
+          },
+          "allowPartial": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "ExportFormat": {
+        "type": "string",
+        "enum": ["Srt", "Vtt", "Mp4", "Wav", "Mp3"]
+      },
+      "Export": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Public id (exp_ prefix)."
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "status": {
+            "type": "string"
+          },
+          "isPartial": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completenessJson": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "Notification": {
+        "type": "object",
+        "description": "Notification row: short summaries only, never bodies, URLs, or secrets.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Public id (ntf_ prefix)."
+          },
+          "type": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "resourceType": {
+            "type": "string",
+            "enum": ["ProcessingRun", "ReviewItem", "ExportJob", "MediaAsset", "DubbingProject", "Tenant"]
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Owning project (prj_); null for tenant quota/policy rows."
+          },
+          "readAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "NotificationListResponse": {
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total", "hasMore"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UnreadCountResponse": {
+        "type": "object",
+        "properties": {
+          "unreadCount": {
+            "type": "integer",
+            "example": 3
+          }
+        }
+      },
+      "AdminUsageResponse": {
+        "type": "object",
+        "description": "Tenant usage aggregate (counts and bytes only).",
+        "required": ["correlationId", "storageUsedBytes", "storageQuotaBytes", "monthCostUsd", "projectsTodayRemaining", "activeRuns", "pendingReviews", "totalProjects"],
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "storageUsedBytes": {
+            "type": "integer"
+          },
+          "storageQuotaBytes": {
+            "type": "integer"
+          },
+          "monthCostUsd": {
+            "type": "number"
+          },
+          "projectsTodayRemaining": {
+            "type": "integer"
+          },
+          "activeRuns": {
+            "type": "integer"
+          },
+          "pendingReviews": {
+            "type": "integer"
+          },
+          "totalProjects": {
+            "type": "integer"
+          }
+        }
+      },
+      "AdminQuotasResponse": {
+        "type": "object",
+        "description": "Frozen Quota limits.",
+        "required": ["correlationId", "maxActiveProjects", "maxProjectsPerDay", "maxCostPerProject", "maxCostPerSegment", "maxSegmentCount", "maxStorageBytes", "maxConcurrentStagesPerTenant"],
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "maxActiveProjects": {
+            "type": "integer"
+          },
+          "maxProjectsPerDay": {
+            "type": "integer"
+          },
+          "maxCostPerProject": {
+            "type": "number"
+          },
+          "maxCostPerSegment": {
+            "type": "number"
+          },
+          "maxSegmentCount": {
+            "type": "integer"
+          },
+          "maxStorageBytes": {
+            "type": "integer"
+          },
+          "maxConcurrentStagesPerTenant": {
+            "type": "integer"
+          }
+        }
+      },
+      "ProviderHealth": {
+        "type": "object",
+        "description": "Per-provider health snapshot (secret-free).",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Unknown", "Healthy", "Degraded", "Down"]
+          },
+          "latencyMsP95": {
+            "type": "number",
+            "nullable": true
+          },
+          "errorRate": {
+            "type": "number"
+          },
+          "lastSuccessAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "activeRoutes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "circuitBreakerState": {
+            "type": "string",
+            "enum": ["Open", "Closed"]
+          }
+        }
+      },
+      "ProviderRoute": {
+        "type": "object",
+        "description": "Capability-to-provider route (names only).",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "capability": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "QueueDepth": {
+        "type": "object",
+        "description": "Pending-message depth for one queue (counts only).",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "queue": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "integer"
+          }
+        }
+      },
+      "DlqSummary": {
+        "type": "object",
+        "description": "DLQ summary: depth, oldest-entry age, top-10 reason breakdown.",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "integer"
+          },
+          "oldestEnqueuedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "oldestEntryAge": {
+            "type": "string",
+            "nullable": true
+          },
+          "topReasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "OrphanPage": {
+        "type": "object",
+        "description": "Cursor page of orphan artifacts (ids, sizes, hashes, timestamps only).",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "cursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ReviewBacklog": {
+        "type": "object",
+        "description": "Review backlog aggregation (counts and ids only).",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "totalOpen": {
+            "type": "integer"
+          },
+          "byStatus": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "bySeverity": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "oldestWaitingAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "perProject": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    }
+  }
+}

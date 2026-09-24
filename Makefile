@@ -33,5 +33,11 @@ run-workers:
 lint:
 	dotnet build --no-incremental /p:EnforceCodeStyleInBuild=true
 
+generate-api:
+	node tools/generate-client.mjs
+
+check-api-drift:
+	node tools/check-api-drift.mjs
+
 security-scan:
 	trivy config . || echo "trivy not installed - install to scan"

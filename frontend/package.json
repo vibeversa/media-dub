@@ -1,0 +1,18 @@
+{
+  "name": "dubbing-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dubbing platform frontend (Task 015+ scaffolding lands here; Task 014 owns src/api/generated).",
+  "type": "module",
+  "scripts": {
+    "generate-api": "node ../tools/generate-client.mjs",
+    "check-drift": "node ../tools/check-api-drift.mjs",
+    "prebuild": "npm run check-drift",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "openapi-typescript-codegen": "0.31.0",
+    "typescript": "5.6.3"
+  }
+}

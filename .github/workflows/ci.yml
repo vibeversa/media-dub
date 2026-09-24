@@ -52,6 +52,37 @@ jobs:
       - name: Unit tests
         run: dotnet test tests/DubbingPlatform.UnitTests --no-build --nologo -v q
 
+  api-contract:
+    name: api-contract + frontend
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend install
+        run: npm ci --prefix frontend
+
+      - name: API drift gate (fails when stale)
+        run: make check-api-drift
+
+      - name: Frontend build (prebuild re-checks drift, strict tsc)
+        run: npm run build --prefix frontend
+
+      - name: OpenAPI coverage tests
+        run: dotnet test tests/DubbingPlatform.IntegrationTests --nologo -v q --filter "FullyQualifiedName~OpenApiCoverageTests"
+
   integration:
     name: integration + contract
     runs-on: ubuntu-latest

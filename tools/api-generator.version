@@ -1,0 +1,12 @@
+# Pinned API-client toolchain (Task 014).
+# The hermetic local runner (no network) mirrors the output shape of the
+# canonical generator below. Bump generator + lockfile + generated output in
+# the same commit; the drift gate covers output, reviewers cover the pin.
+canonicalGenerator=openapi-typescript-codegen
+canonicalGeneratorVersion=0.31.0
+localRunner=tools/generate-client.mjs
+localRunnerVersion=1.0.0
+typescript=5.6.3
+openapiBundle=src/DubbingPlatform.Api/OpenApi/openapi.v1.json
+openapiVersion=v1
+outputDir=frontend/src/api/generated

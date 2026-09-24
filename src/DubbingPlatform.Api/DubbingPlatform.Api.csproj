@@ -30,4 +30,13 @@
     <ProjectReference Include="..\DubbingPlatform.Contracts\DubbingPlatform.Contracts.csproj" />
   </ItemGroup>
 
+  <!-- Task 014 drift gate: in CI, dotnet build regenerates the TypeScript
+       client to a temp dir and diffs it against frontend/src/api/generated/.
+       CI-only so backend container builds and node-less machines keep working;
+       the dedicated api-contract CI job also runs make check-api-drift plus
+       the frontend build. Skip locally with -p:SkipApiDriftCheck=true. -->
+  <Target Name="CheckApiClientDrift" AfterTargets="Build" Condition="'$(CI)' == 'true' And '$(SkipApiDriftCheck)' != 'true' And '$(DesignTimeBuild)' != 'true'">
+    <Exec Command="node &quot;$(MSBuildProjectDirectory)/../../tools/check-api-drift.mjs&quot;" WorkingDirectory="$(MSBuildProjectDirectory)/../.." />
+  </Target>
+
 </Project>
