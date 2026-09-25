@@ -32,6 +32,21 @@ export interface ProjectListParams extends PageParams {
   readonly sortDir?: 'asc' | 'desc';
 }
 
+/**
+ * Server-side review-queue params (Task 031). `GET /projects/{id}/reviews`
+ * is page-based; the studio sends every active filter as a query param so
+ * narrowing happens server-side (the test asserts the query string). Unknown
+ * params are ignored by the backend but still partition the cache key.
+ */
+export interface ReviewListParams extends PageParams {
+  readonly severity?: string;
+  readonly status?: string;
+  readonly type?: string;
+  readonly speakerId?: string;
+  readonly language?: string;
+  readonly age?: string;
+}
+
 function withDefaults(params: PageParams | undefined): PageParams {
   return { ...(params ?? {}) };
 }
@@ -123,7 +138,7 @@ export const queryKeys = {
   review: {
     all: ['reviews'] as const,
     lists: (): QueryKey => ['reviews', 'list'],
-    list: (projectId: string, params?: PageParams): QueryKey => ['reviews', 'list', projectId, withDefaults(params)],
+    list: (projectId: string, params?: ReviewListParams): QueryKey => ['reviews', 'list', projectId, withDefaults(params)],
     details: (): QueryKey => ['reviews', 'detail'],
     detail: (reviewId: string): QueryKey => ['reviews', 'detail', reviewId],
   },

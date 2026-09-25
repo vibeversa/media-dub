@@ -1,0 +1,32 @@
+{
+  "title": "Review",
+  "loading": "Loading reviews…",
+  "loadError": {
+    "title": "Review queue unavailable",
+    "message": "The review queue could not be loaded. No data was changed."
+  },
+  "empty": {
+    "noItemsTitle": "No reviews pending",
+    "noItemsDescription": "This project has no open review items. New flags appear here after processing.",
+    "filteredTitle": "No reviews match these filters",
+    "filteredDescription": "Filters exclude everything in this queue. Clear them to see all open items.",
+    "selectProject": "Select a project",
+    "selectProjectDescription": "Enter a project id to load its review queue.",
+    "selectReview": "Select a review to see its full context."
+  },
+  "stale": {
+    "title": "Review changed elsewhere",
+    "refresh": "Refresh review"
+  },
+  "card": {
+    "mediaExcerpt": "Media excerpt",
+    "transcript": "Transcript segment",
+    "translation": "Translation + candidates",
+    "voice": "Voice assignment",
+    "audio": "Audio excerpt",
+    "syncQc": "Sync / QC summary",
+    "versions": "Providers / versions",
+    "dispositions": "Dispositions",
+    "history": "Audit trail"
+  }
+}
