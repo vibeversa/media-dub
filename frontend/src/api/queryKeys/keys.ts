@@ -131,6 +131,25 @@ export const queryKeys = {
     all: (reviewId: string): QueryKey => ['reviews', 'context', reviewId],
     detail: (reviewId: string): QueryKey => ['reviews', 'context', reviewId],
   },
+  voices: {
+    all: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'voices'],
+    available: (projectId: string, speakerId: string): QueryKey => [
+      'projects',
+      'detail',
+      projectId,
+      'voices',
+      'available',
+      speakerId,
+    ],
+    preview: (projectId: string, previewId: string): QueryKey => [
+      'projects',
+      'detail',
+      projectId,
+      'voices',
+      'preview',
+      previewId,
+    ],
+  },
   exports: {
     all: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'exports'],
     lists: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'exports', 'list'],

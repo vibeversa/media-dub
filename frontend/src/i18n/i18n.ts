@@ -13,6 +13,7 @@ import enUploads from './locales/en/uploads.json';
 import enWorkspace from './locales/en/workspace.json';
 import enTranscript from './locales/en/transcript.json';
 import enTranslation from './locales/en/translation.json';
+import enVoices from './locales/en/voices.json';
 import ruCommon from './locales/ru/common.json';
 import { trackMissingTranslation } from '../telemetry/telemetry.js';
 
@@ -22,7 +23,7 @@ export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 /**
  * i18next init (Task 018): `en` baseline with namespaced JSON bundles
- * (common, nav, auth, dashboard, projects, processing, uploads, workspace, transcript, translation, errors), `ar`/`ru` partial
+ * (common, nav, auth, dashboard, projects, processing, uploads, workspace, transcript, translation, voices, errors), `ar`/`ru` partial
  * bundles for RTL + plural coverage, `en` fallback for every missing key
  * (never blank strings). Plural categories follow ICU via Intl.PluralRules
  * (`_zero/_one/_two/_few/_many/_other` suffixes). Synchronous init
@@ -42,6 +43,7 @@ void i18n.use(initReactI18next).init({
       workspace: enWorkspace,
       transcript: enTranscript,
       translation: enTranslation,
+      voices: enVoices,
       errors: enErrors,
     },
     ar: {
@@ -58,7 +60,7 @@ void i18n.use(initReactI18next).init({
   defaultNS: 'common',
   // Feature code always uses namespaced keys (`nav:dashboard`); a bare key
   // resolves against `common` instead of rendering the key itself blank.
-  ns: ['common', 'nav', 'auth', 'dashboard', 'projects', 'processing', 'uploads', 'workspace', 'transcript', 'translation', 'errors'],
+  ns: ['common', 'nav', 'auth', 'dashboard', 'projects', 'processing', 'uploads', 'workspace', 'transcript', 'translation', 'voices', 'errors'],
   interpolation: {
     // React already escapes; double-escaping would corrupt ICU placeholders.
     escapeValue: false,

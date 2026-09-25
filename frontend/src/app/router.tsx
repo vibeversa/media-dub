@@ -21,6 +21,7 @@ import {
   SettingsPage,
   TranscriptPage,
   TranslationPage,
+  VoicesPage,
 } from './pages/lazy.js';
 
 const PROJECT_TAB_PATHS = [
@@ -42,8 +43,9 @@ export const routes: RouteObject[] = [
   // /admin nests under RequireAdmin (route-guarded, never CSS-only hiding).
   // Project tab outlets render the details placeholder until feature tasks
   // fill them; the media tab already hosts the Task 023 resumable uploader,
-  // the transcript tab hosts the Task 027 versioned editor, and the
-  // translation tab hosts the Task 028 side-by-side workspace.
+  // the transcript tab hosts the Task 027 versioned editor, the
+  // translation tab hosts the Task 028 side-by-side workspace, and the
+  // voices tab hosts the Task 029 assignment workspace.
   {
     path: '/',
     element: <RequireAuth />,
@@ -63,7 +65,8 @@ export const routes: RouteObject[] = [
               { path: 'media', element: <MediaPage /> },
               { path: 'transcript', element: <TranscriptPage /> },
               { path: 'translation', element: <TranslationPage /> },
-              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript' && tab !== 'translation').map((tab) => ({
+              { path: 'voices', element: <VoicesPage /> },
+              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript' && tab !== 'translation' && tab !== 'voices').map((tab) => ({
                 path: tab,
                 element: <ProjectDetailsPage />,
               })),

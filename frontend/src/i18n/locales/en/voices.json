@@ -1,0 +1,33 @@
+{
+  "title": "Voices",
+  "loading": "Loading voices…",
+  "loadError": {
+    "title": "Voices unavailable",
+    "message": "Compatible voices could not be loaded. No data was changed."
+  },
+  "empty": {
+    "title": "No speakers yet",
+    "description": "Speaker diarization has not produced speakers for this project. Start processing to populate the cast.",
+    "processingLink": "Go to processing"
+  },
+  "noVoices": {
+    "title": "No compatible voices",
+    "description": "No compatible voices were reported for this speaker. Adjust project language or voice inventory, then refresh.",
+    "processingLink": "Go to processing"
+  },
+  "impact": {
+    "titleAssign": "Assign voice?",
+    "titleReplace": "Replace voice?",
+    "titleReset": "Reset voice?",
+    "invalidation": "Assigning a new voice invalidates dependent translations and re-renders dub audio for the affected segments.",
+    "confirm": "Confirm voice change",
+    "cancel": "Cancel"
+  },
+  "preview": {
+    "request": "Preview voice",
+    "quotaTitle": "Preview quota exceeded",
+    "quotaMessage": "Preview quota exceeded. Try again later once the quota window resets.",
+    "consentTitle": "Voice consent required",
+    "expiredTitle": "Preview link expired"
+  }
+}

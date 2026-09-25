@@ -15,5 +15,6 @@ export const LoginPage = lazy(() => import('./LoginPage.js'));
 export const MediaPage = lazy(() => import('./MediaPage.js'));
 export const TranscriptPage = lazy(() => import('./TranscriptPage.js'));
 export const TranslationPage = lazy(() => import('./TranslationPage.js'));
+export const VoicesPage = lazy(() => import('./VoicesPage.js'));
 export const LoggedOutPage = lazy(() => import('./LoggedOutPage.js'));
 export const NotFoundPage = lazy(() => import('./NotFoundPage.js'));
