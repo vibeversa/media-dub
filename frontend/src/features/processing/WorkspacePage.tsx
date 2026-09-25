@@ -17,6 +17,7 @@ import { CostDisplay } from '../../components/product/CostDisplay/CostDisplay.js
 import { useToast } from '../../components/Toast/useToast.js';
 import { formatDate, formatNumber } from '../../i18n/format.js';
 import { useAppStore } from '../../stores/index.js';
+import { useProgressPoll, useProgressStream } from '../../hooks/useProgressStream.js';
 import { useWorkspaceStore } from './workspaceStore.js';
 import {
   getWorkspaceActions,
@@ -83,6 +84,11 @@ export function WorkspacePage({ projectId }: WorkspacePageProps): ReactNode {
   const setSelectedTab = useWorkspaceStore((s) => s.setSelectedTab);
   const workspaceQuery = useWorkspace(projectId);
   const { data, isPending, isError, error, refetch, isFetching } = workspaceQuery;
+  // Live progress (Task 026): SSE invalidations drive workspace/progress
+  // refetches; the adaptive poll takes over after repeated stream failures
+  // and yields back on recovery. No panel fetches are added here.
+  const liveProgress = useProgressStream(projectId);
+  useProgressPoll(projectId, { enabled: liveProgress.isFallbackActive });
   const [actionError, setActionError] = useState<string | null>(null);
   const redirectedRef = useRef(false);
 
@@ -268,6 +274,9 @@ export function WorkspacePage({ projectId }: WorkspacePageProps): ReactNode {
             <span>{t('workspace:header.progressLabel')}</span>{' '}
             <span data-testid="workspace-progress-value">
               {t('workspace:header.progressValue', { percent: String(workspace.progress.percentApproximate) })}
+            </span>{' '}
+            <span data-testid="workspace-progress-approx" className="dp-muted">
+              {t('workspace:header.progressApproximateNote')}
             </span>
             <ProgressBar value={workspace.progress.percentApproximate} label={t('workspace:header.progressLabel')} />
           </div>

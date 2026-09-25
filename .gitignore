@@ -30,6 +30,7 @@ bld/
 appsettings.Production.json
 appsettings.*.Production.json
 secrets.json
+opencode.json
 
 ## OS
 .DS_Store

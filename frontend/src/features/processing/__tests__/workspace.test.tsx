@@ -214,7 +214,12 @@ describe('single aggregate request (R1)', () => {
     expect(await screen.findByTestId('workspace-header')).toBeDefined();
     expect(workspaceCalls).toHaveLength(1);
     expect(workspaceCalls[0]).toContain('/workspace');
-    const projectReads = otherCalls.filter((call) => call.includes('/projects/'));
+    // Task 026 live progress may open the SSE stream and, after repeated
+    // failures, poll the progress endpoint. Those are live-update reads, not
+    // per-panel aggregate fan-out, so they are allowlisted here.
+    const projectReads = otherCalls.filter(
+      (call) => call.includes('/projects/') && !call.includes('/progress'),
+    );
     expect(projectReads).toEqual([]);
     const cached = queryClient.getQueryData(queryKeys.workspace.detail('prj_1'));
     expect(cached).toBeDefined();

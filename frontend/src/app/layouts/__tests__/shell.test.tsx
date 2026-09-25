@@ -1,11 +1,13 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createMemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ROUTER_FUTURE_FLAGS, ROUTER_PROVIDER_FUTURE_FLAGS } from '../../router.js';
 import { LocaleProvider } from '../../providers/LocaleProvider.js';
+import { queryClient } from '../../providers/queryClient.js';
 import { AppShell } from '../AppShell.js';
 import { ProjectLayout } from '../ProjectLayout.js';
 import { RequireAdmin } from '../../guards/RequireAdmin.js';
@@ -16,11 +18,13 @@ import { useAppStore } from '../../../stores/index.js';
 beforeEach(() => {
   useAppStore.getState().resetForTests();
   useAppStore.getState().setSession('authenticated', []);
+  queryClient.clear();
 });
 
 afterEach(() => {
   cleanup();
   useAppStore.getState().resetForTests();
+  queryClient.clear();
 });
 
 function renderAt(path: string, element: ReactNode) {
@@ -29,9 +33,11 @@ function renderAt(path: string, element: ReactNode) {
     future: { ...ROUTER_FUTURE_FLAGS },
   });
   render(
-    <LocaleProvider>
-      <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
-    </LocaleProvider>,
+    <QueryClientProvider client={queryClient}>
+      <LocaleProvider>
+        <RouterProvider router={router} future={{ ...ROUTER_PROVIDER_FUTURE_FLAGS }} />
+      </LocaleProvider>
+    </QueryClientProvider>,
   );
 }
 

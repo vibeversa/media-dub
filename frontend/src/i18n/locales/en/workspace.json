@@ -15,7 +15,8 @@
   "deletedToast": "Project not found. Showing the project list.",
   "header": {
     "progressLabel": "Progress",
-    "progressValue": "{{percent}}% complete",
+    "progressValue": "~{{percent}}% complete",
+    "progressApproximateNote": "Progress is approximate.",
     "actionsTitle": "Project actions"
   },
   "actions": {

@@ -2,6 +2,10 @@ import type { ReactNode } from 'react';
 import { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '../../api/client/index.js';
+import { queryKeys } from '../../api/queryKeys/index.js';
+import { useIsAuthenticated } from '../../features/auth/useSession.js';
 import { RouteTracker } from '../../telemetry/RouteTracker.js';
 import { useAuthStore } from '../../features/auth/authStore.js';
 import { getEnv } from '../../lib/env.js';
@@ -110,13 +114,32 @@ function NavItems({ items, testIdPrefix }: { readonly items: readonly TopNavItem
 }
 
 export interface AppShellProps {
-  /** Unread badge count; data wiring lands in Task 034 (defaults to none). */
+  /**
+   * Unread badge override (tests/storybook). When absent, the bell reads the
+   * live `queryKeys.notifications.unreadCount()` query (Task 026 live
+   * invalidation; Task 034 owns the full center). Prop wins when provided so
+   * hermetic shell tests stay deterministic without a query provider.
+   */
   readonly unreadCount?: number;
   /**
    * Sign-out handler override (tests). Defaults to the Task 019 logout:
    * server revocation + cache clear, then navigation to `/logged-out`.
    */
   readonly onSignOut?: () => void;
+}
+
+function LiveNotificationBell(): ReactNode {
+  const isAuthenticated = useIsAuthenticated();
+  const query = useQuery({
+    queryKey: queryKeys.notifications.unreadCount(),
+    queryFn: () => apiClient.getUnreadNotificationCount(),
+    enabled: isAuthenticated,
+    staleTime: 30_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const count = query.data?.unreadCount ?? 0;
+  return <NotificationBell unreadCount={count} />;
 }
 
 /**
@@ -143,7 +166,11 @@ export function AppShell({ unreadCount, onSignOut }: AppShellProps): ReactNode {
           <nav aria-label={t('nav:primary')} className="flex-1">
             <NavItems items={items} testIdPrefix="nav" />
           </nav>
-          <NotificationBell unreadCount={unreadCount ?? 0} />
+          {unreadCount !== undefined ? (
+            <NotificationBell unreadCount={unreadCount} />
+          ) : (
+            <LiveNotificationBell />
+          )}
           <LocaleSwitcher />
           <ThemeSwitcher />
           <UserMenu onSignOut={onSignOut} />
