@@ -1,0 +1,102 @@
+{
+  "title": "Project workspace",
+  "subtitle": "Single aggregate view of pipeline, review, output, media, and activity.",
+  "loading": "Loading workspace…",
+  "loadError": {
+    "title": "Workspace unavailable",
+    "message": "The workspace aggregate could not be loaded. No data was changed.",
+    "retry": "Retry workspace"
+  },
+  "stale": {
+    "title": "Data may be out of date",
+    "message": "The aggregate changed elsewhere. Refresh to load the current view.",
+    "refresh": "Refresh workspace"
+  },
+  "deletedToast": "Project not found. Showing the project list.",
+  "header": {
+    "progressLabel": "Progress",
+    "progressValue": "{{percent}}% complete",
+    "actionsTitle": "Project actions"
+  },
+  "actions": {
+    "open": "Open media",
+    "cancel": "Cancel run",
+    "retry": "Retry run",
+    "export": "Open exports",
+    "delete": "Delete project",
+    "archive": "Archive project",
+    "unarchive": "Unarchive project"
+  },
+  "stepper": {
+    "title": "Pipeline",
+    "parallelNote": "runs in parallel",
+    "stateDone": "Done",
+    "stateActive": "Active",
+    "statePending": "Queued",
+    "stateFailed": "Failed",
+    "updated": "Updated {{at}}"
+  },
+  "prerun": {
+    "title": "No run yet",
+    "description": "Start processing to populate the pipeline. Progress appears here once a run exists."
+  },
+  "recovery": {
+    "title": "Run did not complete",
+    "description": "The latest run stopped with status {{status}}. Retry creates a linked run.",
+    "action": "Retry run"
+  },
+  "review": {
+    "title": "Review queue",
+    "openCount": "{{count}} open",
+    "empty": "No open reviews.",
+    "link": "Open review queue"
+  },
+  "warnings": {
+    "title": "Warnings",
+    "empty": "No warnings.",
+    "link": "Open quality"
+  },
+  "output": {
+    "title": "Output",
+    "ready": "Ready",
+    "pending": "Pending",
+    "completeness": "{{percent}}% complete",
+    "link": "Open exports"
+  },
+  "media": {
+    "title": "Media",
+    "status": "Status",
+    "container": "Container",
+    "size": "Size",
+    "duration": "Duration",
+    "empty": "No media yet."
+  },
+  "config": {
+    "title": "Configuration",
+    "hash": "Config hash",
+    "hashMissing": "Not reported yet",
+    "languages": "Languages",
+    "settingsVersion": "Settings version"
+  },
+  "run": {
+    "title": "Run history",
+    "emptyTitle": "No runs yet",
+    "emptyDescription": "Runs appear here after the first start.",
+    "status": "Status",
+    "attempt": "Attempt"
+  },
+  "cost": {
+    "title": "Cost",
+    "runCost": "Latest run",
+    "monthToDate": "This month"
+  },
+  "activity": {
+    "title": "Activity",
+    "empty": "No activity yet.",
+    "viewAll": "View full activity"
+  },
+  "archived": {
+    "title": "Project is archived",
+    "message": "Archived projects are read-only. Unarchive to resume work."
+  }
+}

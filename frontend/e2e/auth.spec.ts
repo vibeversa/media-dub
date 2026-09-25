@@ -31,6 +31,30 @@ const ME_BODY = {
   tenantId: 'tenant_e2e',
 };
 
+const WORKSPACE_BODY = {
+  project: {
+    id: 'prj_1',
+    name: 'Pilot',
+    status: 'Processing',
+    sourceLanguage: 'en',
+    targetLanguage: 'es',
+    isArchived: false,
+    configurationHash: 'cfg_abc',
+    settingsVersion: 3,
+  },
+  media: { id: 'med_1', status: 'Valid', container: 'mp4', sizeBytes: 1024, durationMs: 61000 },
+  run: { id: 'run_1', status: 'Running', configHash: 'cfg_abc', attempt: 1 },
+  phase: 'speech',
+  stage: 'Transcription',
+  progress: { percentApproximate: 42, currentStage: 'Transcription', updatedAt: '2024-01-16T12:00:00Z' },
+  review: { pendingCount: 0 },
+  warnings: [],
+  output: { state: 'pending', completeness: 42 },
+  cost: { runCost: 0, monthToDate: 0 },
+  activity: { recent: [] },
+  permissions: { allowedActions: ['project.view'] },
+};
+
 /**
  * `@auth` suite (Task 019). Hermetic: every `/api/v1` call is intercepted, so
  * no backend is required. The dev server origin (5173) differs from
@@ -66,6 +90,10 @@ async function mockAuthApi(page: Page, mocks?: AuthMocks): Promise<void> {
           ? { ...ME_BODY, permissions: [...(mocks?.mePermissions ?? ME_BODY.permissions)] }
           : { error: { code: 'TOKEN_EXPIRED', message: 'expired', correlationId: 'corr-e2e', details: {} } };
       await route.fulfill({ status, headers: CORS_JSON, body: JSON.stringify(body) });
+      return;
+    }
+    if (url.includes('/workspace') && request.method() === 'GET') {
+      await route.fulfill({ status: 200, headers: CORS_JSON, body: JSON.stringify(WORKSPACE_BODY) });
       return;
     }
     await route.fulfill({

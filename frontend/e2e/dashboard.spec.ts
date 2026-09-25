@@ -49,6 +49,30 @@ const EMPTY_SUMMARY = {
   warnings: [],
 };
 
+const WORKSPACE_BODY = {
+  project: {
+    id: 'prj_1',
+    name: 'Pilot',
+    status: 'Processing',
+    sourceLanguage: 'en',
+    targetLanguage: 'es',
+    isArchived: false,
+    configurationHash: 'cfg_abc',
+    settingsVersion: 3,
+  },
+  media: { id: 'med_1', status: 'Valid', container: 'mp4', sizeBytes: 1024, durationMs: 61000 },
+  run: { id: 'run_1', status: 'Running', configHash: 'cfg_abc', attempt: 1 },
+  phase: 'speech',
+  stage: 'Transcription',
+  progress: { percentApproximate: 42, currentStage: 'Transcription', updatedAt: '2024-01-16T12:00:00Z' },
+  review: { pendingCount: 2, oldestWaitingAt: '2024-01-16T10:00:00Z' },
+  warnings: [],
+  output: { state: 'pending', completeness: 42 },
+  cost: { runCost: 1.5, monthToDate: 12.5 },
+  activity: { recent: [{ id: 'act_1', summary: 'Run started', occurredAt: '2024-01-16T11:00:00Z' }] },
+  permissions: { allowedActions: ['project.view', 'project.edit', 'admin.manage'] },
+};
+
 /**
  * `@dashboard` suite (Task 020). Hermetic: login/identity plus the single
  * `GET /dashboard/summary` aggregate are intercepted, so no backend is
@@ -86,6 +110,10 @@ async function mockDashboardApi(
       const status = options?.summaryStatus ?? 200;
       const body = options?.onSummary?.() ?? options?.summary ?? FULL_SUMMARY;
       await route.fulfill({ status, headers: CORS_JSON, body: JSON.stringify(body) });
+      return;
+    }
+    if (url.includes('/workspace') && request.method() === 'GET') {
+      await route.fulfill({ status: 200, headers: CORS_JSON, body: JSON.stringify(WORKSPACE_BODY) });
       return;
     }
     await route.fulfill({

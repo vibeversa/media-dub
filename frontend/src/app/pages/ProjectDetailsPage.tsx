@@ -5,14 +5,16 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { useToast } from '../../components/Toast/useToast.js';
 import { useAppStore } from '../../stores/index.js';
 import { PreflightDialog } from '../../features/processing/PreflightDialog.js';
+import { WorkspacePage } from '../../features/processing/WorkspacePage.js';
 
 /**
- * Project workspace shell (Task 024 adds the processing-start entry; the full
- * workspace lands in Task 025). The Start button is permission-hinted on
+ * Project workspace shell (Task 024 adds the processing-start entry; Task 025
+ * adds the aggregate workspace below it). The Start button is permission-hinted on
  * `processing.start` and always opens the preflight dialog — there is no
  * direct-start path (R1). A `?started=1` landing is silently canonicalized:
  * the host that performed the 202 already pushed the "Run started" toast, so
  * this page only strips the param (no second toast, no re-toast on refresh).
+ * The workspace aggregate renders underneath via `WorkspacePage`.
  */
 export default function ProjectDetailsPage(): ReactNode {
   const { t } = useTranslation();
@@ -47,6 +49,7 @@ export default function ProjectDetailsPage(): ReactNode {
           {t('processing:title')}
         </button>
       ) : null}
+      {projectId !== '' ? <WorkspacePage projectId={projectId} /> : null}
       {preflightOpen && projectId !== '' ? (
         <PreflightDialog
           projectId={projectId}
