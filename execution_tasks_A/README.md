@@ -45,6 +45,7 @@
 41. `041-production-hardening-ha-dr.md` — HA/DR, RPO/RTO, chaos/load/bomb/rotation drills, gates
 42. `042-optional-video-intelligence-lipsync.md` — [OPTIONAL] Flagged enrichment, isolated failures
 43. `043-optional-local-inference-gpu.md` — [OPTIONAL] Local/GPU sidecar boundary, registry, warmup
+44. `044-stabilize-contract-tests-and-ci-gates.md` — Stabilize flaky contract test, full CI tiers, staging drills
 
 ## Dependency Overview
 
