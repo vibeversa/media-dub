@@ -19,6 +19,7 @@ import {
   ProjectsPage,
   ReviewPage,
   SettingsPage,
+  TimelinePage,
   TranscriptPage,
   TranslationPage,
   VoicesPage,
@@ -44,8 +45,9 @@ export const routes: RouteObject[] = [
   // Project tab outlets render the details placeholder until feature tasks
   // fill them; the media tab already hosts the Task 023 resumable uploader,
   // the transcript tab hosts the Task 027 versioned editor, the
-  // translation tab hosts the Task 028 side-by-side workspace, and the
-  // voices tab hosts the Task 029 assignment workspace.
+  // translation tab hosts the Task 028 side-by-side workspace, the
+  // voices tab hosts the Task 029 assignment workspace, and the
+  // timeline tab hosts the Task 030 player + waveform + timeline.
   {
     path: '/',
     element: <RequireAuth />,
@@ -66,7 +68,8 @@ export const routes: RouteObject[] = [
               { path: 'transcript', element: <TranscriptPage /> },
               { path: 'translation', element: <TranslationPage /> },
               { path: 'voices', element: <VoicesPage /> },
-              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript' && tab !== 'translation' && tab !== 'voices').map((tab) => ({
+              { path: 'timeline', element: <TimelinePage /> },
+              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript' && tab !== 'translation' && tab !== 'voices' && tab !== 'timeline').map((tab) => ({
                 path: tab,
                 element: <ProjectDetailsPage />,
               })),

@@ -1,0 +1,25 @@
+{
+  "title": "Timeline",
+  "loading": "Loading timeline…",
+  "loadError": {
+    "title": "Timeline unavailable",
+    "message": "The timeline could not be loaded. No data was changed."
+  },
+  "empty": {
+    "title": "No timeline yet",
+    "description": "No segments exist for this project yet. Start processing to populate the timeline.",
+    "processingLink": "Go to processing"
+  },
+  "player": {
+    "play": "Play",
+    "pause": "Pause",
+    "expiredTitle": "Media link expired",
+    "expiredMessage": "Media link expired. Request a fresh link to continue.",
+    "unavailableTitle": "Media unavailable"
+  },
+  "waveform": {
+    "missing": "Waveform is still being prepared — playback remains available.",
+    "unavailableTitle": "Waveform unavailable",
+    "progressLink": "View processing progress"
+  }
+}

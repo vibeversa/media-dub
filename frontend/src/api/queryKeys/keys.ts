@@ -150,6 +150,14 @@ export const queryKeys = {
       previewId,
     ],
   },
+  timeline: {
+    all: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'timeline'],
+    media: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'timeline', 'media'],
+    peaks: (projectId: string, resolution?: number): QueryKey =>
+      resolution === undefined
+        ? ['projects', 'detail', projectId, 'timeline', 'peaks']
+        : ['projects', 'detail', projectId, 'timeline', 'peaks', resolution],
+  },
   exports: {
     all: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'exports'],
     lists: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'exports', 'list'],
