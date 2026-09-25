@@ -1,0 +1,26 @@
+{
+  "title": "Transcript",
+  "loading": "Loading transcript…",
+  "loadError": {
+    "title": "Transcript unavailable",
+    "message": "The transcript could not be loaded. No data was changed."
+  },
+  "empty": {
+    "title": "No transcript yet",
+    "description": "Start processing to generate the transcript. Editing appears here once segments exist.",
+    "processingLink": "Go to processing"
+  },
+  "stale": {
+    "title": "Segment changed elsewhere",
+    "refresh": "Refresh transcript"
+  },
+  "playerNote": "Compact player slot — Task 030 MediaPlayer mounts here.",
+  "inspector": {
+    "title": "Segment inspector",
+    "empty": "Select a segment to inspect versions.",
+    "original": "Original",
+    "selected": "Selected",
+    "draft": "Manual draft",
+    "versions": "Versions"
+  }
+}

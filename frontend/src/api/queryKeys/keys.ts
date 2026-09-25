@@ -158,6 +158,18 @@ export const queryKeys = {
     list: (params?: PageParams): QueryKey => ['notifications', 'list', withDefaults(params)],
     unreadCount: (): QueryKey => ['notifications', 'unread-count'],
   },
+  transcript: {
+    all: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'transcript'],
+    list: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'transcript', 'list'],
+    detail: (projectId: string, segmentId: string): QueryKey => [
+      'projects',
+      'detail',
+      projectId,
+      'transcript',
+      'detail',
+      segmentId,
+    ],
+  },
   admin: {
     all: ['admin'] as const,
     section: (name: string, params?: PageParams): QueryKey => ['admin', name, withDefaults(params)],
@@ -182,18 +194,46 @@ export const queryKeyRegistry: Record<SseEventType, (ids: SseKeyIds) => readonly
   'run.status_changed': (ids) =>
     ids.projectId === undefined
       ? [queryKeys.projects.all]
-      : [queryKeys.progress.detail(ids.projectId), queryKeys.workspace.detail(ids.projectId), queryKeys.project.detail(ids.projectId)],
+      : [
+          queryKeys.progress.detail(ids.projectId),
+          queryKeys.workspace.detail(ids.projectId),
+          queryKeys.project.detail(ids.projectId),
+          queryKeys.transcript.list(ids.projectId),
+        ],
   'stage.started': (ids) =>
-    ids.projectId === undefined ? [] : [queryKeys.progress.detail(ids.projectId), queryKeys.workspace.detail(ids.projectId)],
+    ids.projectId === undefined
+      ? []
+      : [
+          queryKeys.progress.detail(ids.projectId),
+          queryKeys.workspace.detail(ids.projectId),
+          queryKeys.transcript.list(ids.projectId),
+        ],
   'stage.progress': (ids) => (ids.projectId === undefined ? [] : [queryKeys.progress.detail(ids.projectId)]),
   'stage.completed': (ids) =>
-    ids.projectId === undefined ? [] : [queryKeys.progress.detail(ids.projectId), queryKeys.workspace.detail(ids.projectId)],
+    ids.projectId === undefined
+      ? []
+      : [
+          queryKeys.progress.detail(ids.projectId),
+          queryKeys.workspace.detail(ids.projectId),
+          queryKeys.transcript.list(ids.projectId),
+        ],
   'stage.failed': (ids) =>
-    ids.projectId === undefined ? [] : [queryKeys.progress.detail(ids.projectId), queryKeys.workspace.detail(ids.projectId)],
+    ids.projectId === undefined
+      ? []
+      : [
+          queryKeys.progress.detail(ids.projectId),
+          queryKeys.workspace.detail(ids.projectId),
+          queryKeys.transcript.list(ids.projectId),
+        ],
   'stage.review_required': (ids) =>
     ids.projectId === undefined
       ? [queryKeys.review.lists()]
-      : [queryKeys.review.list(ids.projectId), queryKeys.progress.detail(ids.projectId), queryKeys.workspace.detail(ids.projectId)],
+      : [
+          queryKeys.review.list(ids.projectId),
+          queryKeys.progress.detail(ids.projectId),
+          queryKeys.workspace.detail(ids.projectId),
+          queryKeys.transcript.list(ids.projectId),
+        ],
   'review.created': (ids) =>
     ids.projectId === undefined
       ? [queryKeys.review.lists(), queryKeys.notifications.unreadCount()]
@@ -207,13 +247,21 @@ export const queryKeyRegistry: Record<SseEventType, (ids: SseKeyIds) => readonly
   'export.completed': (ids) =>
     ids.projectId === undefined
       ? []
-      : [queryKeys.exports.list(ids.projectId), queryKeys.workspace.detail(ids.projectId)],
+      : [
+          queryKeys.exports.list(ids.projectId),
+          queryKeys.workspace.detail(ids.projectId),
+          queryKeys.transcript.list(ids.projectId),
+        ],
   'export.failed': (ids) => (ids.projectId === undefined ? [] : [queryKeys.exports.list(ids.projectId)]),
   'notification.created': () => [queryKeys.notifications.list(), queryKeys.notifications.unreadCount()],
   'output.ready': (ids) =>
     ids.projectId === undefined
       ? []
-      : [queryKeys.workspace.detail(ids.projectId), queryKeys.exports.list(ids.projectId)],
+      : [
+          queryKeys.workspace.detail(ids.projectId),
+          queryKeys.exports.list(ids.projectId),
+          queryKeys.transcript.list(ids.projectId),
+        ],
 };
 
 /** Resolves the invalidation keys for one SSE frame's event type and IDs. */
