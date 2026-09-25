@@ -1,0 +1,27 @@
+{
+  "title": "Outputs and exports",
+  "loading": "Loading outputs…",
+  "loadError": {
+    "title": "Outputs unavailable",
+    "message": "Outputs could not be loaded. No data was changed."
+  },
+  "exportsLoadError": {
+    "title": "Exports unavailable",
+    "message": "Exports could not be loaded. No data was changed."
+  },
+  "summary": {
+    "title": "Output summary"
+  },
+  "items": {
+    "title": "Output items"
+  },
+  "exports": {
+    "title": "Exports",
+    "emptyTitle": "No exports yet",
+    "emptyDescription": "Request an export to generate a downloadable file."
+  },
+  "empty": {
+    "selectProject": "Select a project",
+    "selectProjectDescription": "Enter a project id to load its outputs."
+  }
+}
