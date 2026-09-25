@@ -173,6 +173,10 @@ export const queryKeys = {
         ? ['projects', 'detail', projectId, 'timeline', 'peaks']
         : ['projects', 'detail', projectId, 'timeline', 'peaks', resolution],
   },
+  quality: {
+    all: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'quality'],
+    detail: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'quality'],
+  },
   exports: {
     all: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'exports'],
     lists: (projectId: string): QueryKey => ['projects', 'detail', projectId, 'exports', 'list'],
@@ -251,6 +255,7 @@ export const queryKeyRegistry: Record<SseEventType, (ids: SseKeyIds) => readonly
       : [
           queryKeys.progress.detail(ids.projectId),
           queryKeys.workspace.detail(ids.projectId),
+          queryKeys.quality.detail(ids.projectId),
           queryKeys.project.detail(ids.projectId),
           queryKeys.transcript.list(ids.projectId),
           queryKeys.translations.list(ids.projectId),
@@ -261,6 +266,7 @@ export const queryKeyRegistry: Record<SseEventType, (ids: SseKeyIds) => readonly
       : [
           queryKeys.progress.detail(ids.projectId),
           queryKeys.workspace.detail(ids.projectId),
+          queryKeys.quality.detail(ids.projectId),
           queryKeys.transcript.list(ids.projectId),
           queryKeys.translations.list(ids.projectId),
         ],
@@ -271,6 +277,7 @@ export const queryKeyRegistry: Record<SseEventType, (ids: SseKeyIds) => readonly
       : [
           queryKeys.progress.detail(ids.projectId),
           queryKeys.workspace.detail(ids.projectId),
+          queryKeys.quality.detail(ids.projectId),
           queryKeys.transcript.list(ids.projectId),
           queryKeys.translations.list(ids.projectId),
         ],
@@ -280,6 +287,7 @@ export const queryKeyRegistry: Record<SseEventType, (ids: SseKeyIds) => readonly
       : [
           queryKeys.progress.detail(ids.projectId),
           queryKeys.workspace.detail(ids.projectId),
+          queryKeys.quality.detail(ids.projectId),
           queryKeys.transcript.list(ids.projectId),
           queryKeys.translations.list(ids.projectId),
         ],
@@ -290,6 +298,7 @@ export const queryKeyRegistry: Record<SseEventType, (ids: SseKeyIds) => readonly
           queryKeys.review.list(ids.projectId),
           queryKeys.progress.detail(ids.projectId),
           queryKeys.workspace.detail(ids.projectId),
+          queryKeys.quality.detail(ids.projectId),
           queryKeys.transcript.list(ids.projectId),
           queryKeys.translations.list(ids.projectId),
         ],
@@ -319,6 +328,7 @@ export const queryKeyRegistry: Record<SseEventType, (ids: SseKeyIds) => readonly
       ? []
       : [
           queryKeys.workspace.detail(ids.projectId),
+          queryKeys.quality.detail(ids.projectId),
           queryKeys.exports.list(ids.projectId),
           queryKeys.transcript.list(ids.projectId),
           queryKeys.translations.list(ids.projectId),

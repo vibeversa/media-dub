@@ -17,6 +17,7 @@ import {
   ProjectCreatePage,
   ProjectDetailsPage,
   ProjectsPage,
+  QualityPage,
   ReviewPage,
   SettingsPage,
   TimelinePage,
@@ -46,8 +47,9 @@ export const routes: RouteObject[] = [
   // fill them; the media tab already hosts the Task 023 resumable uploader,
   // the transcript tab hosts the Task 027 versioned editor, the
   // translation tab hosts the Task 028 side-by-side workspace, the
-  // voices tab hosts the Task 029 assignment workspace, and the
-  // timeline tab hosts the Task 030 player + waveform + timeline.
+  // voices tab hosts the Task 029 assignment workspace, the
+  // timeline tab hosts the Task 030 player + waveform + timeline, and the
+  // quality tab hosts the Task 032 QC summary + evidence-backed issues.
   {
     path: '/',
     element: <RequireAuth />,
@@ -69,7 +71,8 @@ export const routes: RouteObject[] = [
               { path: 'translation', element: <TranslationPage /> },
               { path: 'voices', element: <VoicesPage /> },
               { path: 'timeline', element: <TimelinePage /> },
-              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript' && tab !== 'translation' && tab !== 'voices' && tab !== 'timeline').map((tab) => ({
+              { path: 'quality', element: <QualityPage /> },
+              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript' && tab !== 'translation' && tab !== 'voices' && tab !== 'timeline' && tab !== 'quality').map((tab) => ({
                 path: tab,
                 element: <ProjectDetailsPage />,
               })),

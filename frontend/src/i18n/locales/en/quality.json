@@ -1,0 +1,23 @@
+{
+  "title": "Quality",
+  "loading": "Loading quality checks…",
+  "pending": "Quality checks are still running — live updates apply automatically.",
+  "loadError": {
+    "title": "Quality checks unavailable",
+    "message": "Quality checks could not be loaded. No data was changed."
+  },
+  "summary": {
+    "title": "Quality summary"
+  },
+  "empty": {
+    "passedTitle": "Quality passed",
+    "passedDescription": "No quality issues for this project. All segments are clean.",
+    "filteredTitle": "No issues match these filters",
+    "filteredDescription": "Filters exclude every quality issue. Clear them to see the full list.",
+    "selectProject": "Select a project",
+    "selectProjectDescription": "Enter a project id to load its quality checks."
+  },
+  "blocked": {
+    "title": "Blocking quality issues need attention"
+  }
+}
