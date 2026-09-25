@@ -20,6 +20,7 @@ import {
   ReviewPage,
   SettingsPage,
   TranscriptPage,
+  TranslationPage,
 } from './pages/lazy.js';
 
 const PROJECT_TAB_PATHS = [
@@ -40,8 +41,9 @@ export const routes: RouteObject[] = [
   // `/login?next=...`; AppShell renders the IA from `getTopNavItems`, and
   // /admin nests under RequireAdmin (route-guarded, never CSS-only hiding).
   // Project tab outlets render the details placeholder until feature tasks
-  // fill them; the media tab already hosts the Task 023 resumable uploader
-  // and the transcript tab hosts the Task 027 versioned editor.
+  // fill them; the media tab already hosts the Task 023 resumable uploader,
+  // the transcript tab hosts the Task 027 versioned editor, and the
+  // translation tab hosts the Task 028 side-by-side workspace.
   {
     path: '/',
     element: <RequireAuth />,
@@ -60,7 +62,8 @@ export const routes: RouteObject[] = [
               { index: true, element: <ProjectDetailsPage /> },
               { path: 'media', element: <MediaPage /> },
               { path: 'transcript', element: <TranscriptPage /> },
-              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript').map((tab) => ({
+              { path: 'translation', element: <TranslationPage /> },
+              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript' && tab !== 'translation').map((tab) => ({
                 path: tab,
                 element: <ProjectDetailsPage />,
               })),

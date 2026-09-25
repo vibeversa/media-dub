@@ -1,0 +1,22 @@
+{
+  "title": "Translation",
+  "loading": "Loading translations…",
+  "loadError": {
+    "title": "Translation unavailable",
+    "message": "The translation could not be loaded. No data was changed."
+  },
+  "empty": {
+    "title": "No translations yet",
+    "description": "Start processing to generate translations. Review appears here once candidates exist.",
+    "processingLink": "Go to processing"
+  },
+  "stale": {
+    "title": "Segment changed elsewhere",
+    "refresh": "Refresh translations"
+  },
+  "editor": {
+    "title": "Translation editor",
+    "empty": "Select a segment to edit its translation.",
+    "draft": "Translation draft"
+  }
+}
