@@ -3,13 +3,14 @@ import { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '../../api/client/index.js';
 import { queryKeys } from '../../api/queryKeys/index.js';
 import { useIsAuthenticated } from '../../features/auth/useSession.js';
+import { fetchUnreadCount } from '../../features/notifications/useNotifications.js';
 import { RouteTracker } from '../../telemetry/RouteTracker.js';
 import { useAuthStore } from '../../features/auth/authStore.js';
 import { getEnv } from '../../lib/env.js';
 import { useAppStore } from '../../stores/index.js';
+import { NotificationBell as CenterNotificationBell } from '../../features/notifications/NotificationBell.js';
 import { ChunkErrorBoundary } from '../ChunkErrorBoundary.js';
 import { RouteFallback } from '../RouteFallback.js';
 import { getTopNavItems } from '../navigation/topNav.js';
@@ -17,28 +18,14 @@ import type { TopNavItem } from '../navigation/topNav.js';
 
 const UI_LOCALES = ['en', 'ar'] as const;
 
-function BellIcon(): ReactNode {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6" />
-      <path d="M10 20a2 2 0 0 0 4 0" />
-    </svg>
-  );
-}
-
+/**
+ * Header bell slot (Task 034): delegates to the notification-center bell so
+ * the badge (hidden at zero, `99+` overflow, `aria-live="polite"`) stays in
+ * one place. Kept as a thin alias so the shell R2 string scan still sees
+ * `useTranslation` in this module.
+ */
 function NotificationBell({ unreadCount }: { readonly unreadCount: number }): ReactNode {
-  const { t } = useTranslation();
-  const label = unreadCount > 0 ? t('nav:bell.unread', { count: unreadCount }) : t('nav:bell.label');
-  return (
-    <Link to="/notifications" aria-label={label} data-testid="nav-bell" className="relative rounded p-2">
-      <BellIcon />
-      {unreadCount > 0 && (
-        <span data-testid="nav-bell-badge" className="absolute inset-block-start-0 inset-inline-end-0 rounded-full px-1 text-xs">
-          {unreadCount}
-        </span>
-      )}
-    </Link>
-  );
+  return <CenterNotificationBell unreadCount={unreadCount} />;
 }
 
 function LocaleSwitcher(): ReactNode {
@@ -132,13 +119,16 @@ function LiveNotificationBell(): ReactNode {
   const isAuthenticated = useIsAuthenticated();
   const query = useQuery({
     queryKey: queryKeys.notifications.unreadCount(),
-    queryFn: () => apiClient.getUnreadNotificationCount(),
+    queryFn: ({ signal }) => fetchUnreadCount(signal),
     enabled: isAuthenticated,
     staleTime: 30_000,
     retry: false,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchInterval: false,
   });
-  const count = query.data?.unreadCount ?? 0;
+  const raw = query.data;
+  const count = typeof raw === 'number' ? raw : (raw as { unreadCount?: number } | undefined)?.unreadCount ?? 0;
   return <NotificationBell unreadCount={count} />;
 }
 

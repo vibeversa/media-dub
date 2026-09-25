@@ -18,6 +18,7 @@ import enTimeline from './locales/en/timeline.json';
 import enReview from './locales/en/review.json';
 import enQuality from './locales/en/quality.json';
 import enExports from './locales/en/exports.json';
+import enNotifications from './locales/en/notifications.json';
 import ruCommon from './locales/ru/common.json';
 import { trackMissingTranslation } from '../telemetry/telemetry.js';
 
@@ -27,7 +28,7 @@ export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 /**
  * i18next init (Task 018): `en` baseline with namespaced JSON bundles
- * (common, nav, auth, dashboard, projects, processing, uploads, workspace, transcript, translation, voices, timeline, review, quality, exports, errors), `ar`/`ru` partial
+ * (common, nav, auth, dashboard, projects, processing, uploads, workspace, transcript, translation, voices, timeline, review, quality, exports, notifications, errors), `ar`/`ru` partial
  * bundles for RTL + plural coverage, `en` fallback for every missing key
  * (never blank strings). Plural categories follow ICU via Intl.PluralRules
  * (`_zero/_one/_two/_few/_many/_other` suffixes). Synchronous init
@@ -52,6 +53,7 @@ void i18n.use(initReactI18next).init({
       review: enReview,
       quality: enQuality,
       exports: enExports,
+      notifications: enNotifications,
       errors: enErrors,
     },
     ar: {
@@ -68,7 +70,7 @@ void i18n.use(initReactI18next).init({
   defaultNS: 'common',
   // Feature code always uses namespaced keys (`nav:dashboard`); a bare key
   // resolves against `common` instead of rendering the key itself blank.
-  ns: ['common', 'nav', 'auth', 'dashboard', 'projects', 'processing', 'uploads', 'workspace', 'transcript', 'translation', 'voices', 'timeline', 'review', 'quality', 'exports', 'errors'],
+  ns: ['common', 'nav', 'auth', 'dashboard', 'projects', 'processing', 'uploads', 'workspace', 'transcript', 'translation', 'voices', 'timeline', 'review', 'quality', 'exports', 'notifications', 'errors'],
   interpolation: {
     // React already escapes; double-escaping would corrupt ICU placeholders.
     escapeValue: false,

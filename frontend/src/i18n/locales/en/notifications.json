@@ -1,0 +1,21 @@
+{
+  "title": "Notifications",
+  "center": {
+    "title": "Notifications",
+    "unread": "{{count}} unread",
+    "markAllRead": "Mark all read",
+    "markedAllRead": "All notifications marked as read.",
+    "markReadFailed": "Could not mark this notification as read. List refreshed.",
+    "markAllFailed": "Could not mark all as read. List refreshed.",
+    "emptyTitle": "No notifications",
+    "emptyDescription": "New activity will appear here."
+  },
+  "prefs": {
+    "title": "Delivery preferences",
+    "description": "Toggles disable future delivery only. History is never deleted."
+  },
+  "gone": {
+    "title": "This item is no longer available.",
+    "description": "The linked project, review, or export was deleted. The notification is kept as read."
+  }
+}
