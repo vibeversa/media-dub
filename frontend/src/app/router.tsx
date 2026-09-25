@@ -6,6 +6,7 @@ import { AppShell } from './layouts/AppShell.js';
 import { AuthLayout } from './layouts/AuthLayout.js';
 import { ProjectLayout } from './layouts/ProjectLayout.js';
 import {
+  ActivityPage,
   AdminPage,
   DashboardPage,
   ExportsPage,
@@ -50,8 +51,9 @@ export const routes: RouteObject[] = [
   // translation tab hosts the Task 028 side-by-side workspace, the
   // voices tab hosts the Task 029 assignment workspace, the
   // timeline tab hosts the Task 030 player + waveform + timeline, the
-  // quality tab hosts the Task 032 QC summary + evidence-backed issues, and
-  // the exports tab hosts the Task 033 output readiness + export jobs.
+  // quality tab hosts the Task 032 QC summary + evidence-backed issues,
+  // the exports tab hosts the Task 033 output readiness + export jobs, and
+  // the activity tab hosts the Task 035 audit timeline + cost summary.
   {
     path: '/',
     element: <RequireAuth />,
@@ -75,7 +77,8 @@ export const routes: RouteObject[] = [
               { path: 'timeline', element: <TimelinePage /> },
               { path: 'quality', element: <QualityPage /> },
               { path: 'exports', element: <ExportsPage /> },
-              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript' && tab !== 'translation' && tab !== 'voices' && tab !== 'timeline' && tab !== 'quality' && tab !== 'exports').map((tab) => ({
+              { path: 'activity', element: <ActivityPage /> },
+              ...PROJECT_TAB_PATHS.filter((tab) => tab !== 'media' && tab !== 'transcript' && tab !== 'translation' && tab !== 'voices' && tab !== 'timeline' && tab !== 'quality' && tab !== 'exports' && tab !== 'activity').map((tab) => ({
                 path: tab,
                 element: <ProjectDetailsPage />,
               })),

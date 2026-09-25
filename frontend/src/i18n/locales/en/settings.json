@@ -1,0 +1,28 @@
+{
+  "title": "Settings",
+  "subtitle": "Preferences for your account and workspace.",
+  "cost": {
+    "title": "Cost summary",
+    "estimated": "Estimated",
+    "estimateLabel": "Estimate",
+    "actualRun": "Actual run cost",
+    "actualMonth": "Actual month to date",
+    "unavailableTitle": "Cost unavailable",
+    "unavailableDescription": "This run predates cost tracking. No estimate is shown.",
+    "note": "Estimates are planning figures only — never promises. Actual cost is metered server-side."
+  },
+  "quota": {
+    "available": "Quota available",
+    "near": "Quota nearly exhausted",
+    "exceeded": "Quota exceeded — costly actions paused",
+    "reserved": "Quota reserved"
+  },
+  "fields": {
+    "locale": "Language",
+    "timezone": "Timezone (IANA)",
+    "theme": "Theme (applies instantly)",
+    "filters": "Default project filters",
+    "zoom": "Timeline zoom (1–4)",
+    "notifications": "Notification preferences"
+  }
+}

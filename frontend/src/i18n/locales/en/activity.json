@@ -1,0 +1,25 @@
+{
+  "title": "Activity",
+  "timeline": {
+    "title": "Activity timeline",
+    "emptyTitle": "No activity yet",
+    "emptyDescription": "Events appear as work progresses.",
+    "filteredEmptyTitle": "No matching events",
+    "filteredEmptyDescription": "Adjust the filters or reset to the defaults."
+  },
+  "filters": {
+    "title": "Activity filters",
+    "actor": "Actor",
+    "action": "Action",
+    "from": "From",
+    "to": "To",
+    "reset": "Reset filters"
+  },
+  "columns": {
+    "timestamp": "Timestamp",
+    "actor": "Actor",
+    "action": "Action",
+    "summary": "Summary",
+    "details": "Details"
+  }
+}
