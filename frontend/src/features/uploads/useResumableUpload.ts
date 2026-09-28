@@ -800,15 +800,32 @@ export function useResumableUpload(projectId: string, language: string, options?
         setLocalError('empty');
         return;
       }
+      // Register bytes synchronously and touch the session so `needsReattach`
+      // (`getSessionFile(projectId) === null`) clears in the same tick as the
+      // file-input change event. `getSessionFile` reads a module Map (not
+      // reactive), so without this touch the component keeps rendering the
+      // reattach prompt with a disabled resume button until the trailing
+      // `updateSession` below; a test/user clicking resume in that window
+      // hits a disabled button (no-op) and the phase stays `paused` — the
+      // flaky `re-attaching the same file resumes ...` failure under
+      // full-suite load (`expected 'paused' to be 'ready'`).
+      setSessionFile(projectId, file);
+      updateSession(projectId, { updatedAt: new Date().toISOString() });
       const fingerprint = await fingerprintFile(file);
-      if (!isSameFingerprint(current.fingerprint, fingerprint)) {
+      // Re-read: `resume` may have started (phase `uploading`) while the
+      // fingerprint was computed. Use the latest fingerprint/phase so a stale
+      // `current` capture cannot restart or clobber the in-flight resume.
+      const latest = readSession();
+      if (latest === undefined) {
+        return;
+      }
+      if (!isSameFingerprint(latest.fingerprint, fingerprint)) {
         await cancel();
         await start(file);
         setFingerprintNotice(true);
         return;
       }
-      setSessionFile(projectId, file);
-      if (current.phase === 'uploaded' || current.phase === 'validating' || current.phase === 'analyzing') {
+      if (latest.phase === 'uploaded' || latest.phase === 'validating' || latest.phase === 'analyzing') {
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         setBusy(true);
@@ -826,7 +843,12 @@ export function useResumableUpload(projectId: string, language: string, options?
       } catch {
         // Best effort; resume re-lists again.
       }
-      updateSession(projectId, { phase: 'paused', autoPaused: false, updatedAt: new Date().toISOString() });
+      const after = readSession();
+      // Never clobber a resume that already moved to `uploading` while we
+      // were reconciling; only settle the paused/error resting state.
+      if (after !== undefined && (after.phase === 'paused' || after.phase === 'error')) {
+        updateSession(projectId, { phase: 'paused', autoPaused: false, updatedAt: new Date().toISOString() });
+      }
     },
     [cancel, pollValidation, projectId, readSession, reconcileParts, start, updateSession],
   );

@@ -223,8 +223,16 @@ describe('refresh recovery prompt', () => {
     const digest = await fp(file);
     useUploadStore.getState().updateSession('prj_1', { fingerprint: digest });
     fireEvent.change(screen.getByTestId('upload-reattach-input'), { target: { files: [file] } });
-    expect(await screen.findByTestId('upload-resume')).toBeDefined();
-    fireEvent.click(screen.getByTestId('upload-resume'));
+    // `reattach` registers the bytes + touches the session synchronously, but
+    // under full-suite load the re-render may lag one tick: wait for the
+    // resume button to become enabled (needsReattach cleared) instead of
+    // clicking a possibly-disabled button (a disabled click is a no-op and
+    // leaves the phase `paused`).
+    const resumeButton = await screen.findByTestId('upload-resume');
+    await waitFor(() => {
+      expect((resumeButton as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(resumeButton);
     await waitFor(() => {
       expect(useUploadStore.getState().sessions['prj_1']?.phase).toBe('ready');
     });

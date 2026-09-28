@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../components/Toast/useToast.js';
@@ -30,18 +30,29 @@ export function Inspector({ projectId, segment, onStale, staleVersion }: Inspect
   const [draft, setDraft] = useState('');
   const [draftDirty, setDraftDirty] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Synchronous per-segment reset (render-phase adjustment, not an effect):
+  // the draft must clear when the user selects a different segment, but an
+  // async `useEffect(() => reset, [segment?.id])` races with user input —
+  // under full-suite load the test/user can type between the commit that
+  // mounts the new segment and the effect flush, and the late effect then
+  // wipes the draft (flaky `select-version ... keeps the draft on 409`).
+  // Adjusting state during render makes the reset commit atomically with the
+  // segment change, so a draft typed after the render is never cleared by a
+  // stale effect. The 409 paths (`handleSelect`/`handleManualSave`) keep the
+  // id stable, so this never clears the preserved draft on conflict.
+  const [draftSegmentId, setDraftSegmentId] = useState<string | undefined>(segment?.id);
+  if (draftSegmentId !== segment?.id) {
+    setDraftSegmentId(segment?.id);
+    setDraft('');
+    setDraftDirty(false);
+    setAdvancedOpen(false);
+  }
   const detailQuery = useTranscriptSegment(projectId, segment?.id);
   const selectMutation = useSelectTranscriptVersion(projectId);
   const manualMutation = useCreateManualTranscriptVersion(projectId);
 
   const full: TranscriptSegmentView | undefined = detailQuery.data ?? segment;
   const lineage = full !== undefined ? deriveLineage(full) : undefined;
-
-  useEffect(() => {
-    setDraft('');
-    setDraftDirty(false);
-    setAdvancedOpen(false);
-  }, [segment?.id]);
 
   if (segment === undefined || full === undefined) {
     return (
