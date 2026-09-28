@@ -112,7 +112,14 @@ public static class ObservabilitySetup
                         "DubbingPlatform.Providers",
                         "DubbingPlatform.Tts",
                         "DubbingPlatform.Translation",
-                        "DubbingPlatform.Timing");
+                        "DubbingPlatform.Timing",
+                        // Task 038: Api-owned meters registered by string literal
+                        // (Infrastructure cannot reference the Api assembly).
+                        // Names must match BackendMetrics.MeterName,
+                        // SseMetrics.MeterName, and NotificationMeters.MeterName.
+                        "DubbingPlatform.Observability",
+                        "DubbingPlatform.Sse",
+                        "DubbingPlatform.Notifications");
 
                 if (observability.EnableMetrics && hasOtlp)
                 {

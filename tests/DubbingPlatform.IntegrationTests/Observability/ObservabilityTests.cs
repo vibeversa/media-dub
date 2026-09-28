@@ -1,16 +1,24 @@
+using System.Diagnostics.Metrics;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
+using DubbingPlatform.Api.Errors;
 using DubbingPlatform.Api.Middleware;
+using DubbingPlatform.Api.Observability;
+using DubbingPlatform.Api.Sse;
 using DubbingPlatform.Application.MultiTenancy;
+using DubbingPlatform.Application.Reviews;
+using DubbingPlatform.Application.Security;
 using DubbingPlatform.Contracts.Messages;
 using DubbingPlatform.Domain.Entities;
 using DubbingPlatform.Infrastructure.Observability;
 using DubbingPlatform.Infrastructure.Persistence;
 using DubbingPlatform.Infrastructure.Persistence.Interceptors;
 using EFCore.NamingConventions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -155,6 +163,204 @@ public sealed class ObservabilityTests : IClassFixture<WebApplicationFactory<Cor
             Assert.Equal(runId.ToString("N"), activity.GetTagItem("run.id")?.ToString());
             Assert.Equal("Export", activity.GetTagItem("stage")?.ToString());
         }
+    }
+
+    [Fact]
+    public void BackendMetrics_Smoke_Emits_All_Task038_Instruments()
+    {
+        var tenantId = Guid.NewGuid();
+        var longCounts = new Dictionary<string, long>(StringComparer.Ordinal);
+        var doubleCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var tagSnapshots = new Dictionary<string, List<KeyValuePair<string, object?>>>(StringComparer.Ordinal);
+
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (string.Equals(instrument.Meter.Name, BackendMetrics.MeterName, StringComparison.Ordinal))
+            {
+                l.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, state) =>
+        {
+            longCounts[instrument.Name] = longCounts.TryGetValue(instrument.Name, out var prior) ? prior + measurement : measurement;
+            tagSnapshots[instrument.Name] = tags.ToArray().ToList();
+        });
+        listener.SetMeasurementEventCallback<double>((instrument, measurement, tags, state) =>
+        {
+            doubleCounts[instrument.Name] = doubleCounts.TryGetValue(instrument.Name, out var prior) ? prior + 1 : 1;
+            tagSnapshots[instrument.Name] = tags.ToArray().ToList();
+        });
+        listener.Start();
+
+        // SSE connect -> counter; reconnect storm stays a bounded counter, not a flood.
+        BackendMetrics.SseConnected(tenantId, "/api/v1/projects/stream");
+        BackendMetrics.SseReconnected(tenantId, "/api/v1/projects/stream");
+        // Failed projection -> failure counter (code only, never content).
+        BackendMetrics.NotificationProjectionFailed(tenantId, "notification.project");
+        // Read-model query latency histogram.
+        BackendMetrics.ObserveReadModelLatency(42.5, tenantId, "progress.read");
+        // Upload funnel stages.
+        BackendMetrics.UploadFunnelStage(tenantId, "initiated");
+        BackendMetrics.UploadFunnelStage(tenantId, "chunk_received");
+        BackendMetrics.UploadFunnelStage(tenantId, "completed");
+        // Review/export/preview latencies (review/export forward frozen counts too).
+        BackendMetrics.ObserveReviewLatency(120.0, tenantId, "review.resolve");
+        BackendMetrics.ObserveExportLatency(250.0, tenantId, failed: false, operation: "export.generate");
+        BackendMetrics.ObserveExportLatency(300.0, tenantId, failed: true, operation: "export.generate");
+        BackendMetrics.ObservePreviewLatency(80.0, tenantId, "preview.generate");
+        // Legacy correlation minting outcome counter.
+        BackendMetrics.RecordCorrelationOutcome(propagated: true);
+        BackendMetrics.RecordCorrelationOutcome(propagated: false);
+        // Invalid latencies are dropped, never recorded.
+        BackendMetrics.ObserveReadModelLatency(double.NaN, tenantId, "progress.read");
+        BackendMetrics.ObservePreviewLatency(-1.0, tenantId, "preview.generate");
+
+        Assert.Equal(1, longCounts[BackendMetrics.SseConnectionsName]);
+        Assert.Equal(1, longCounts[BackendMetrics.SseReconnectsName]);
+        Assert.Equal(1, longCounts[BackendMetrics.NotificationProjectionFailuresName]);
+        Assert.Equal(3, longCounts[BackendMetrics.UploadFunnelName]);
+        Assert.Equal(2, longCounts[BackendMetrics.CorrelationMintedName]);
+        Assert.Equal(1, doubleCounts[BackendMetrics.ReadModelQueryLatencyName]);
+        Assert.Equal(1, doubleCounts[BackendMetrics.ReviewLatencyName]);
+        Assert.Equal(2, doubleCounts[BackendMetrics.ExportLatencyName]);
+        Assert.Equal(1, doubleCounts[BackendMetrics.PreviewLatencyName]);
+
+        // Every measurement carries a hashed tenant label, never the raw id.
+        var rawTenant = tenantId.ToString("N");
+        foreach (var entry in tagSnapshots)
+        {
+            var tenantHash = entry.Value.FirstOrDefault(t => string.Equals(t.Key, "tenant_hash", StringComparison.Ordinal)).Value?.ToString();
+            if (entry.Key == BackendMetrics.CorrelationMintedName)
+            {
+                continue;
+            }
+
+            Assert.NotNull(tenantHash);
+            Assert.NotEqual(rawTenant, tenantHash);
+            Assert.DoesNotContain(rawTenant, string.Join(";", entry.Value.Select(t => t.Value?.ToString() ?? string.Empty)), StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void BackendMetrics_TenantHash_And_RouteTemplate_Policy()
+    {
+        var tenantId = Guid.NewGuid();
+        var first = BackendMetrics.HashTenantId(tenantId);
+        Assert.Equal(first, BackendMetrics.HashTenantId(tenantId));
+        Assert.Equal(16, first.Length);
+        Assert.Matches("^[0-9a-f]{16}$", first);
+        Assert.DoesNotContain(tenantId.ToString("N"), first, StringComparison.Ordinal);
+        Assert.Equal("none", BackendMetrics.HashTenantId(Guid.Empty));
+
+        // Route-template labeling: ids collapse, queries never survive.
+        var raw = tenantId.ToString("N");
+        var normalized = BackendMetrics.NormalizeRoute($"/api/v1/projects/{raw}?token=hunter2&next=/x#frag");
+        Assert.Equal("/api/v1/projects/{id}", normalized);
+        Assert.DoesNotContain(raw, normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("token", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("?", normalized, StringComparison.Ordinal);
+        Assert.Equal("/api/v1/projects/{id}", BackendMetrics.NormalizeRoute($"/api/v1/projects/{tenantId:D}/"));
+        Assert.Equal("unknown", BackendMetrics.NormalizeRoute(null));
+        Assert.Equal("/", BackendMetrics.NormalizeRoute("   "));
+    }
+
+    [Fact]
+    public void Correlation_Missing_Minted_With_PropagatedFalse()
+    {
+        var (minted, propagated) = CorrelationMiddleware.ResolveWithPropagation(null);
+        Assert.False(propagated);
+        Assert.Matches("^[0-9a-f]{32}$", minted);
+
+        var (blank, blankPropagated) = CorrelationMiddleware.ResolveWithPropagation("   ");
+        Assert.False(blankPropagated);
+        Assert.NotEqual(minted, blank);
+
+        var (unsafeId, unsafePropagated) = CorrelationMiddleware.ResolveWithPropagation("bad id! with spaces");
+        Assert.False(unsafePropagated);
+        Assert.Matches("^[0-9a-f]{32}$", unsafeId);
+    }
+
+    [Fact]
+    public void Correlation_Propagated_Passthrough()
+    {
+        const string callerId = "corr-e2e-001";
+        var (resolved, propagated) = CorrelationMiddleware.ResolveWithPropagation(callerId);
+        Assert.True(propagated);
+        Assert.Equal(callerId, resolved);
+    }
+
+    [Fact]
+    public async Task CorrelationMiddleware_Invoke_Marks_Propagation()
+    {
+        // Propagated caller id: same id echoed, flag true.
+        var propagatedContext = new DefaultHttpContext();
+        propagatedContext.Request.Headers[CorrelationMiddleware.HeaderName] = "corr-action-7";
+        var propagatedNext = false;
+        var propagatedMiddleware = new CorrelationMiddleware(_ =>
+        {
+            propagatedNext = true;
+            return Task.CompletedTask;
+        });
+        await propagatedMiddleware.InvokeAsync(propagatedContext).ConfigureAwait(true);
+        Assert.True(propagatedNext);
+        Assert.Equal("corr-action-7", propagatedContext.Items[CorrelationMiddleware.ItemKey]);
+        Assert.Equal(true, propagatedContext.Items[CorrelationMiddleware.PropagatedItemKey]);
+        Assert.Equal(true, CorrelationMiddleware.WasPropagated(propagatedContext));
+        Assert.Equal("corr-action-7", propagatedContext.Response.Headers[CorrelationMiddleware.HeaderName].ToString());
+
+        // Legacy path: minted id, flag false, still echoed so support can trace both sides.
+        var mintedContext = new DefaultHttpContext();
+        var mintedMiddleware = new CorrelationMiddleware(_ => Task.CompletedTask);
+        await mintedMiddleware.InvokeAsync(mintedContext).ConfigureAwait(true);
+        Assert.Equal(false, mintedContext.Items[CorrelationMiddleware.PropagatedItemKey]);
+        Assert.Equal(false, CorrelationMiddleware.WasPropagated(mintedContext));
+        var mintedId = Assert.IsType<string>(mintedContext.Items[CorrelationMiddleware.ItemKey]);
+        Assert.Matches("^[0-9a-f]{32}$", mintedId);
+        Assert.Equal(mintedId, mintedContext.Response.Headers[CorrelationMiddleware.HeaderName].ToString());
+    }
+
+    [Fact]
+    public void ReviewVersionConflict_Carries_Correlation_In_Envelope()
+    {
+        var (statusCode, code, message, details) = ApiError.Map(new ReviewVersionConflictException(7));
+        Assert.Equal(409, statusCode);
+        Assert.Equal("REVIEW_VERSION_CONFLICT", code);
+        Assert.Equal(7, details["currentVersion"]);
+
+        // Support traceability: the id rides in the envelope, never internals.
+        const string correlationId = "corr-review-009";
+        var envelope = new ErrorResponse(new ErrorBody(code, message, correlationId, details));
+        var json = JsonSerializer.Serialize(envelope, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        Assert.Contains("\"correlationId\":\"corr-review-009\"", json, StringComparison.Ordinal);
+        Assert.Contains("REVIEW_VERSION_CONFLICT", json, StringComparison.Ordinal);
+
+        // 500s stay generic: message carries no stack or secret.
+        var (internalStatus, internalCode, internalMessage, _) = ApiError.Map(new InvalidOperationException("boom"));
+        Assert.Equal(500, internalStatus);
+        Assert.Equal("INTERNAL_ERROR", internalCode);
+        Assert.Equal(ApiError.GenericInternalMessage, internalMessage);
+    }
+
+    [Fact]
+    public void Scrubber_Never_Emits_Sensitive_Fixtures()
+    {
+        const string fixture = "token=hunter2&password=s3cret Bearer abc.def.ghi https://cdn.example.com/signed?sig=xyz user transcript body here";
+        var redacted = SecretRedactor.Redact(fixture) ?? string.Empty;
+        Assert.DoesNotContain("hunter2", redacted, StringComparison.Ordinal);
+        Assert.DoesNotContain("s3cret", redacted, StringComparison.Ordinal);
+        Assert.Contains(SecretRedactor.RedactedValue, redacted, StringComparison.Ordinal);
+        Assert.True(SecretRedactor.IsSensitiveKey("accessToken"));
+        Assert.True(SecretRedactor.IsSensitiveKey("ApiKey"));
+        Assert.False(SecretRedactor.IsSensitiveKey("route"));
+
+        var leaked = SsePayloadPolicy.ScanFrame("{\"signedUrl\":\"https://x\",\"token\":\"abc\"}");
+        Assert.Contains("signedUrl", leaked, StringComparer.OrdinalIgnoreCase);
+        Assert.Empty(SsePayloadPolicy.ScanFrame("{\"eventType\":\"stage.progress\",\"percent\":42}"));
+
+        var normalized = BackendMetrics.NormalizeRoute("/api/v1/media/mine?access_token=abc&media=bytes");
+        Assert.DoesNotContain("access_token", normalized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("?", normalized, StringComparison.Ordinal);
     }
 
     private static WebApplicationFactory<CorrelationIdMiddleware> CreateAuthFactory(string? connectionString = null)

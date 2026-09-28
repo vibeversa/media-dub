@@ -1,0 +1,47 @@
+# 038 — Backend Metrics, Frontend Telemetry, Analytics, Correlation
+
+## Status
+COMPLETED
+
+## Summary
+Wired product-grade observability per the Review Fix (validate completeness, no new correlation bootstrap): added `BackendMetrics` (SSE/reconnect, notification-failure, read-model-latency, upload-funnel, review/export/preview-latency, correlation-outcome instruments with SHA-256 tenant hashes + route-template labels) and a `CorrelationMiddleware` naming facade over the canonical `CorrelationIdMiddleware`; finalized the frontend taxonomy in `events.ts` + `scrub.ts` + allowlisted `analytics.ts` with persisted opt-out plus the `api/client/correlation.ts` facade. Extended `ObservabilityTests` with 7 hermetic proofs (MeterListener smoke, hash/route policy, mint-vs-propagate, middleware flagging, REVIEW_VERSION_CONFLICT envelope traceability, scrubber fixtures) and `telemetry.test.ts` from 12 to 23 tests (taxonomy conformance, adversarial scrubbing, allowlist drops, opt-out suppression).
+Applied the 037 recommendations: reused `SecretRedactor`/`SsePayloadPolicy`/`assertAllowlisted`/`SecurityMeters` semantics via delegation, never logged tokens/URLs/media/transcript, and left CSP/CORS untouched.
+
+## Files Created/Modified
+- `src/DubbingPlatform.Api/Observability/BackendMetrics.cs` (created) — meter `DubbingPlatform.Observability` with 8 instruments + pure `HashTenantId`/`NormalizeRoute` + emit helpers (review/export forward frozen `PlatformMetrics` counts).
+- `src/DubbingPlatform.Api/Middleware/CorrelationMiddleware.cs` (created) — invokable facade over `CorrelationIdMiddleware` policy with `ResolveWithPropagation`/`WasPropagated`/`PropagatedItemKey`; NOT in the `Program.cs` pipeline by design.
+- `src/DubbingPlatform.Infrastructure/Observability/ObservabilitySetup.cs` (modified) — registers `DubbingPlatform.Observability`/`DubbingPlatform.Sse`/`DubbingPlatform.Notifications` meters by string literal (avoids Api→Infrastructure inversion).
+- `frontend/src/telemetry/scrub.ts` (created) — recursive `scrubPayload` (URLs, data: URIs, bearer/JWT, emails, base64 blobs, stack frames, sensitive keys) + `containsSensitive`/`assertNoSensitive`.
+- `frontend/src/telemetry/events.ts` (created) — page/api/ui/upload/sse taxonomy; every event carries `app/env/appVersion/browser/os/route/correlationId`; own ring buffer (cap 100) sharing the Task 018 kill-switch/opt-out.
+- `frontend/src/telemetry/analytics.ts` (created) — 17-event allowlist union, dev-logged drops, opt-out-gated batching with mid-session flush-time + subscriber drop, sink never throws.
+- `frontend/src/api/client/correlation.ts` (created) — re-export facade over `httpClient.js` (`generateCorrelationId`, `CORRELATION_HEADER`, `buildCorrelationHeaders`, `extractCorrelationId`); zero forked logic.
+- `frontend/src/telemetry/index.ts` (modified) — barrel now also exports `scrub.js`/`events.js`/`analytics.js`.
+- `tests/DubbingPlatform.IntegrationTests/Observability/ObservabilityTests.cs` (modified) — 7 new hermetic facts; file now 11 passed + 2 Docker-skipped.
+- `frontend/src/telemetry/__tests__/telemetry.test.ts` (modified) — 11 new tests (23 total): taxonomy, adversarial scrub, allowlist, opt-out, correlation facade.
+
+## Decisions Made
+- **Facades over rewrites (Review Fix gate):** `CorrelationMiddleware` and `api/client/correlation.ts` delegate to `CorrelationIdMiddleware`/`httpClient.js`; `BackendMetrics` review/export helpers forward to frozen `PlatformMetrics` counters. No pipeline, transport, or frozen-instrument behavior changed.
+- **`CorrelationMiddleware` not wired in `Program.cs`:** the canonical middleware owns the pipeline; the new type is a directly-invokable validator so echo/envelope behavior cannot regress. `WasPropagated` returns `null` when it has not run.
+- **Tenant hash, not raw id:** `tenant_hash` = first 16 hex of SHA-256 over GUID `N` format (`none` for empty); `NormalizeRoute` collapses GUID/numeric segments to `{id}`, strips query/hash, caps 128 chars; null → `unknown`, blank → `/`.
+- **Opt-out stays local:** `UserPreference.AllowedKeys` has no telemetry key (frozen Task 006 contract), so analytics honors the persisted `dubbing.telemetry.optOut` store slice; crash traceability on opt-out is preserved server-side (error envelopes always carry `correlationId`, proven by test).
+- **Structured events use a parallel channel:** the Task 018 `TelemetryEvent` union is frozen, so `events.ts` owns its own buffer/sink but shares `isTelemetryEnabled` + `assertAllowlisted` semantics.
+- **Test corrections:** `IsSensitiveKey("ConnectionString")` is `false` per the frozen fragment list (assert `ApiKey` instead); whitespace routes normalize to `/`.
+- **Pre-existing flakes untouched:** `mediaUploader refresh recovery` (`paused` vs `ready`) fails under parallel load but passes 15/15 isolated; `transcript select-version` fails under full-suite load but passes 17/17 isolated. Neither file is touched by this task.
+
+## Build/Test Results
+- `dotnet build DubbingPlatform.sln -p:SkipApiDriftCheck=true` → `Build succeeded. 0 Warning(s) 0 Error(s)`.
+- `dotnet test --filter FullyQualifiedName~ObservabilityTests` → `Passed: 11, Skipped: 2 (Docker Admin_200/Viewer_403), Failed: 0`.
+- `dotnet test --filter FullyQualifiedName~TenantIsolationTests` → `Passed: 19, Skipped: 1 (Rls_Negative, no Docker), Failed: 0` (no 037 regression).
+- `npm run test --prefix frontend -- src/telemetry` → `1 passed (1 file), 23 passed (23 tests)`.
+- `npm run typecheck --prefix frontend` → exit 0; `npm run lint --prefix frontend` → exit 0; `npm run check:no-hex --prefix frontend` → clean.
+- `npm run build --prefix frontend` → `✓ built in 5.86s`, drift gate `generated client matches the committed bundle`.
+- `npm run test --prefix frontend` (full) → `90 passed / 2 failed (92 files), 639 passed / 2 failed (641 tests)`; both failures are the known timing flakes above (mediaUploader passes 15/15 isolated, transcript passes 17/17 isolated).
+
+## Recommendations for Next Agent (039)
+- **State:** 001–038 done on working tree; backend adds only `BackendMetrics`/`CorrelationMiddleware` (+3 meter strings in `ObservabilitySetup`); frontend adds `telemetry/scrub.ts|events.ts|analytics.ts` + `api/client/correlation.ts`. Frontend 641 vitest (92 files; telemetry file now 23 tests); backend Observability suite 11 hermetic green + 2 Docker-skipped. Gitignored — do not commit: `frontend/dist/`, `frontend/.env`, `test-results/`, `playwright-report/`, `coverage/`, `node_modules/`.
+- **Key APIs for 039 (unit/component mock tests — reuse, do not duplicate):** `BackendMetrics.HashTenantId(Guid)/NormalizeRoute(string?)/SseConnected/SseReconnected/NotificationProjectionFailed/ObserveReadModelLatency/ObserveReviewLatency/ObserveExportLatency/ObservePreviewLatency/UploadFunnelStage/RecordCorrelationOutcome` in `src/DubbingPlatform.Api/Observability/BackendMetrics.cs`; `CorrelationMiddleware.ResolveWithPropagation/IsPropagatedId/WasPropagated/PropagatedItemKey` in `src/DubbingPlatform.Api/Middleware/CorrelationMiddleware.cs`; frontend `scrubPayload/containsSensitive/assertNoSensitive` (`telemetry/scrub.ts`), `buildPageEvent/buildApiEvent/buildUiEvent/buildUploadEvent/buildSseEvent/emitStructuredEvent/getBufferedStructuredEvents` (`telemetry/events.ts`), `trackAnalytics/flushAnalytics/isAllowlistedAnalyticsEvent/getAnalyticsBatch` (`telemetry/analytics.ts`), `buildCorrelationHeaders/extractCorrelationId/generateCorrelationId` (`api/client/correlation.ts`).
+- **Gotchas:** (1) `BackendMetrics.CorrelationMinted` is the counter field; the method is `RecordCorrelationOutcome` (same-name method+field is CS0102). (2) `ObservabilitySetup` references Api-owned meters by string literal — keep names in sync with `BackendMetrics.MeterName`/`SseMetrics.MeterName`/`NotificationMeters.MeterName`. (3) `NormalizeRoute(null)` → `unknown` but blank → `/`. (4) `analytics.ts` auto-installs a zustand subscriber on import; tests must `resetForTests()` + `clearAnalyticsBatch()` in hooks (see telemetry.test.ts). (5) `containsSensitive` flags URLs/JWT/bearer/emails/data-URIs/stack-frames/64+ base64 anywhere — keep taxonomy properties to short codes/counts. (6) `SecretRedactor.IsSensitiveKey` fragments are only secret/password/token/key/credential — bare words like `ConnectionString` return false.
+- **Incomplete integration points for 039:** `BackendMetrics` emit helpers are not yet called from controllers/services/SSE stream (pipeline wiring left for feature tasks); `CorrelationMiddleware` is not in `Program.cs` (canonical `CorrelationIdMiddleware` owns the pipeline); analytics has no backend sink endpoint (batch/sink seam only). Docker-gated facts (`Diagnostics_Admin_200`, `Diagnostics_Viewer_403`) SKIP without Docker — rerun in CI.
+- **Test helpers:** backend `dotnet test --filter FullyQualifiedName~ObservabilityTests` (hermetic; MeterListener pattern in `BackendMetrics_Smoke_Emits_All_Task038_Instruments`); frontend `npm run test --prefix frontend -- src/telemetry` (23 tests, incl. `console.debug` spy for allowlist drops).
+- **Warnings:** never put tenant/user ids, tokens, URLs, media bytes, or transcript text into metric tags or telemetry payloads — `tenant_hash` + `NormalizeRoute` + `scrubPayload` are the enforcement points; do not re-add `unsafe-inline` to either CSP.
+- **Config keys:** no new config keys; `VITE_TELEMETRY_ENABLED` + `dubbing.telemetry.optOut` gate both telemetry channels; `/metrics` now also exports `DubbingPlatform.Observability|Sse|Notifications` meters.
