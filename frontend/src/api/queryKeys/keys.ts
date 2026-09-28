@@ -310,6 +310,27 @@ export interface SseKeyIds {
 }
 
 /**
+ * Tenant-scoped cache keys (Task 037, R2).
+ *
+ * Additive helper: existing feature keys stay project-scoped for prefix
+ * invalidation, and callers that cache per-tenant data wrap them with
+ * `scopedTenantKey(tenantId, key)` so caches never cross tenants. The tenant
+ * segment leads the key (`['tenant', tenantId, ...key]`) so tenant prefix
+ * invalidation cascades without touching project nesting.
+ */
+export function scopedTenantKey(tenantId: string, key: QueryKey): QueryKey {
+  if (tenantId.trim() === '') {
+    throw new Error('tenantId must not be empty.');
+  }
+  return ['tenant', tenantId, ...key];
+}
+
+/** Whether a key carries the given tenant scope. Pure. */
+export function isTenantScopedKey(key: QueryKey, tenantId: string): boolean {
+  return key.length >= 2 && key[0] === 'tenant' && key[1] === tenantId;
+}
+
+/**
  * SSE event-type → query-key mapping consumed by Task 026 invalidation.
  * Every frozen `SseEventType` has an entry; a new bundle event without one
  * here fails typecheck via the `Record<SseEventType, ...>` annotation.

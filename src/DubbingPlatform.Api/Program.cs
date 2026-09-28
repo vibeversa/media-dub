@@ -164,6 +164,10 @@ builder.Services.AddOptions<LocalInferenceOptions>()
     .BindConfiguration(LocalInferenceOptions.SectionName)
     .ValidateDataAnnotations()
     .ValidateOnStart();
+builder.Services.AddOptions<CorsOptions>()
+    .BindConfiguration(CorsOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
 builder.Services.AddSingleton<IValidateOptions<ObservabilityOptions>, ObservabilityOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<MediaOptions>, MediaOptionsValidator>();
@@ -197,6 +201,35 @@ builder.Services.AddSingleton<IValidateOptions<AzureProviderOptions>, AzureProvi
 builder.Services.AddSingleton<IValidateOptions<OpenAiProviderOptions>, OpenAiProviderOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<GoogleProviderOptions>, GoogleProviderOptionsValidator>();
 builder.Services.AddSingleton<IValidateOptions<LocalInferenceOptions>, LocalInferenceOptionsValidator>();
+builder.Services.AddSingleton<IValidateOptions<CorsOptions>, CorsOptionsValidator>();
+
+builder.Services.AddCors(options =>
+{
+    // Task 037, R4: allowlist from configuration (Cors:AllowedOrigins).
+    // Empty means same-origin only (fail closed). No wildcard with
+    // credentials: unlisted preflights are rejected without echoing the
+    // request origin, so the allowlist contents never leak.
+    options.AddPolicy("dubbing-cors", policy =>
+    {
+        var origins = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>()?.AllowedOrigins
+            ?? [];
+        var cleaned = origins
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(o => o.Trim().TrimEnd('/'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (cleaned.Length == 0)
+        {
+            // Same-origin only (fail closed): no cross-origin request is
+            // allowed, and no origin is ever echoed.
+            policy.SetIsOriginAllowed(_ => false).AllowAnyHeader().AllowAnyMethod().DisallowCredentials();
+        }
+        else
+        {
+            policy.WithOrigins(cleaned).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+        }
+    });
+});
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssembly(typeof(DubbingPlatform.Application.Placeholder).Assembly);
@@ -374,9 +407,11 @@ HealthRegistration.AddApiHealthChecks(builder.Services, builder.Configuration);
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ErrorMappingMiddleware>();
 
+app.UseCors("dubbing-cors");
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();

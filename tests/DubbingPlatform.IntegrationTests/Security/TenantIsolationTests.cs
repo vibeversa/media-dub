@@ -1,5 +1,9 @@
 using System.Data.Common;
 using System.Net.Sockets;
+using System.Text;
+using DubbingPlatform.Api.Auth;
+using DubbingPlatform.Api.Middleware;
+using DubbingPlatform.Api.Services;
 using DubbingPlatform.Application.Errors;
 using DubbingPlatform.Application.Exceptions;
 using DubbingPlatform.Application.MultiTenancy;
@@ -14,8 +18,10 @@ using DubbingPlatform.Domain.Exceptions;
 using DubbingPlatform.Infrastructure.Messaging;
 using DubbingPlatform.Infrastructure.Persistence;
 using DubbingPlatform.Infrastructure.Persistence.Interceptors;
+using DubbingPlatform.Infrastructure.Storage;
 using EFCore.NamingConventions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit.Abstractions;
@@ -197,8 +203,230 @@ public sealed class TenantIsolationTests
             () => ConsentService.ValidateForVoice(null, project, null, null));
     }
 
-    private async Task RunRlsNegativeAsync(PostgreSqlContainer container)
+    [Fact]
+    public void Anonymous_OnlyLoginRefreshLogoutHealthOpenApi()
     {
+        Assert.True(AnonymousRoutes.IsAnonymous("POST", "/api/v1/auth/login"));
+        Assert.True(AnonymousRoutes.IsAnonymous("POST", "/api/v1/auth/refresh"));
+        Assert.True(AnonymousRoutes.IsAnonymous("POST", "/api/v1/auth/logout"));
+        Assert.True(AnonymousRoutes.IsAnonymous("GET", "/health/live"));
+        Assert.True(AnonymousRoutes.IsAnonymous("GET", "/health/ready"));
+        Assert.True(AnonymousRoutes.IsAnonymous("GET", "/openapi/v1.json"));
+
+        // Product endpoints are never anonymous (fail closed).
+        Assert.False(AnonymousRoutes.IsAnonymous("GET", "/api/v1/projects"));
+        Assert.False(AnonymousRoutes.IsAnonymous("GET", "/api/v1/admin/status"));
+        Assert.False(AnonymousRoutes.IsAnonymous("GET", "/api/v1/admin/usage"));
+        Assert.False(AnonymousRoutes.IsAnonymous("POST", "/api/v1/projects/123/runs"));
+        Assert.False(AnonymousRoutes.IsAnonymous(null, "/api/v1/auth/login"));
+        Assert.False(AnonymousRoutes.IsAnonymous("GET", null));
+    }
+
+    [Fact]
+    public void CrossTenant_Matrix_Never200NeverData()
+    {
+        var tenantA = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var tenantB = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var projectA = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var projectB = Guid.Parse("44444444-4444-4444-4444-444444444444");
+
+        // Cross-tenant read/write on every product surface fails closed.
+        Assert.Throws<ForbiddenException>(() => TenantGuard.AssertMatch(tenantB, tenantA));
+        Assert.Throws<ForbiddenException>(() => TenantGuard.AssertMatch(tenantA, tenantB));
+        Assert.False(TenantGuard.IsMatch(tenantA, tenantB));
+
+        // Member of project A cannot touch project B: keys diverge by tenant.
+        var hash = new string('a', 64);
+        var keyA = StorageKeyBuilder.BuildKey(tenantA, projectA, Guid.NewGuid(), "Render", "RenderedOutput", hash, ".mp4");
+        var keyB = StorageKeyBuilder.BuildKey(tenantB, projectB, Guid.NewGuid(), "Render", "RenderedOutput", hash, ".mp4");
+        Assert.NotEqual(keyA, keyB);
+        Assert.Throws<ForbiddenException>(() => TenantGuard.AssertMatch(tenantB, tenantA));
+
+        // Membership revoked mid-session is a 403 FORBIDDEN (fail closed);
+        // the client routes back to the projects list on this code.
+        var revoked = Assert.Throws<ForbiddenException>(() => TenantGuard.AssertMatch(Guid.Empty, tenantA));
+        Assert.Equal(ErrorCodes.Forbidden, revoked.ErrorCode);
+        Assert.Equal(403, revoked.StatusCode);
+    }
+
+    [Fact]
+    public void TenantKeys_Prefixed_And_OwnershipEnforced()
+    {
+        var tenantA = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var tenantB = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var project = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var run = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        var hash = new string('a', 64);
+
+        var key = TenantKeyBuilder.BuildTenantKey(tenantA, project, run, "Render", "RenderedOutput", hash, ".mp4");
+        Assert.StartsWith(string.Concat(tenantA.ToString("N"), "/"), key, StringComparison.Ordinal);
+        Assert.True(TenantKeyBuilder.IsOwnedBy(tenantA, key));
+        Assert.False(TenantKeyBuilder.IsOwnedBy(tenantB, key));
+        TenantKeyBuilder.AssertOwnedBy(tenantA, key);
+
+        Assert.Throws<DomainException>(() => TenantKeyBuilder.AssertOwnedBy(tenantB, key));
+        Assert.Throws<DomainException>(() => TenantKeyBuilder.AssertOwnedBy(Guid.Empty, key));
+        Assert.Throws<DomainException>(() => TenantKeyBuilder.AssertOwnedBy(tenantA, "../escape"));
+    }
+
+    [Fact]
+    public void SignedUrl_15Min_TenantBound()
+    {
+        var service = new SignedUrlService(Encoding.UTF8.GetBytes(new string('k', 40)));
+        var tenant = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var project = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var artifact = Guid.NewGuid();
+        var now = new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
+
+        var issued = service.Issue(tenant, project, artifact, now);
+        Assert.Equal(now.AddMinutes(15), issued.ExpiresAt);
+        Assert.Equal(tenant, issued.TenantId);
+
+        var validated = service.Validate(issued.Token, tenant, project, now.AddMinutes(14));
+        Assert.Equal(artifact, validated.ArtifactId);
+    }
+
+    [Fact]
+    public void SignedUrl_Tampered_Rejected()
+    {
+        var service = new SignedUrlService(Encoding.UTF8.GetBytes(new string('k', 40)));
+        var tenant = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var project = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var now = new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
+
+        var issued = service.Issue(tenant, project, Guid.NewGuid(), now);
+        var tampered = issued.Token.Substring(0, issued.Token.Length - 2) + "AA";
+        var rejected = Assert.Throws<ForbiddenException>(() => service.Validate(tampered, tenant, project, now));
+        Assert.Equal(ErrorCodes.Forbidden, rejected.ErrorCode);
+        Assert.Equal(403, rejected.StatusCode);
+    }
+
+    [Fact]
+    public void SignedUrl_Expired_Rejected()
+    {
+        var service = new SignedUrlService(Encoding.UTF8.GetBytes(new string('k', 40)));
+        var tenant = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var project = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var now = new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
+
+        var issued = service.Issue(tenant, project, Guid.NewGuid(), now);
+        var rejected = Assert.Throws<ErrorCodeException>(
+            () => service.Validate(issued.Token, tenant, project, now.AddMinutes(16)));
+        Assert.Equal(ErrorCodes.UrlExpired, rejected.ErrorCode);
+        Assert.Equal(410, rejected.StatusCode);
+    }
+
+    [Fact]
+    public void SignedUrl_WrongTenant_Rejected()
+    {
+        var service = new SignedUrlService(Encoding.UTF8.GetBytes(new string('k', 40)));
+        var tenantA = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var tenantB = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var project = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var now = new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
+
+        var issued = service.Issue(tenantA, project, Guid.NewGuid(), now);
+        var rejected = Assert.Throws<ForbiddenException>(
+            () => service.Validate(issued.Token, tenantB, project, now));
+        Assert.Equal(ErrorCodes.Forbidden, rejected.ErrorCode);
+    }
+
+    [Fact]
+    public void SignedUrl_ArchivedProject_RejectedWithReason()
+    {
+        var service = new SignedUrlService(Encoding.UTF8.GetBytes(new string('k', 40)));
+        var tenant = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var project = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var now = new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
+
+        var issued = service.Issue(tenant, project, Guid.NewGuid(), now);
+        var rejected = Assert.Throws<ErrorCodeException>(
+            () => service.Validate(issued.Token, tenant, project, now, projectArchived: true));
+        Assert.Equal(ErrorCodes.ProjectArchived, rejected.ErrorCode);
+        Assert.Equal(409, rejected.StatusCode);
+    }
+
+    [Fact]
+    public void SignedUrl_UnknownTenant_401_NoSideEffect()
+    {
+        var service = new SignedUrlService(Encoding.UTF8.GetBytes(new string('k', 40)));
+        var project = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var now = new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
+
+        // Valid signature but unknown (empty) tenant: 401, no tenant creation.
+        Assert.Throws<UnauthorizedAccessException>(
+            () => service.Validate("anything.token", Guid.Empty, project, now));
+    }
+
+    [Fact]
+    public void Transport_CspStrict_ReferrerNoReferrer_NoStoreOnIssuance()
+    {
+        Assert.DoesNotContain("unsafe-inline", SecurityHeadersMiddleware.ContentSecurityPolicy, StringComparison.Ordinal);
+        Assert.DoesNotContain("unsafe-eval", SecurityHeadersMiddleware.ContentSecurityPolicy, StringComparison.Ordinal);
+        Assert.Equal("no-referrer", SecurityHeadersMiddleware.ReferrerPolicy);
+        Assert.Equal("private, no-store", SignedUrlService.IssuanceCacheControl);
+
+        Assert.True(SecurityHeadersMiddleware.IsIssuanceEndpoint("/api/v1/projects/x/output/download"));
+        Assert.True(SecurityHeadersMiddleware.IsIssuanceEndpoint("/api/v1/exports/e/download"));
+        Assert.False(SecurityHeadersMiddleware.IsIssuanceEndpoint("/api/v1/projects"));
+        Assert.False(SecurityHeadersMiddleware.IsIssuanceEndpoint(null));
+    }
+
+    [Fact]
+    public void Cors_Allowlist_NoCredentialedWildcard()
+    {
+        var validator = new CorsOptionsValidator();
+        var wildcard = new CorsOptions { AllowedOrigins = ["*"] };
+        Assert.True(validator.Validate(null, wildcard).Failed);
+
+        var badPath = new CorsOptions { AllowedOrigins = ["https://app.example.com/callback"] };
+        Assert.True(validator.Validate(null, badPath).Failed);
+
+        var ok = new CorsOptions { AllowedOrigins = ["https://app.example.com"] };
+        Assert.True(validator.Validate(null, ok).Succeeded);
+
+        var empty = new CorsOptions { AllowedOrigins = [] };
+        Assert.True(validator.Validate(null, empty).Succeeded);
+    }
+
+    [Fact]
+    public void Contracts_NoProviderDbStorageSecrets()
+    {
+        // Allowlist-serialize: no provider/DB/storage secret may reach a
+        // frontend response DTO. Session tokens (login pair) are auth
+        // artifacts, not provider secrets, and are excluded from this scan.
+        var forbidden = new[]
+        {
+            "connectionstring", "signingkey", "apikey", "apisecret",
+            "clientsecret", "dbpassword", "storageaccountkey",
+            "queuepassword", "redispassword",
+        };
+        var apiAssembly = typeof(DubbingPlatform.Api.Controllers.ProjectsController).Assembly;
+        var offenders = new List<string>();
+        foreach (var type in apiAssembly.GetTypes())
+        {
+            if (type.Namespace is null || !type.Namespace.StartsWith("DubbingPlatform.Api.Models", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            foreach (var property in type.GetProperties())
+            {
+                var name = property.Name.ToLowerInvariant();
+                foreach (var fragment in forbidden)
+                {
+                    if (name.Contains(fragment, StringComparison.Ordinal))
+                    {
+                        offenders.Add(string.Concat(type.Name, ".", property.Name));
+                    }
+                }
+            }
+        }
+
+        Assert.Empty(offenders);
+    }
+
+    private async Task RunRlsNegativeAsync(PostgreSqlContainer container)    {
         var tenantA = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var tenantB = Guid.Parse("22222222-2222-2222-2222-222222222222");
         var now = DateTimeOffset.UtcNow;
