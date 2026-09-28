@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Task 039A: backend coverage gate reference (coverlet XPlat Code Coverage).
+     Use: dotnet test with filter FullyQualifiedName~UnitTests, collect XPlat Code Coverage, settings tests/coverage.runsettings
+     Formats cobertura plus json for gap triage. Excludes test
+     assemblies and generated code by policy (mirrors docs/coverage.md). -->
+<RunSettings>
+  <RunConfiguration>
+    <ResultsDirectory>./TestResults</ResultsDirectory>
+  </RunConfiguration>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura,json</Format>
+          <Exclude>[*.Tests]*,[*]*.Generated*</Exclude>
+          <ExcludeByFile>**/obj/**/*.cs,**/*.g.cs,**/*.g.i.cs</ExcludeByFile>
+          <IncludeDirectory>../src</IncludeDirectory>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

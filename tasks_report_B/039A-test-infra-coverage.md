@@ -1,0 +1,50 @@
+# 039A — Test Infrastructure and Coverage Enforcement
+
+## Status
+COMPLETED
+
+## Summary
+Built the shared test-infrastructure layer Task 039A owns: an eleven-outcome MSW taxonomy (`frontend/src/mocks/` + `conformance.spec.ts`, 13 tests green) with envelope-correct handlers for every documented API outcome; Vitest V8 coverage with a stable CI floor (72/64/68/72) plus `json-summary` output feeding a new `scripts/coverage-gap.mjs` per-file 80% gap report for 039B/039C; a `scripts/presence-gate.mjs` ownership gate enforcing `docs/test-ownership.md` (26/26 areas pass); backend coverlet gate reference (`tests/coverage.runsettings`, collector 6.0.4 already pinned in all four test projects); and `docs/coverage.md` recording thresholds plus the exclusion policy. Full frontend suite is 93 files / 654 tests green with coverage thresholds passing; backend UnitTests 412/412 green with XPlat attachments. No feature specs authored here per R5.
+Applied the 039 recommendations: synthetic-only fixtures (fixed `corr-taxonomy-*` IDs, no tenants/tokens/URLs/media/transcript), scrubber semantics untouched, CSP/CORS untouched, `unsafe-inline` not re-added.
+
+## Files Created/Modified
+- `frontend/src/mocks/taxonomy.ts` (created) — 11-outcome taxonomy contract (`TAXONOMY`, `MOCK_BASE_URL`, `isErrorEnvelope`, `taxonomyEntry`); synthetic fixtures only.
+- `frontend/src/mocks/handlers.ts` (created) — one MSW `http.get` per taxonomy entry; interception-only, no TCP port, no retry.
+- `frontend/src/mocks/server.ts` (created) — shared `setupServer(...taxonomyHandlers)` instance.
+- `frontend/src/mocks/conformance.spec.ts` (created) — R2 gate: 11 envelope tests (missing handler → `MSW_HANDLER_MISSING:<id>`, wrong shape → `MSW_ENVELOPE_INCORRECT:<id>`) + handler-count + envelope-guard tests; one fetch per entry, retry forbidden.
+- `frontend/src/mocks/README.md` (created) — taxonomy table, fixed-URL/no-retry rules, pin notes.
+- `frontend/vite.config.ts` (modified) — added `json-summary` reporter + `thresholds { lines 72, branches 64, functions 68, statements 72 }` CI floor; canonical-config comment (no separate `vitest.config.ts`).
+- `frontend/package.json` + `frontend/package-lock.json` (modified) — pinned `msw@2.15.0`; added `test:presence` / `coverage:gap` scripts.
+- `scripts/coverage-gap.mjs` (created) — R3 report: version-drift check (`COVERAGE_TOOL_VERSION_MISMATCH`, exit 2), missing-summary check (`COVERAGE_SUMMARY_MISSING`, exit 2), per-file `COVERAGE_GAP:<path> <metric>=<pct>` lines, exit 0; empty output = 80% target met.
+- `scripts/presence-gate.mjs` (created) — R4 gate: 26 areas → owning task IDs; direct-spec or import-use passes; missing area fails `PRESENCE_GAP:<area> owned by <owner>` exit 1.
+- `docs/coverage.md` (created) — thresholds table (floor vs 80 target), exclusion policy, backend commands, gap-closing recipe, quarantine/no-bypass policy.
+- `docs/test-ownership.md` (created) — ownership rule, 26-row area→owner→spec-location table, presence-gate + shared-fixture rules.
+- `tests/coverage.runsettings` (created) — XPlat collector settings (cobertura+json; excludes test assemblies, generated, obj).
+- `tasks_report_B/039A-test-infra-coverage.md` (created) — this report.
+
+## Decisions Made
+- **046 missing, so 039A defines the taxonomy contract:** Task 046 (harness+taxonomy+factories) has no report/implementation yet, but 039A depends on its taxonomy. Deterministic call: 039A authors the minimal MSW taxonomy + conformance it is explicitly tasked with (`taxonomy.ts`/`handlers.ts`/`server.ts`/`README.md`), scoped to the 11 documented outcomes; full 046 harness (Playwright tags, fixture factories, scrubbers, quarantine doc) stays with 046, and feature MSW suites stay with 039B.
+- **Kept `vite.config.ts` canonical, no `vitest.config.ts`:** the task allows either file; a second config risks dual-config drift, so coverage lives in the existing `vite.config.ts` and `docs/coverage.md` records the choice.
+- **Floor thresholds, not 80, in vitest:** measured global is 78.32 lines / 71.25 branches / 74.71 funcs; enforcing 80 in `thresholds` would fail today. Floor 72/64/68/72 is stable run-to-run; the 80 per-file target lives in the gap script + docs until 039B/039C land, then the floor is raised.
+- **Gap script exits 0 with gaps:** it is a report feeding 039B/039C (R3: empty output = done); the failing gates are vitest `thresholds` + presence gate. Version drift / missing summary fail loudly (exit 2), never silent zero-coverage.
+- **Presence gate counts import-use as covered:** `src/stores` has no dedicated spec but is exercised by 26 importing suites; the gate passes an area with zero direct specs only when a spec imports it, and documents the `generated/` + `types/` + `styles` exclusions.
+- **MSW without TCP ports:** `msw/node` intercepts at the request layer, so the port-collision flake class is impossible by construction; retry is forbidden in conformance (documented in README).
+- **New mocks held to 100%:** `taxonomyEntry`/`isErrorEnvelope` are exercised inside `conformance.spec.ts` (contract testing, not feature logic) so the infra added here does not itself appear in the gap list.
+
+## Build/Test Results
+- `npm run test --prefix frontend -- src/mocks/conformance.spec.ts` → `Test Files 1 passed (1)` / `Tests 13 passed (13)` in 3.00s (green).
+- `npm run test --prefix frontend -- --coverage` → `Test Files 93 passed (93)` / `Tests 654 passed (654)` in ~74s; `All files | 78.32 | 71.25 | 74.71 | 78.32`, thresholds 72/64/68/72 pass (exit 0); `src/mocks` 100/100/100/100.
+- `dotnet test --filter FullyQualifiedName~UnitTests --collect:"XPlat Code Coverage"` → `Passed! - Failed: 0, Passed: 412, Skipped: 0, Total: 412` + 4 `coverage.cobertura.xml` attachments (green).
+- `dotnet test ... --settings tests/coverage.runsettings --filter ...SmokeTests` → `Passed: 1` + `coverage.cobertura.xml` + `coverage.json` (runsettings valid; first attempt caught/fixed illegal `--` inside the XML comment).
+- `node scripts/coverage-gap.mjs` → exit 0; lists below-80 files (e.g. `COVERAGE_GAP:src/features/voices/PreviewPlayer.tsx lines=62.7 branches=60.5 functions=40.0 statements=62.7`; last lines `...src/telemetry/telemetryContext.ts lines=0.0 ...`, `...src/types/index.ts lines=0.0 ...`); `src/mocks/*` absent (all 100%).
+- `node scripts/presence-gate.mjs` → `PRESENCE_OK:26 areas with specs` exit 0 (first attempt misfired on Windows path separators; fixed with `sep`-aware prefix match).
+- `npm run typecheck --prefix frontend` → exit 0. `npm run lint --prefix frontend` → exit 0. (Two strict-mode fixes during work: `HttpResponse.json` needs `Record<string, unknown>` body; `errorBody` return widened from interface.)
+
+## Recommendations for Next Agent (039B)
+- **State:** 039A done; 039B (frontend state matrices) + 039C (backend unit gaps) consume the gap list. Frontend 93 files / 654 tests green; backend UnitTests 412 green. New: `frontend/src/mocks/*` (taxonomy/handlers/server/conformance/README), `scripts/coverage-gap.mjs`, `scripts/presence-gate.mjs`, `docs/coverage.md`, `docs/test-ownership.md`, `tests/coverage.runsettings`, `msw@2.15.0` pinned, `coverage:gap`/`test:presence` npm scripts. Gitignored — do not commit: `frontend/coverage/`, `*/TestResults/`, `frontend/dist/`, `node_modules/`. Pre-existing dirty (not ours, left uncommitted): `master-prompt.md`.
+- **Key APIs (reuse, do not duplicate):** `TAXONOMY`/`taxonomyEntry(id)`/`isErrorEnvelope(v)`/`MOCK_BASE_URL` in `frontend/src/mocks/taxonomy.ts`; `taxonomyHandlers` in `frontend/src/mocks/handlers.ts`; `taxonomyServer` in `frontend/src/mocks/server.ts` (lifecycle per spec file: `listen({ onUnhandledRequest: 'error' })` / `resetHandlers()` / `close()`); `test.coverage.{reporter,thresholds:{lines:72,branches:64,functions:68,statements:72}}` in `frontend/vite.config.ts`; `TARGET_PCT=80` + `METRICS=[lines,branches,functions,statements]` in `scripts/coverage-gap.mjs`; `AREAS` (26 entries `{area, owner}`) in `scripts/presence-gate.mjs`.
+- **Gotchas:** (1) `coverage/` is overwritten by every run — a focused `--coverage.include` run clobbers `coverage-summary.json`; always re-run the full `--coverage` before `coverage-gap.mjs`. (2) Presence gate is Windows-separator-sensitive — prefix match must use `sep`, never a hardcoded `/` (fixed once; do not regress). (3) XML comments in `*.runsettings` cannot contain `--` (broke the first settings run). (4) MSW `HttpResponse.json` rejects `unknown` bodies under strict TS — keep `TaxonomyEntry.body` as `Record<string, unknown>`. (5) `msw` major is independent of vitest; only `vitest` vs `@vitest/coverage-v8` majors must match (gap script enforces). (6) Success/partial taxonomy bodies must never gain an `error` key — conformance asserts its absence.
+- **Incomplete integration points for 039B/039C:** gap list is long by design (stories at 0%, thin `index.ts` barrels, `App.tsx`/providers/pages shells, `useResumableUpload.ts` 62.7 lines, `PreviewPlayer.tsx` 62.7 lines) — 039B closes frontend files, 039C backend units; raise the vitest floor to 80 only when the gap output is empty. Full 046 harness (Playwright tags, `Synthetic*.cs` factories, scrubber tests) still unowned — do not build it inside 039B.
+- **Test helpers:** focused conformance `npm run test --prefix frontend -- src/mocks/conformance.spec.ts` (~3s); full `npm run test --prefix frontend` (~70s) / with `--coverage` (~75s + summary); `node scripts/coverage-gap.mjs` (instant, needs fresh summary); `node scripts/presence-gate.mjs` (instant); backend `dotnet test --filter FullyQualifiedName~UnitTests --collect:"XPlat Code Coverage"` (~30s solution-wide).
+- **Warnings:** fixtures stay synthetic (fixed `corr-taxonomy-*` IDs; zero real tenants/tokens/URLs/media/transcript); gap output is paths+counts only — never add source excerpts; no coverage bypass flag without expiry-tracked quarantine (owner+issue+expiry); do not lower thresholds to green a red gate.
+- **Config keys:** no new runtime config; `VITE_*` set unchanged; pins: `vitest@2.1.8`, `@vitest/coverage-v8@2.1.8`, `msw@2.15.0`, `coverlet.collector@6.0.4`.

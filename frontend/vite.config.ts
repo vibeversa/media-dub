@@ -20,17 +20,19 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}', 'src/**/*.spec.{ts,tsx}'],
     reporters: ['default'],
     setupFiles: ['./src/testSetup.ts'],
-    // Task 039 (superseded-split note: thresholds enforced in 039A).
-    // Minimal coverage wiring so `npm run test -- --coverage` emits an
-    // artifact (text + lcov + html). Generated OpenAPI output is excluded
-    // per the task spec; no `thresholds` here — 039A measures the gap and
-    // raises `lines/branches/functions/statements` to >=80 on
-    // `src/features`, `src/api`, `src/telemetry` once the gap-closure suites
-    // (039B frontend matrices) land. Enforcing 80 now would fail on the
-    // pre-existing uncovered surface and block this task's validation.
+    // Task 039A: coverage enforcement. `vite.config.ts` is the canonical
+    // coverage owner (no separate `vitest.config.ts`, to avoid dual-config
+    // drift — see `docs/coverage.md`). `npm run test -- --coverage` emits
+    // text + lcov + html + json-summary; `json-summary` feeds
+    // `scripts/coverage-gap.mjs`, which tracks the per-file 80% target that
+    // 039B/039C close. `thresholds` below are the CI floor (measured baseline
+    // 78.2 lines / 71.18 branches / 74.66 funcs, minus headroom so the gate is
+    // stable run-to-run); the 80% target lives in the gap script + docs, not
+    // here, until the gap-closure suites land. Generated OpenAPI output is
+    // excluded by explicit policy list, never by accident.
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'lcov', 'html'],
+      reporter: ['text', 'lcov', 'html', 'json-summary'],
       reportsDirectory: './coverage',
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
@@ -45,6 +47,12 @@ export default defineConfig({
         'storybook-static/**',
         '.storybook/**',
       ],
+      thresholds: {
+        lines: 72,
+        branches: 64,
+        functions: 68,
+        statements: 72,
+      },
     },
   },
 });
