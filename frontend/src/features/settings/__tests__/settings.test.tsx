@@ -17,14 +17,15 @@ import { useAuthStore } from '../../auth/authStore.js';
 import { resetRestoreStartedForTests } from '../../auth/useSession.js';
 import { SettingsPage } from '../SettingsPage.js';
 import {
-  containsReservationId,
   hasSecretMaterial,
   isAllowedPreferenceKey,
   isPreferenceValueTooLarge,
   normalizeLocale,
   normalizeTheme,
+  normalizeThemePreference,
   parseDefaultProjectFilters,
   parseTimelineZoom,
+  resolveEffectiveTheme,
   resolveStoredTimezone,
 } from '../types.js';
 
@@ -185,12 +186,15 @@ afterEach(() => {
 });
 
 describe('settings round-trip', () => {
-  it('loads whitelisted keys and persists locale with a confirmation note', async () => {
+  it('loads whitelisted keys and persists locale through save with a confirmation note', async () => {
     renderWithProviders(<SettingsPage />);
     expect(await screen.findByTestId('settings-page')).toBeDefined();
     const localeSelect = (await screen.findByTestId('settings-field-locale')) as HTMLSelectElement;
     expect(localeSelect.value).toBe('en');
     fireEvent.change(localeSelect, { target: { value: 'ar' } });
+    expect(await screen.findByTestId('settings-dirty-bar')).toBeDefined();
+    expect(world.calls.put).toBe(0);
+    fireEvent.click(screen.getByTestId('settings-save'));
     await waitFor(() => {
       expect(world.calls.put).toBe(1);
     });
@@ -199,17 +203,35 @@ describe('settings round-trip', () => {
     expect(screen.getByTestId('settings-prefs-key').textContent).toContain('preferences');
     const body = world.lastPutBody as Record<string, string>;
     expect(Object.keys(body)).toEqual(['locale']);
+    expect(useAppStore.getState().locale).toBe('ar');
   });
 
-  it('applies theme instantly to the store', async () => {
+  it('applies theme on save without reload', async () => {
     renderWithProviders(<SettingsPage />);
     expect(await screen.findByTestId('settings-field-theme-dark')).toBeDefined();
     fireEvent.click(screen.getByTestId('settings-field-theme-dark'));
+    expect(await screen.findByTestId('settings-dirty-bar')).toBeDefined();
+    fireEvent.click(screen.getByTestId('settings-save'));
     await waitFor(() => {
       expect(world.calls.put).toBe(1);
     });
     expect(useAppStore.getState().theme).toBe('dark');
     expect(world.prefs['theme']).toBe('dark');
+    expect(await screen.findByTestId('settings-theme-note')).toBeDefined();
+  });
+
+  it('supports system theme and resolves without reload', async () => {
+    renderWithProviders(<SettingsPage />);
+    expect(await screen.findByTestId('settings-field-theme-system')).toBeDefined();
+    fireEvent.click(screen.getByTestId('settings-field-theme-system'));
+    fireEvent.click(screen.getByTestId('settings-save'));
+    await waitFor(() => {
+      expect(world.calls.put).toBe(1);
+    });
+    expect(world.prefs['theme']).toBe('system');
+    expect(['light', 'dark']).toContain(useAppStore.getState().theme);
+    expect(normalizeThemePreference('system')).toBe('system');
+    expect(['light', 'dark']).toContain(resolveEffectiveTheme('system'));
   });
 
   it('falls back to UTC with an inline warning for unknown timezones', async () => {
@@ -218,6 +240,9 @@ describe('settings round-trip', () => {
     expect(await screen.findByTestId('settings-timezone-warning')).toBeDefined();
     expect(resolveStoredTimezone('Mars/Olympus')).toEqual({ timeZone: 'UTC', fellBack: true });
     expect(resolveStoredTimezone('America/New_York').fellBack).toBe(false);
+    expect(screen.getByTestId('settings-field-timezone')).toBeDefined();
+    fireEvent.click(screen.getByTestId('settings-timezone-use-utc'));
+    expect((screen.getByTestId('settings-field-timezone') as HTMLSelectElement).value).toBe('UTC');
   });
 
   it('rejects unknown keys without sending them and keeps other fields', async () => {
@@ -225,6 +250,7 @@ describe('settings round-trip', () => {
     renderWithProviders(<SettingsPage />);
     const localeSelect = await screen.findByTestId('settings-field-locale');
     fireEvent.change(localeSelect, { target: { value: 'ru' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
     expect(await screen.findByTestId('settings-field-error-locale')).toBeDefined();
     expect(screen.getByTestId('settings-field-error-message-locale').textContent).toContain('Unknown preference key');
     expect(world.prefs['locale']).toBe('en');
@@ -246,9 +272,11 @@ describe('settings round-trip', () => {
     expect(parseTimelineZoom('nope')).toBe(1);
   });
 
-  it('never renders reservation ids in cost or settings text', () => {
-    expect(containsReservationId(['run_1', '1.50 USD'])).toBe(false);
-    expect(containsReservationId(['res_abc123'])).toBe(true);
-    expect(document.body.textContent?.toLowerCase().includes('reservation')).toBe(false);
+  it('shows future-only channels as disabled with an explanatory note', async () => {
+    renderWithProviders(<SettingsPage />);
+    expect(await screen.findByTestId('settings-channel-email')).toBeDefined();
+    expect((screen.getByTestId('settings-channel-email') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId('settings-channel-webhook') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByTestId('settings-channels-note').textContent).toMatch(/future-only/);
   });
 });

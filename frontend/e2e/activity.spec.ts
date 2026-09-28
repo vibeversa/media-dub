@@ -316,6 +316,8 @@ test('settings save persists across navigation @activity', async ({ page }) => {
   await expect(page.getByTestId('settings-field-locale')).toBeVisible();
   await expect(page.getByTestId('settings-field-locale')).toHaveValue('en');
   await page.getByTestId('settings-field-locale').selectOption('ar');
+  await expect(page.getByTestId('settings-dirty-bar')).toBeVisible();
+  await page.getByTestId('settings-save').click();
   await expect(page.getByTestId('settings-locale-note')).toBeVisible();
   expect(state.prefs['locale']).toBe('ar');
   await page.getByTestId('nav-dashboard').click();

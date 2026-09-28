@@ -1,13 +1,11 @@
 /**
- * Settings + cost/quota domain view (Task 035).
+ * Settings + preferences domain view (Task 035B).
  *
  * Pure parsing + derivation over Task 006 preferences
- * (`GET|PUT /me/preferences`, whitelisted keys), the Task 007 dashboard
- * aggregate (`cost/quota/storage` sections), and the Task 008 workspace
- * aggregate (`cost` + `media` sections). Every cost figure distinguishes
- * estimated vs actual; every estimate renders with the `Estimate` label.
- * Reservation ids, provider-internal cost keys, and raw telemetry never
- * survive parsing.
+ * (`GET|PUT /me/preferences`, whitelisted keys only). Cost/quota helpers
+ * live in `features/cost` (Task 035A) and must not be duplicated here.
+ * Every value is an opaque string on the wire; parsing happens per key.
+ * Nothing here touches the network, the store, or the DOM.
  */
 
 export const MAX_PREFERENCE_BYTES = 4096;
@@ -21,29 +19,50 @@ export const ALLOWED_PREFERENCE_KEYS: readonly string[] = [
   'notificationPreferences',
 ];
 
-export const LOCALE_OPTIONS: readonly string[] = ['en', 'ar', 'ru', 'en-US'];
+export type PreferenceKey =
+  | 'locale'
+  | 'timezone'
+  | 'theme'
+  | 'defaultProjectFilters'
+  | 'timelineZoom'
+  | 'notificationPreferences';
 
-export const THEME_OPTIONS: readonly string[] = ['light', 'dark'];
+export type PreferenceMap = Record<string, string>;
 
-export type QuotaState = 'available' | 'near' | 'exceeded' | 'reserved';
+/** Mirrors `SUPPORTED_LOCALES` in `src/i18n/i18n.ts` (Task 045). */
+export const LOCALE_OPTIONS: readonly string[] = ['en', 'ar', 'ru'];
 
-export interface CostBreakdown {
-  readonly estimatedUsd: number;
-  readonly actualRunUsd: number | undefined;
-  readonly actualMonthUsd: number | undefined;
-  readonly currency: string;
-  readonly durationMs: number | undefined;
-  readonly storageUsedBytes: number | undefined;
-  readonly storageQuotaBytes: number | undefined;
-}
+export type ThemePreference = 'light' | 'dark' | 'system';
 
-export interface QuotaView {
-  readonly state: QuotaState;
-  readonly remaining: number | undefined;
-  readonly resetsAt: string | undefined;
-  readonly storageRatio: number;
-  readonly reservedUsd: number | undefined;
-}
+/** Selectable theme values (Task 035B, R3). `system` follows the OS setting. */
+export const THEME_OPTIONS: readonly string[] = ['light', 'dark', 'system'];
+
+/**
+ * Curated IANA timezone list for the select (Task 035B). `UTC` is always
+ * first and is the fallback for unknown values. Kept short on purpose:
+ * free-text entry is not offered (invalid zones map to inline errors).
+ */
+export const TIMEZONE_OPTIONS: readonly string[] = [
+  'UTC',
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'Europe/London',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'Europe/Moscow',
+  'Asia/Dubai',
+  'Asia/Karachi',
+  'Asia/Kolkata',
+  'Asia/Singapore',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+  'Pacific/Auckland',
+];
+
+/** Delivery channels shown in the form. Email/webhook are future-only. */
+export const NOTIFICATION_CHANNELS: readonly string[] = ['in-app', 'email', 'webhook'];
 
 function toRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -62,10 +81,6 @@ function pick(record: Record<string, unknown> | undefined, ...keys: readonly str
     }
   }
   return undefined;
-}
-
-function toFiniteNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function toNonEmptyString(value: unknown): string | undefined {
@@ -146,9 +161,63 @@ export function normalizeLocale(raw: unknown): string {
   return 'en';
 }
 
-/** Normalizes a theme value (`light` fallback). Pure. */
+/**
+ * Normalizes a theme value to the effective light/dark store value
+ * (`light` fallback, `system` resolves via the OS setting). Kept for
+ * backward compatibility; new code prefers `normalizeThemePreference`.
+ * Pure (never touches `matchMedia` — see `resolveEffectiveTheme`).
+ */
 export function normalizeTheme(raw: unknown): 'light' | 'dark' {
-  return raw === 'dark' ? 'dark' : 'light';
+  if (raw === 'dark') {
+    return 'dark';
+  }
+  return 'light';
+}
+
+/** Normalizes a theme preference (`light`/`dark`/`system`, `light` fallback). Pure. */
+export function normalizeThemePreference(raw: unknown): ThemePreference {
+  if (raw === 'dark' || raw === 'system' || raw === 'light') {
+    return raw;
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim().toLowerCase();
+    if (trimmed === 'dark' || trimmed === 'system' || trimmed === 'light') {
+      return trimmed as ThemePreference;
+    }
+  }
+  return 'light';
+}
+
+/** True when the raw value is a selectable theme preference. Pure. */
+export function isValidThemePreference(raw: unknown): boolean {
+  return raw === 'light' || raw === 'dark' || raw === 'system';
+}
+
+/**
+ * Resolves a theme preference to the effective light/dark store value.
+ * `system` follows `prefers-color-scheme` when available, else `light`.
+ * Never throws; safe in jsdom (no `matchMedia`).
+ * Pure apart from the guarded `matchMedia` read.
+ */
+export function resolveEffectiveTheme(preference: ThemePreference): 'light' | 'dark' {
+  if (preference === 'dark') {
+    return 'dark';
+  }
+  if (preference === 'light') {
+    return 'light';
+  }
+  try {
+    const matcher =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: dark)')
+        : undefined;
+    if (matcher !== undefined && matcher.matches) {
+      return 'dark';
+    }
+  } catch {
+    // OS query unavailable: fall through to light.
+  }
+  return 'light';
 }
 
 /** True when the value is a valid IANA timezone. Pure (never throws). */
@@ -178,6 +247,15 @@ export function resolveStoredTimezone(raw: unknown): { timeZone: string; fellBac
     return { timeZone: 'UTC', fellBack: false };
   }
   return { timeZone: 'UTC', fellBack: true };
+}
+
+/** Normalizes a timezone select value (valid IANA or `UTC`). Pure. */
+export function normalizeTimezoneOption(raw: unknown): string {
+  const candidate = typeof raw === 'string' ? raw.trim() : '';
+  if (candidate !== '' && isValidTimezone(candidate)) {
+    return candidate;
+  }
+  return 'UTC';
 }
 
 export interface DefaultProjectFiltersView {
@@ -236,142 +314,195 @@ export function serializeTimelineZoom(zoom: number): string {
   return JSON.stringify(safe);
 }
 
-/** Storage usage ratio in [0, +Infinity). Zero on unknown quota. Pure. */
-export function storageUsageRatio(usedBytes: number | undefined, quotaBytes: number | undefined): number {
-  if (usedBytes === undefined || quotaBytes === undefined || quotaBytes <= 0 || usedBytes <= 0) {
-    return 0;
-  }
-  return usedBytes / quotaBytes;
+/** Serializes a locale value (stored raw, validated on read). Pure. */
+export function serializeLocale(locale: string): string {
+  return normalizeLocale(locale);
 }
 
-/**
- * Derives the quota state (Task 035, R3). Priority: `exceeded` (remaining
- * exhausted or storage full) wins, then `reserved` (a held amount awaiting
- * reconciliation, informational only), then `near` (low remaining or
- * storage at warning threshold), else `available`. Pure.
- */
-export function deriveQuotaState(input: {
-  readonly remaining?: number;
-  readonly usedBytes?: number;
-  readonly quotaBytes?: number;
-  readonly reservedUsd?: number;
-}): QuotaState {
-  const ratio = storageUsageRatio(input.usedBytes, input.quotaBytes);
-  const remaining = input.remaining;
-  if ((remaining !== undefined && remaining <= 0) || ratio >= 1) {
-    return 'exceeded';
+/** Serializes a timezone value (valid IANA or `UTC`). Pure. */
+export function serializeTimezone(timezone: string): string {
+  const trimmed = timezone.trim();
+  if (trimmed === '') {
+    return 'UTC';
   }
-  if (input.reservedUsd !== undefined && input.reservedUsd > 0) {
-    return 'reserved';
-  }
-  if ((remaining !== undefined && remaining <= 3) || ratio >= 0.8) {
-    return 'near';
-  }
-  return 'available';
+  return trimmed.slice(0, 80);
 }
 
-/** Alert tone per quota state (distinct visual treatments, never color alone). Pure. */
-export function toneForQuotaState(state: QuotaState): 'success' | 'warning' | 'error' | 'info' {
-  switch (state) {
-    case 'exceeded':
-      return 'error';
-    case 'near':
-      return 'warning';
-    case 'reserved':
-      return 'info';
-    default:
-      return 'success';
-  }
+/** Serializes a theme preference value. Pure. */
+export function serializeThemePreference(theme: ThemePreference): string {
+  return normalizeThemePreference(theme);
 }
 
-/** Glyph per quota state (text, never color alone). Pure. */
-export function iconForQuotaState(state: QuotaState): string {
-  switch (state) {
-    case 'available':
-      return '✓';
-    case 'near':
-      return '⚠';
-    case 'exceeded':
-      return '✕';
-    case 'reserved':
-      return '◷';
-    default:
-      return '•';
-  }
+export interface PreferenceDraft {
+  readonly locale: string;
+  readonly timezone: string;
+  readonly theme: ThemePreference;
+  readonly filterStatus: string;
+  readonly filterArchived: string;
+  readonly zoom: number;
+  readonly notificationPreferences: string;
 }
 
-/** True when costly actions must block (only `exceeded` blocks). Pure. */
-export function isQuotaBlocking(state: QuotaState): boolean {
-  return state === 'exceeded';
-}
-
-/**
- * Builds a quota view from dashboard + workspace slices. Missing sections
- * stay undefined (callers render `UnavailableState`, never zero-fill).
- * Reserved amounts are informational only — reservation ids never enter
- * this shape. Pure.
- */
-export function buildQuotaView(input: {
-  readonly remaining?: unknown;
-  readonly resetsAt?: unknown;
-  readonly usedBytes?: unknown;
-  readonly quotaBytes?: unknown;
-  readonly reservedUsd?: unknown;
-}): QuotaView {
-  const remaining = toFiniteNumber(input.remaining);
-  const resetsAt = toNonEmptyString(input.resetsAt);
-  const usedBytes = toFiniteNumber(input.usedBytes);
-  const quotaBytes = toFiniteNumber(input.quotaBytes);
-  const reservedRaw = toFiniteNumber(input.reservedUsd);
-  const reservedUsd = reservedRaw !== undefined && reservedRaw > 0 ? reservedRaw : undefined;
-  const ratio = storageUsageRatio(usedBytes, quotaBytes);
-  const state = deriveQuotaState({ remaining, usedBytes, quotaBytes, reservedUsd });
-  return { state, remaining, resetsAt, storageRatio: ratio, reservedUsd };
-}
-
-/**
- * Builds the cost breakdown from dashboard actuals plus the workspace run
- * actual and media/storage context. The estimate is always a planning
- * figure supplied by the caller (preflight mirror) and must render with
- * the `Estimate` label; actuals are metered server values. A missing cost
- * section yields undefined actuals (callers show `UnavailableState`).
- * Never carries reservation ids. Pure.
- */
-export function buildCostBreakdown(input: {
-  readonly estimatedUsd: unknown;
-  readonly actualRunUsd?: unknown;
-  readonly actualMonthUsd?: unknown;
-  readonly currency?: unknown;
-  readonly durationMs?: unknown;
-  readonly storageUsedBytes?: unknown;
-  readonly storageQuotaBytes?: unknown;
-}): CostBreakdown {
-  const estimatedRaw = toFiniteNumber(input.estimatedUsd);
-  const estimatedUsd = estimatedRaw !== undefined && estimatedRaw >= 0 ? estimatedRaw : 0;
-  const actualRunRaw = toFiniteNumber(input.actualRunUsd);
-  const actualMonthRaw = toFiniteNumber(input.actualMonthUsd);
-  const currency = toNonEmptyString(input.currency) ?? 'USD';
-  const durationRaw = toFiniteNumber(input.durationMs);
-  const usedRaw = toFiniteNumber(input.storageUsedBytes);
-  const quotaRaw = toFiniteNumber(input.storageQuotaBytes);
+/** Builds the editable draft from the server snapshot. Pure. */
+export function draftFromServerMap(serverMap: PreferenceMap): PreferenceDraft {
+  const filters = parseDefaultProjectFilters(serverMap['defaultProjectFilters']);
   return {
-    estimatedUsd,
-    actualRunUsd: actualRunRaw,
-    actualMonthUsd: actualMonthRaw,
-    currency,
-    durationMs: durationRaw !== undefined && durationRaw > 0 ? durationRaw : undefined,
-    storageUsedBytes: usedRaw !== undefined && usedRaw >= 0 ? usedRaw : undefined,
-    storageQuotaBytes: quotaRaw !== undefined && quotaRaw > 0 ? quotaRaw : undefined,
+    locale: normalizeLocale(serverMap['locale']),
+    timezone: normalizeTimezoneOption(
+      (() => {
+        const raw = serverMap['timezone'];
+        if (typeof raw !== 'string' || raw === '') {
+          return 'UTC';
+        }
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          if (typeof parsed === 'string' && parsed.trim() !== '') {
+            return parsed;
+          }
+        } catch {
+          // Stored raw (already a plain zone name).
+        }
+        const stripped = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
+        return stripped;
+      })(),
+    ),
+    theme: normalizeThemePreference(serverMap['theme']),
+    filterStatus: filters.status,
+    filterArchived: filters.archived,
+    zoom: parseTimelineZoom(serverMap['timelineZoom']),
+    notificationPreferences:
+      typeof serverMap['notificationPreferences'] === 'string' ? serverMap['notificationPreferences'] : '',
   };
 }
 
-/** True when any rendered cost text would leak a reservation id. Pure. */
-export function containsReservationId(values: readonly string[]): boolean {
-  for (const value of values) {
-    const lowered = value.toLowerCase();
-    if (lowered.includes('res_') || lowered.includes('reservation')) {
-      return true;
+/** Serializes the draft to wire values (whitelisted keys only). Pure. */
+export function serializeDraft(draft: PreferenceDraft): PreferenceMap {
+  return {
+    locale: serializeLocale(draft.locale),
+    timezone: serializeTimezone(draft.timezone),
+    theme: serializeThemePreference(draft.theme),
+    defaultProjectFilters: serializeDefaultProjectFilters({
+      status: draft.filterStatus,
+      archived: draft.filterArchived,
+    }),
+    timelineZoom: serializeTimelineZoom(draft.zoom),
+    notificationPreferences: draft.notificationPreferences,
+  };
+}
+
+/**
+ * Collects whitelisted keys whose serialized draft differs from the server
+ * snapshot. Empty means clean. Sending only dirty keys gives per-key
+ * last-write-wins (never silent cross-key overwrite). Pure.
+ */
+export function collectDirtyKeys(draft: PreferenceDraft, serverMap: PreferenceMap): PreferenceKey[] {
+  const serialized = serializeDraft(draft);
+  const serverNormalized = draftFromServerMap(serverMap);
+  const serverSerialized = serializeDraft(serverNormalized);
+  const dirty: PreferenceKey[] = [];
+  for (const key of ALLOWED_PREFERENCE_KEYS as unknown as PreferenceKey[]) {
+    if ((serialized[key] ?? '') !== (serverSerialized[key] ?? '')) {
+      dirty.push(key);
     }
   }
-  return false;
+  return dirty;
+}
+
+/** True when the draft differs from the server snapshot. Pure. */
+export function isDraftDirty(draft: PreferenceDraft, serverMap: PreferenceMap): boolean {
+  return collectDirtyKeys(draft, serverMap).length > 0;
+}
+
+/**
+ * Builds the PUT body for dirty keys only. Never includes unlisted keys —
+ * callers cannot smuggle unknown keys through this helper. Pure.
+ */
+export function buildPreferencePayload(draft: PreferenceDraft, serverMap: PreferenceMap): PreferenceMap {
+  const dirty = collectDirtyKeys(draft, serverMap);
+  const serialized = serializeDraft(draft);
+  const body: PreferenceMap = {};
+  for (const key of dirty) {
+    if (isAllowedPreferenceKey(key)) {
+      body[key] = serialized[key] ?? '';
+    }
+  }
+  return body;
+}
+
+export interface SaveErrorShape {
+  readonly code?: string;
+  readonly status?: number;
+  readonly message?: string;
+  readonly details?: Record<string, unknown>;
+}
+
+/** True for save conflicts (409 — concurrent edit in another tab). Pure. */
+export function isPreferenceConflictError(error: SaveErrorShape | undefined | null): boolean {
+  if (error === undefined || error === null) {
+    return false;
+  }
+  if (error.status === 409) {
+    return true;
+  }
+  const code = error.code ?? '';
+  return (
+    code === 'CONFLICT' ||
+    code === 'SETTINGS_VERSION_CONFLICT' ||
+    code === 'REVIEW_VERSION_CONFLICT' ||
+    code.endsWith('_CONFLICT')
+  );
+}
+
+/** True for offline/network failures (queued-save, never silent loss). Pure. */
+export function isPreferenceOfflineError(error: SaveErrorShape | undefined | null): boolean {
+  if (error === undefined || error === null) {
+    return false;
+  }
+  if (error.code === 'NETWORK_ERROR') {
+    return true;
+  }
+  const message = (error.message ?? '').toLowerCase();
+  return (
+    message.includes('network unavailable') ||
+    message.includes('failed to fetch') ||
+    message.includes('fetch failed') ||
+    message.includes('offline') ||
+    message.includes('load failed')
+  );
+}
+
+/** True for tenant-scoped forbidden saves (403 — never bypass). Pure. */
+export function isPreferenceForbiddenError(error: SaveErrorShape | undefined | null): boolean {
+  if (error === undefined || error === null) {
+    return false;
+  }
+  return error.status === 403 || error.code === 'FORBIDDEN' || error.code === 'USER_DISABLED';
+}
+
+/**
+ * Extracts per-field messages from a server `details` bag. Only whitelisted
+ * keys survive; anything else is dropped (UI never renders unknown fields).
+ * Never throws. Pure.
+ */
+export function fieldErrorsFromDetails(details: unknown): Partial<Record<PreferenceKey, string>> {
+  const record = toRecord(details);
+  if (record === undefined) {
+    return {};
+  }
+  const out: Partial<Record<PreferenceKey, string>> = {};
+  for (const key of ALLOWED_PREFERENCE_KEYS as unknown as PreferenceKey[]) {
+    const value = record[key];
+    if (typeof value === 'string' && value !== '') {
+      out[key] = value.slice(0, 500);
+      continue;
+    }
+    const nested = toRecord(value);
+    if (nested !== undefined) {
+      const message = pick(nested, 'message', 'error', 'reason');
+      if (typeof message === 'string' && message !== '') {
+        out[key] = message.slice(0, 500);
+      }
+    }
+  }
+  return out;
 }

@@ -16,9 +16,9 @@ import { useAppStore } from '../../../stores/index.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { resetRestoreStartedForTests } from '../../auth/useSession.js';
 import { AuditTimeline } from '../AuditTimeline.js';
-import { CostSummary } from '../../settings/CostSummary.js';
-import { QuotaBanner } from '../../settings/QuotaBanner.js';
-import { resetQuotaBannerDismissalForTests } from '../../settings/quotaDismiss.js';
+import { CostSummary } from '../../cost/CostSummary.js';
+import { QuotaBanner } from '../../cost/QuotaBanner.js';
+import { resetQuotaBannerDismissalForTests } from '../../cost/quotaDismiss.js';
 import {
   ACTIVITY_PAGE_SIZE,
   filterActivityEvents,
@@ -29,7 +29,7 @@ import {
   parseActivityPage,
   serializeActivityFilters,
 } from '../types.js';
-import { deriveQuotaState, isQuotaBlocking } from '../../settings/types.js';
+import { deriveQuotaState, isQuotaBlocking } from '../../cost/types.js';
 import { queryKeys } from '../../../api/queryKeys/index.js';
 
 function jsonResponse(body: unknown, status = 200): Response {
