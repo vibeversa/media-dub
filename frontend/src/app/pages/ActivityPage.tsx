@@ -1,15 +1,18 @@
 import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { AuditTimeline } from '../../features/activity/AuditTimeline.js';
-import { CostSummary } from '../../features/settings/CostSummary.js';
-import { QuotaBanner } from '../../features/settings/QuotaBanner.js';
-import { useCostQuota } from '../../features/settings/useCostQuota.js';
+import { CostSummary } from '../../features/cost/CostSummary.js';
+import { QuotaBanner } from '../../features/cost/QuotaBanner.js';
+import { useCostQuota } from '../../features/cost/useCostQuota.js';
 
 /**
- * Project activity tab (Task 035): audit timeline plus cost/quota summary
+ * Project activity tab (Task 035A): audit timeline plus cost/quota summary
  * for the open project (one lazy chunk). The timeline owns paginated
- * `GET .../activity`; cost/quota read the dashboard + workspace aggregates.
- * Quota `exceeded` blocks costly actions in this tab via the banner state.
+ * `GET .../activity` on the activity factory scope; cost/quota read the
+ * dashboard + workspace aggregates on the cost factory scope. Quota
+ * `exceeded` blocks costly actions in this tab via the banner state.
+ * Tenant-scoped keys only; SSE invalidation flows through the shared
+ * registry for the open project.
  */
 export default function ActivityPage(): ReactNode {
   const params = useParams();

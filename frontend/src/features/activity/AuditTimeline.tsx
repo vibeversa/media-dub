@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../api/queryKeys/index.js';
+import { hasAdminPermission } from '../../app/session/permissions.js';
 import { Alert } from '../../components/Alert/Alert.js';
 import { EmptyState } from '../../components/EmptyState/EmptyState.js';
 import { ErrorState } from '../../components/ErrorState/ErrorState.js';
@@ -19,21 +20,31 @@ export interface AuditTimelineProps {
 }
 
 /**
- * Audit timeline (Task 035, R1/R5).
+ * Audit timeline (Task 035A, R1/R2/R5).
  *
  * Columns are `timestamp/actor/action/summary` for every event from
  * `GET /projects/{id}/activity` on the activity factory scope (paginated,
- * `ACTIVITY_PAGE_SIZE`). Advanced fields (`run/stage/provider/cost/`
- * `correlation`) stay hidden until a per-row expander opens them; the
- * expander never renders reservation ids or provider-internal keys (the
- * parser drops them). Beyond 50 rows the list paginates (page never loses
- * the URL filter state). An empty inbox renders an `EmptyState` with the
- * "events appear as work progresses" copy, never a blank panel.
+ * `ACTIVITY_PAGE_SIZE`, newest-first server order preserved). Advanced fields
+ * (`run/stage/attempt/provider/latency/cost/artifact/correlation`) stay hidden
+ * until a per-row expander opens them, and the expander itself renders only
+ * for `diagnostics.view` holders (see `hasAdminPermission`); without the
+ * permission the advanced section stays hidden with a forbidden placeholder,
+ * never an error. The expander never renders reservation ids or
+ * provider-internal keys (the parser drops them). Beyond 20 rows the list
+ * paginates by page cursor (page never loses the URL filter state), so large
+ * histories never trigger a full fetch and the DOM stays bounded to one
+ * page — equivalent to windowing at this page size without a virtualization
+ * dependency. An empty inbox renders an `EmptyState` with the "events appear
+ * as work progresses" copy, never a blank panel. Background refresh /
+ * projection lag renders a `partial` notice with refetch, never an error
+ * toast.
  */
 export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
   const queryClient = useQueryClient();
   const locale = useAppStore((s) => s.locale);
   const tenantTimezone = useAppStore((s) => s.tenantTimezone);
+  const permissions = useAppStore((s) => s.permissions);
+  const canViewAdvanced = hasAdminPermission(permissions);
   const { filters, setFilters, resetFilters } = useActivityFiltersFromUrl();
   const [searchParams, setSearchParams] = useSearchParams();
   const pageParam = searchParams.get('page');
@@ -45,6 +56,7 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
   const rawItems = useMemo(() => pageData?.items ?? [], [pageData]);
   const items = useMemo(() => filterActivityEvents(rawItems, filters), [rawItems, filters]);
   const totalPages = pageData !== undefined ? Math.max(1, Math.ceil(pageData.total / pageData.pageSize)) : 1;
+  const showPartial = !listQuery.isPending && listQuery.isFetching && pageData !== undefined && rawItems.length > 0;
 
   function setPage(next: number): void {
     const params = new URLSearchParams(searchParams.toString());
@@ -132,29 +144,35 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
                   <td data-testid={`activity-summary-${item.id}`}>{item.summary}</td>
                   <td>
                     {item.hasAdvanced ? (
-                      <>
-                        <button
-                          type="button"
-                          data-testid={`activity-row-${item.id}-toggle`}
-                          aria-expanded={open}
-                          className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
-                          onClick={() => {
-                            toggleRow(item.id);
-                          }}
-                        >
-                          {open ? 'Hide details' : 'Show details'}
-                        </button>
-                        {open ? (
-                          <dl data-testid={`activity-advanced-${item.id}`}>
-                            {Object.entries(item.advanced).map(([key, value]) => (
-                              <div key={key}>
-                                <dt data-testid={`activity-advanced-key-${item.id}-${key}`}>{key}</dt>
-                                <dd data-testid={`activity-advanced-value-${item.id}-${key}`}>{value}</dd>
-                              </div>
-                            ))}
-                          </dl>
-                        ) : null}
-                      </>
+                      canViewAdvanced ? (
+                        <>
+                          <button
+                            type="button"
+                            data-testid={`activity-row-${item.id}-toggle`}
+                            aria-expanded={open}
+                            className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
+                            onClick={() => {
+                              toggleRow(item.id);
+                            }}
+                          >
+                            {open ? 'Hide details' : 'Show details'}
+                          </button>
+                          {open ? (
+                            <dl data-testid={`activity-advanced-${item.id}`}>
+                              {Object.entries(item.advanced).map(([key, value]) => (
+                                <div key={key}>
+                                  <dt data-testid={`activity-advanced-key-${item.id}-${key}`}>{key}</dt>
+                                  <dd data-testid={`activity-advanced-value-${item.id}-${key}`}>{value}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span data-testid={`activity-advanced-forbidden-${item.id}`} className="dp-muted">
+                          Advanced details hidden
+                        </span>
+                      )
                     ) : (
                       <span data-testid={`activity-no-advanced-${item.id}`} className="dp-muted">
                         —
@@ -173,6 +191,23 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
   return (
     <section data-testid="activity-timeline" aria-label="Activity timeline" data-project={projectId}>
       <ActivityFilters filters={filters} onChange={setFilters} onReset={resetFilters} />
+      {showPartial ? (
+        <div data-testid="activity-partial">
+          <Alert tone="warning" title="Activity may be incomplete">
+            <p>New events are still projecting. Showing the last loaded events.</p>
+            <button
+              type="button"
+              data-testid="activity-partial-refresh"
+              className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
+              onClick={() => {
+                void queryClient.invalidateQueries({ queryKey: queryKeys.activity.all(projectId) });
+              }}
+            >
+              Refresh activity
+            </button>
+          </Alert>
+        </div>
+      ) : null}
       {listQuery.isError && pageData !== undefined ? (
         <div data-testid="activity-stale">
           <Alert tone="warning" title="Activity refresh failed" details={listQuery.error?.correlationId}>

@@ -157,10 +157,10 @@ async function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   return jsonResponse({});
 }
 
-function authenticate(): void {
+function authenticate(permissions: readonly string[] = ['project.view', 'project.edit', 'diagnostics.view']): void {
   setTokenProvider(() => 'test-token');
   useAuthStore.setState({ status: 'authenticated' });
-  useAppStore.getState().setSession('authenticated', ['project.view', 'project.edit']);
+  useAppStore.getState().setSession('authenticated', permissions);
 }
 
 function renderWithProviders(node: React.ReactNode, initialEntries: string[] = ['/projects/prj_1/activity']): void {
@@ -360,5 +360,70 @@ describe('cost estimate labeling and quota treatments', () => {
     expect(screen.getByTestId('quota-banner-near')).toBeDefined();
     fireEvent.click(screen.getByTestId('quota-banner-dismiss'));
     expect(screen.queryByTestId('quota-banner-near')).toBeNull();
+  });
+});
+
+describe('ordering newest-first (R1)', () => {
+  it('preserves server order across upload/start/translation/review/edit/export/complete', () => {
+    const ordered = parseActivityPage({
+      items: [
+        activityRow('act_upload', { summary: 'Upload validated', occurredAt: '2024-01-16T07:00:00Z', action: 'UploadValidated' }),
+        activityRow('act_start', { summary: 'Run started', occurredAt: '2024-01-16T08:00:00Z', action: 'RunStarted' }),
+        activityRow('act_translation', {
+          summary: 'Translation completed',
+          occurredAt: '2024-01-16T09:00:00Z',
+          action: 'StageCompleted',
+        }),
+        activityRow('act_review', { summary: 'Review requested', occurredAt: '2024-01-16T10:00:00Z', action: 'ReviewRequested' }),
+        activityRow('act_edit', { summary: 'Segment edited', occurredAt: '2024-01-16T11:00:00Z', action: 'SegmentEdited' }),
+        activityRow('act_export', { summary: 'Export completed', occurredAt: '2024-01-16T12:00:00Z', action: 'ExportCompleted' }),
+        activityRow('act_complete', { summary: 'Run completed', occurredAt: '2024-01-16T13:00:00Z', action: 'RunCompleted' }),
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 7,
+      hasMore: false,
+    });
+    expect(ordered.items.map((entry) => entry.id)).toEqual([
+      'act_upload',
+      'act_start',
+      'act_translation',
+      'act_review',
+      'act_edit',
+      'act_export',
+      'act_complete',
+    ]);
+  });
+
+  it('renders timeline rows in server order', async () => {
+    world.items = [
+      activityRow('act_export', { summary: 'Export completed', occurredAt: '2024-01-16T12:00:00Z', action: 'ExportCompleted' }),
+      activityRow('act_start', { summary: 'Run started', occurredAt: '2024-01-16T08:00:00Z', action: 'RunStarted' }),
+    ];
+    renderWithProviders(<AuditTimeline projectId="prj_1" />);
+    expect(await screen.findByTestId('activity-row-act_export')).toBeDefined();
+    const rows = document.querySelectorAll('[data-testid^="activity-row-act_"]');
+    expect(rows[0]?.getAttribute('data-testid')).toBe('activity-row-act_export');
+    expect(rows[1]?.getAttribute('data-testid')).toBe('activity-row-act_start');
+  });
+});
+
+describe('advanced permission gating (R2)', () => {
+  it('hides advanced details without error when diagnostics.view is missing', async () => {
+    useAppStore.getState().setSession('authenticated', ['project.view']);
+    renderWithProviders(<AuditTimeline projectId="prj_1" />);
+    expect(await screen.findByTestId('activity-row-act_1')).toBeDefined();
+    expect(screen.queryByTestId('activity-row-act_1-toggle')).toBeNull();
+    expect(screen.getByTestId('activity-advanced-forbidden-act_1')).toBeDefined();
+    expect(screen.queryByTestId('activity-advanced-act_1')).toBeNull();
+    expect(screen.queryByTestId('activity-error')).toBeNull();
+  });
+
+  it('shows the expander only with diagnostics.view', async () => {
+    useAppStore.getState().setSession('authenticated', ['project.view', 'diagnostics.view']);
+    renderWithProviders(<AuditTimeline projectId="prj_1" />);
+    expect(await screen.findByTestId('activity-row-act_1-toggle')).toBeDefined();
+    fireEvent.click(screen.getByTestId('activity-row-act_1-toggle'));
+    expect(screen.getByTestId('activity-advanced-act_1')).toBeDefined();
   });
 });
