@@ -24,12 +24,11 @@ export default defineConfig({
     // coverage owner (no separate `vitest.config.ts`, to avoid dual-config
     // drift — see `docs/coverage.md`). `npm run test -- --coverage` emits
     // text + lcov + html + json-summary; `json-summary` feeds
-    // `scripts/coverage-gap.mjs`, which tracks the per-file 80% target that
-    // 039B/039C close. `thresholds` below are the CI floor (measured baseline
-    // 78.2 lines / 71.18 branches / 74.66 funcs, minus headroom so the gate is
-    // stable run-to-run); the 80% target lives in the gap script + docs, not
-    // here, until the gap-closure suites land. Generated OpenAPI output is
-    // excluded by explicit policy list, never by accident.
+    // `scripts/coverage-gap.mjs`, which tracks the per-file 80% target.
+    // `thresholds` below are the CI gate; 039B raised them from the initial
+    // 72/64/68/72 floor to 80 across the board once the state-matrix suites
+    // emptied the gap report. Generated OpenAPI output is excluded by explicit
+    // policy list, never by accident.
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html', 'json-summary'],
@@ -39,6 +38,9 @@ export default defineConfig({
         'src/api/generated/**',
         'src/**/*.test.{ts,tsx}',
         'src/**/*.spec.{ts,tsx}',
+        // Task 039B: Storybook stories are dev-only demos, never shipped.
+        // Visual regressions own them in 041B; Vitest must not count them.
+        'src/**/*.stories.{ts,tsx}',
         'src/testSetup.ts',
         '**/*.d.ts',
         'playwright.config.ts',
@@ -48,10 +50,14 @@ export default defineConfig({
         '.storybook/**',
       ],
       thresholds: {
-        lines: 72,
-        branches: 64,
-        functions: 68,
-        statements: 72,
+        // Task 039B: raised from the 72/64/68/72 floor to the 80 target once
+        // the state-matrix suites closed every `coverage-gap.mjs` line
+        // (measured 96.5 / 91.9 / 98.5 / 96.5). Never lower this to green a
+        // red gate — see `docs/coverage.md`.
+        lines: 80,
+        branches: 80,
+        functions: 80,
+        statements: 80,
       },
     },
   },

@@ -1,9 +1,10 @@
 # Coverage (Task 039A)
 
 What is measured, what is excluded and why, and how to close a gap. The 80%
-target below is the goal gap-closure tasks 039B (frontend matrices) and 039C
-(backend units) work toward; the CI floor that fails builds today is the
-vitest `thresholds` block plus the presence gate.
+per-file target is enforced by `scripts/coverage-gap.mjs`; the gate that fails
+builds is the vitest `thresholds` block (raised to 80 by 039B once the
+frontend matrices were closed) plus the presence gate. 039C still works the
+backend side toward the same target.
 
 ## Frontend (Vitest + V8)
 
@@ -25,18 +26,18 @@ vitest `thresholds` block plus the presence gate.
 
 | Layer | Lines | Branches | Functions | Statements | Enforced by |
 | --- | --- | --- | --- | --- | --- |
-| CI floor (global) | 72 | 64 | 68 | 72 | `test.coverage.thresholds` in `vite.config.ts` |
-| Per-file target | 80 | 80 | 80 | 80 | `scripts/coverage-gap.mjs` report for 039B/039C |
+| CI gate (global) | 80 | 80 | 80 | 80 | `test.coverage.thresholds` in `vite.config.ts` |
+| Per-file target | 80 | 80 | 80 | 80 | `scripts/coverage-gap.mjs` report |
 
-The floor sits below the measured baseline (78.2 lines / 71.18 branches /
-74.66 funcs) minus run-to-run headroom so the gate is stable; it is raised to
-80 once the gap-closure suites land. The per-file 80% target covers
-`src/features`, `src/api`, `src/hooks`, `src/lib`, `src/stores`,
-`src/telemetry`, `src/app`, `src/components`, `src/i18n`, `src/mocks`.
+The gate started at a 72/64/68/72 floor (measured 039A baseline 78.2 lines /
+71.18 branches / 74.66 funcs, minus headroom so it was stable run-to-run) and
+was raised to 80 across the board by 039B once the state-matrix suites
+emptied the gap report; the frontend now measures 96.5 / 91.9 / 98.5 / 96.5.
 `node scripts/coverage-gap.mjs` lists every below-target file as
-`COVERAGE_GAP:<path> <metric>=<pct>...`; empty output means 039B/039C are
-done. The script exits 0 with gaps present (it is a report; the vitest
-thresholds are the gate).
+`COVERAGE_GAP:<path> <metric>=<pct>...`; empty output means the per-file target
+is met. The script exits 0 with gaps present (it is a report; the vitest
+thresholds are the gate). Never lower a threshold to green a red gate — add a
+spec, or record an expiry-tracked quarantine entry per the policy below.
 
 ### Exclusion policy
 
@@ -45,9 +46,34 @@ Explicit `exclude` list in `vite.config.ts` (policy, never accident):
 - `src/api/generated/**` — generated OpenAPI client owned by Task 014
   (generator + drift gate); testing generated output would test the generator.
 - `src/**/*.test.*`, `src/**/*.spec.*`, `src/testSetup.ts` — tests and harness.
+- `src/**/*.stories.*` — Storybook stories (Task 039B, permanent): dev-only
+  component demos, never shipped in the app bundle. State coverage for the
+  underlying components lives in Vitest (`*.test.*`); visual coverage lives
+  in 041B visual regression, which consumes the stories. Counting stories in
+  Vitest would double-count demos as product states.
 - `**/*.d.ts`, `playwright.config.ts`, `e2e/**` — types and E2E (041A–D own).
 - `dist/**`, `storybook-static/**`, `.storybook/**` — build/output artifacts.
   `include` stays `src/**` so V8 never pulls bundles into the table.
+
+### 039B intentional exclusions (state-matrix scope)
+
+No frontend-matrix area is excluded. 039B closes every `COVERAGE_GAP` line
+for `src/app`, `src/components` (runtime `.tsx`/`.ts` only, stories excluded
+above), `src/api` (excl. `generated/`), `src/hooks`, `src/lib`, `src/stores`,
+`src/telemetry`, `src/i18n`, `src/features`, and `src/mocks` with real specs
+(see the area specs under each `__tests__/` dir). Pure re-export barrels
+(`src/**/index.ts` except `src/stores/index.ts`, which owns the Zustand
+root) are covered by import assertions in
+`src/app/__tests__/barrels.test.ts` — executing the barrel is the behavior.
+Expiry: none (permanent policy entries above); any future quarantine still
+requires owner + issue + expiry per the policy below.
+
+Defensive-only branches that stay uncovered are ordinary code, not exclusions:
+`WorkspacePage.formatBytes`'s `units[unit] ?? 'B'` and `capitalize('')`
+unreachable guards, and the `useActivity` page-size clamps reachable only from
+a hand-typed URL. They are exercised through their real call sites rather than
+excluded, so a refactor that makes them reachable fails the gate instead of
+silently losing coverage.
 
 ## Backend (coverlet + XPlat Code Coverage)
 

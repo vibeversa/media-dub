@@ -29,6 +29,18 @@ export const SUPPORTED_LOCALES = ['en', 'ar', 'ru'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 /**
+ * Locale recorded for a missing-key report. i18next always hands the handler
+ * an array, but the resolver falls back to `FALLBACK_LOCALE` for a non-array
+ * or empty list so telemetry never records an empty locale. Pure.
+ */
+export function missingKeyLocale(lngs: readonly string[] | string | undefined): string {
+  if (!Array.isArray(lngs)) {
+    return FALLBACK_LOCALE;
+  }
+  return lngs[0] ?? FALLBACK_LOCALE;
+}
+
+/**
  * i18next init (Task 018): `en` baseline with namespaced JSON bundles
  * (common, nav, auth, dashboard, projects, processing, uploads, workspace, transcript, translation, voices, timeline, review, quality, exports, notifications, activity, settings, errors), `ar`/`ru` partial
  * bundles for RTL + plural coverage, `en` fallback for every missing key
@@ -81,10 +93,12 @@ void i18n.use(initReactI18next).init({
   },
   returnEmptyString: false,
   initAsync: false,
-  saveMissing: false,
+  // i18next only invokes `missingKeyHandler` when `saveMissing` is on, and it
+  // is the handler (not a backend connector) that runs, so missing keys are
+  // reported to telemetry without any network write.
+  saveMissing: true,
   missingKeyHandler: (lngs, _ns, key) => {
-    const lng = Array.isArray(lngs) ? (lngs[0] ?? FALLBACK_LOCALE) : FALLBACK_LOCALE;
-    trackMissingTranslation({ locale: lng, key });
+    trackMissingTranslation({ locale: missingKeyLocale(lngs), key });
   },
 });
 

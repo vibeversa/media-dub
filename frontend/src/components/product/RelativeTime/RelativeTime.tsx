@@ -12,7 +12,12 @@ export function RelativeTime({ value, locale }: RelativeTimeProps): ReactNode {
     return <time dateTime={value}>{value}</time>;
   }
   const activeLocale = locale ?? (typeof navigator !== 'undefined' ? navigator.language : 'en');
-  let text = date.toLocaleString(activeLocale);
+  let text: string;
+  try {
+    text = date.toLocaleString(activeLocale);
+  } catch {
+    text = date.toISOString();
+  }
   try {
     const fmt = new Intl.RelativeTimeFormat(activeLocale, { numeric: 'auto' });
     const diffMs = date.getTime() - Date.now();
