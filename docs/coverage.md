@@ -80,14 +80,67 @@ silently losing coverage.
 - Collector `coverlet.collector` is pinned (`6.0.4`) in every test project
   (`tests/DubbingPlatform.{UnitTests,IntegrationTests,ContractTests,E2ETests}/*.csproj`).
 - Gate reference settings: `tests/coverage.runsettings` (formats
-  `cobertura,json`; excludes test assemblies and `*.Generated`).
+  `cobertura,json`; excludes test assemblies and `*.Generated`;
+  `IncludeDirectory ../src`).
 - Commands (from the repo root):
   - `dotnet test --filter FullyQualifiedName~UnitTests --collect:"XPlat Code Coverage"`
   - With the runsettings: `dotnet test --filter FullyQualifiedName~UnitTests --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings`
-- Reports land under each project's `TestResults/` (gitignored). The per-area
-  gap list for backend units is consumed by 039C; no numeric backend gate is
-  enforced here (039C sets it after measuring, mirroring the frontend
-  floor-then-target approach).
+- Reports land under `tests/**/TestResults/` (gitignored).
+  `scripts/coverage-gap.mjs --backend` merges those coverlet payloads and
+  reports the in-scope files below 80% as
+  `COVERAGE_GAP:<path> lines=<pct> branches=<pct>`; empty output means the
+  backend unit target is met. It reads `coverage.json` when the run used
+  `tests/coverage.runsettings` and falls back to `coverage.cobertura.xml`
+  (what the plain `--collect:"XPlat Code Coverage"` command emits), and it
+  takes the **max** hit count per instrument across test projects so a file
+  instrumented by four projects is not counted four times.
+
+### 039C unit scope
+
+`scripts/coverage-gap.mjs --backend` reports only the `BACKEND_SCOPE` manifest
+in that file. The manifest mirrors task 039C instruction 1 plus its Context
+list, and is the contract 039C had to make empty:
+
+| Area | In-scope paths (`src/…`) |
+| --- | --- |
+| Status mapping + lifecycle | `DubbingPlatform.Domain/Entities/ProjectStatusProjection.cs`, `DubbingPlatform.Application/StateMachines/` |
+| Permission evaluation | `DubbingPlatform.Application/Authorization/` |
+| Settings-schema validation | `DubbingPlatform.Application/Validation/`, `Application/Projects/{ProjectSettingsGuard,ProjectConfigHash,ProjectExceptions}.cs`, `Application/Configuration/{ConfigurationHashCalculator,ExecutionSnapshotCalculator}.cs`, the `Application/Options/*` validators |
+| Selection-version support | `Domain/Entities/{SegmentSelection,SegmentOverlap,SegmentContextAssignment,OverlapGroup,StageUnitCompletion,TranscriptVersion,TranslationVersion}.cs`, `Application/Segments/SegmentApiExceptions.cs` |
+| Notification dedup + recipients | `Application/Notifications/`, `Domain/Entities/Notification.cs` |
+| Voice-preview quota + consent | `Domain/Voice/ConsentGate.cs`, `Domain/Entities/{VoicePreviewJob,SpeakerVoiceAssignment,ConsentRecord,VoiceProfile}.cs`, `Application/Previews/`, `Application/Voices/{VoiceCompatibility,VoiceApiExceptions}.cs` |
+| Diagnostics aggregation | `Application/Diagnostics/` (logic; its `Dto/` record shapes are excluded) |
+| Error-code mapping | `Application/Errors/`, `Application/Exceptions/`, `Api/Errors/`, `Api/Middleware/ErrorResponse.cs`, `Domain/Exceptions/` |
+| Idempotency-key handling | `Application/Processing/ProcessingIdempotency.cs`, `Application/Services/Idempotency*.cs`, `Domain/Entities/IdempotencyRecord.cs` |
+| Correlation propagation | `Api/Middleware/CorrelationIdMiddleware.cs`, `Api/Middleware/CorrelationMiddleware.cs` |
+| Signed-URL expiry + keys | `Application/Storage/{SignedUrlPolicy,StorageKeyBuilder}.cs`, `Api/Services/SignedUrlService.cs` |
+| Formatting / export generation | `Application/Exports/` generators and parsers, `Application/Services/{DurationEstimator,GuidUtility}.cs`, `Domain/ValueObjects/*` |
+| Query construction + paging | `Application/Common/PaginatedResult.cs`, `Application/Projects/ProjectListQuery.cs`, `Application/Security/RedisKeys.cs`, `Application/MultiTenancy/TenantGuard.cs`, `Domain/Identity/PublicIdMapper.cs`, `Api/Models/PublicIdParser.cs` |
+| Security helpers | `Application/Security/{SecretPolicy,SecretRedactor}.cs` |
+| Enrichment + SSE policy | `Application/Enrichment/`, `Api/Sse/` |
+| Activity projection | `Application/Activity/`, `Domain/Entities/ActivityEvent.cs` |
+| DTO request validation | `Api/Validation/DtoValidators.cs` |
+
+### 039C intentional exclusions (backend units)
+
+Task 039C R1 accepts a unit test **or** a recorded exclusion. Everything
+outside the manifest above is excluded by policy, never by accident:
+
+| Excluded | Reason | Owner | Expiry |
+| --- | --- | --- | --- |
+| `Api/Program.cs`, every `Placeholder.cs` | Composition root / DI wiring; the behaviour is "the host boots", asserted by `SmokeTests` + the contract tests | 015/018, 040A | none (permanent) |
+| `Api/Controllers/**`, `Api/Middleware/**` (except the pure helpers listed in scope), `Api/Filters/**`, `Api/Auth/**` | HTTP endpoint plumbing — endpoint-level assertions belong to Tasks 006–013 and the cross-layer seams in 040 | 006–013, 040A/B | none (permanent) |
+| `Api/OpenApi/**`, `Infrastructure/Persistence/Migrations/**` | Generated schema/document output; testing it tests the generator | 014 | none (permanent) |
+| DTO/record-only types: `Api/Models/*Dtos.cs`, `Contracts/Messages/**`, `Application/**/Dto*/**`, `Abstractions/Providers/Dtos/**` | No logic — coverlet counts record constructors and accessors as uncovered lines; the wire shape is asserted by the contract tests (014) and the endpoint tests (006–013) | 014, 006–013 | none (permanent) |
+| `*Registration.cs`, `Infrastructure/Health/**`, `Infrastructure/**/*Metrics.cs`, `Infrastructure/**/*Meters.cs` | Registration / health-check / meter plumbing; asserting it means booting a host, which is an integration concern | 040A | none (permanent) |
+| `Application/Previews/{MediaPreviewGenerator,QcEvidenceLinker,VoicePreviewService}.cs` — only `PreviewAudio.cs` is in scope | These stamp artifact rows with `DbContext.Database.ExecuteSqlRawAsync` and publish through `ArtifactService` → `IArtifactStorage`. `ExecuteSqlRaw*` is relational-only: the EF InMemory provider throws on it and no SQLite/relational provider is referenced by the unit project, so the success path is unreachable here. Per instruction 3 the test is re-tagged Integration and moves to the owning endpoint task. Their pure guards, constants and degrade-on-failure contracts are still unit-tested. | 006–013, 040A | none (permanent) |
+| Any type whose collaborators require Postgres, Redis, RabbitMQ, object storage, or a live HTTP client | Task 039C instruction 3: such a test is re-tagged `Integration` and moved to its owning endpoint task. A unit test that stubs every collaborator would assert the stub, not the code | 006–013, 040 | none (permanent) |
+| The `Application/Services/*` orchestration services (run/stage/export/upload/tts/translation/cost/review/retention pipelines) | Aggregate orchestration over a `DbContext`; behaviour is asserted end to end by the endpoint integration tests | 006–013, 040A | none (permanent) |
+
+Expiry "none" means the exclusion is a permanent policy statement, not a
+waiver: if a file later becomes pure logic it must be added to `BACKEND_SCOPE`
+and covered. Any temporary quarantine still requires owner + issue + expiry
+per the policy below.
 
 ## Closing a gap
 
@@ -95,7 +148,9 @@ silently losing coverage.
 2. Frontend: `node scripts/coverage-gap.mjs` names the below-80 files; add
    specs in the owning feature task's suite (ownership: `docs/test-ownership.md`),
    reusing the MSW taxonomy (`frontend/src/mocks/`) for failure shapes.
-3. Backend: add units in `tests/DubbingPlatform.UnitTests` (039C owns the list).
+3. Backend: `node scripts/coverage-gap.mjs --backend` names the below-80
+   in-scope files; add units in `tests/DubbingPlatform.UnitTests` (no
+   containers, no network, frozen clocks).
 4. Re-run until the gap script output for your area is empty.
 
 ## Quarantine and bypass policy
