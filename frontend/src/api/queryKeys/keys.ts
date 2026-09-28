@@ -270,6 +270,38 @@ export const queryKeys = {
     all: ['admin'] as const,
     section: (name: string, params?: PageParams): QueryKey => ['admin', name, withDefaults(params)],
   },
+  adminTenants: {
+    all: ['admin', 'tenants'] as const,
+    lists: (): QueryKey => ['admin', 'tenants', 'list'],
+    list: (params?: PageParams): QueryKey => ['admin', 'tenants', 'list', withDefaults(params)],
+    details: (): QueryKey => ['admin', 'tenants', 'detail'],
+    detail: (tenantId: string): QueryKey => ['admin', 'tenants', 'detail', tenantId],
+  },
+  adminUsers: {
+    all: ['admin', 'users'] as const,
+    lists: (): QueryKey => ['admin', 'users', 'list'],
+    list: (params?: PageParams): QueryKey => ['admin', 'users', 'list', withDefaults(params)],
+    details: (): QueryKey => ['admin', 'users', 'detail'],
+    detail: (userId: string): QueryKey => ['admin', 'users', 'detail', userId],
+  },
+  diagnostics: {
+    all: ['admin', 'diagnostics'] as const,
+    queues: (): QueryKey => ['admin', 'diagnostics', 'queues'],
+    dlq: (params?: PageParams): QueryKey => ['admin', 'diagnostics', 'dlq', withDefaults(params)],
+    leases: (params?: PageParams): QueryKey => ['admin', 'diagnostics', 'leases', withDefaults(params)],
+    orphans: (params?: { readonly pageSize?: number; readonly cursor?: string }): QueryKey => [
+      'admin',
+      'diagnostics',
+      'orphans',
+      { pageSize: params?.pageSize, cursor: params?.cursor ?? null },
+    ],
+    backlog: (): QueryKey => ['admin', 'diagnostics', 'review-backlog'],
+    usage: (): QueryKey => ['admin', 'diagnostics', 'usage'],
+    quotas: (): QueryKey => ['admin', 'diagnostics', 'quotas'],
+    health: (): QueryKey => ['admin', 'diagnostics', 'provider-health'],
+    routes: (): QueryKey => ['admin', 'diagnostics', 'provider-routes'],
+    status: (): QueryKey => ['admin', 'diagnostics', 'status'],
+  },
 };
 
 export interface SseKeyIds {
