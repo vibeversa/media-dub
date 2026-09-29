@@ -25,10 +25,17 @@
    *
    * 52 controls across the feature tree are written as bare `<input>`,
    * `<select>` and `<textarea>` with no `dp-*` class, so they were taking the
-   * browser's own light-mode defaults: white background, near-black text. In
-   * dark theme `--color-text` is #f1f5f9, so a bare control rendered
-   * #f1f5f9-on-#ffffff at 1.09:1 - effectively invisible. axe's
-   * `color-contrast` rule found this on the review and quality filter rows.
+   * browser's own light-mode defaults: a near-white surface and near-black
+   * text. In dark theme `--color-text` is a near-white, so a bare control
+   * rendered that near-white text on the browser's near-white control surface -
+   * measured at 1.09:1, effectively invisible. axe's `color-contrast` rule
+   * found this on the review and quality filter rows.
+   *
+   * The contrast figures are named rather than written out: the two colours are
+   * `--color-text` and `--color-surface`, and `check:no-hex` reads this file,
+   * comments included, so a hex literal in a comment is a hardcoded hex as far
+   * as the gate is concerned - which is how that gate went red on a comment
+   * that changed no styling.
    *
    * The fix is here rather than 52 `className` additions, because a rule that
    * depends on every call site remembering a class is a rule that will be

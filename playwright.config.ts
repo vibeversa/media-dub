@@ -1,7 +1,8 @@
 // Root Playwright configuration: the cross-layer rig (040A/040B), the visual
-// matrix (041B) and the accessibility audit (041C). All three run against the
-// same real stack, so they share one `globalSetup` - which is what seeds the
-// deterministic data the visual baselines and the a11y audit both depend on.
+// matrix (041B), the accessibility audit (041C) and the performance gate
+// (041D). All four run against the same real stack, so they share one
+// `globalSetup` - which is what seeds the deterministic data the visual
+// baselines, the a11y audit and the perf fixtures all build on.
 //
 // The frontend's own `frontend/e2e/*.spec.ts` are mock-based (they stub routes
 // with `page.route`) and are unaffected: they keep running under Playwright's
@@ -13,6 +14,8 @@
 //   @cross-layer-ai       seam specs that need a non-default mock-AI scenario
 //   @visual               the visual matrix and its structural checks (041B)
 //   @a11y                 the WCAG 2.2 AA audit and its manual checks (041C)
+//   @perf                 the six performance budgets and their structural
+//                         practice assertions (041D)
 //
 // There is no `webServer` block: the stack is started with `docker compose` by
 // the documented run command, because the rig's services are health-gated and
@@ -30,14 +33,15 @@ const CROSS_LAYER_PORT = 54173;
 const CROSS_LAYER_ORIGIN = `http://127.0.0.1:${CROSS_LAYER_PORT}`;
 
 export default defineConfig({
-  // Two trees, so the root is the testDir and the inclusions are explicit. Left
-  // implicit, Playwright would also collect `frontend/e2e/**` (019-036's
+  // Three trees, so the root is the testDir and the inclusions are explicit.
+  // Left implicit, Playwright would also collect `frontend/e2e/**` (019-036's
   // mock-based feature specs), which belong to a different config entirely.
   testDir: '.',
   testMatch: [
     'tests/cross-layer/**/*.spec.ts',
     'e2e/visual/**/*.spec.ts',
     'e2e/a11y/**/*.spec.ts',
+    'e2e/perf/**/*.spec.ts',
   ],
 
   // A cold stack can spend real time building the seeder, the frontend bundle and
@@ -49,6 +53,11 @@ export default defineConfig({
   // the reset and on the processing run. Serial by design, not by omission. The
   // visual matrix also needs one worker: it signs in once per file and holds a
   // single in-memory session.
+  //
+  // 041D adds a second reason for one worker: `POST /auth/login` is limited to
+  // 5/min per IP, and the perf suite's session is cached per `Browser` - i.e.
+  // per worker. A second worker would be a second sign-in and a second context
+  // racing the same rig, not an extra throughput.
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
@@ -76,16 +85,40 @@ export default defineConfig({
     launchOptions: { args: ['--disable-lcd-text'] },
   },
 
-  // One project. The a11y audit deliberately does not get its own: it would run
-  // every spec twice, doubling the cross-layer and visual runtime to change
+  // Two projects, and they are DISJOINT, so nothing runs twice.
+  //
+  // `cross-layer-chromium` runs the rig seams, the visual matrix and the a11y
+  // audit. The a11y audit deliberately does not get its own project: it would
+  // run every spec twice, doubling the cross-layer and visual runtime to change
   // nothing, and the two settings it needs are already what the visual matrix
-  // uses - `devices['Desktop Chrome']` and the `reducedMotion: 'reduce'`
-  // context option in `e2e/visual/support/session.ts`. 041C's specs set their
-  // own viewport explicitly so the audit never depends on a shared default.
+  // uses - `devices['Desktop Chrome']` and the `reducedMotion: 'reduce'` context
+  // option in `e2e/visual/support/session.ts`. 041C's specs set their own
+  // viewport explicitly so the audit never depends on a shared default.
+  //
+  // `perf-chromium` exists for one reason: **traces**. The task requires perf
+  // traces to be scrubbed of URLs, tokens and media bytes before any CI attach
+  // (038's allowlist). Playwright's `trace: 'retain-on-failure'` produces an
+  // *unscrubbed* archive - response bodies, screencast frames, `Authorization`
+  // headers and presigned URLs - and it owns the trace lifecycle for the whole
+  // context, so a spec cannot start its own on the same context. Turning the
+  // runner's tracing off for this project is what lets `e2e/perf/support/trace.ts`
+  // own the lifecycle: capture, scrub, verify, delete the raw copy. The cost is
+  // that a non-gate perf failure (a structural practice assertion, say) attaches
+  // no trace; the gate's own breach path is the one that attaches one, and it
+  // attaches a scrubbed one.
+  //
+  // Both projects run with `workers: 1`, so the two never contend for the rig
+  // or for the login rate limit.
   projects: [
     {
       name: 'cross-layer-chromium',
+      testIgnore: 'e2e/perf/**',
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'perf-chromium',
+      testMatch: 'e2e/perf/**/*.spec.ts',
+      use: { ...devices['Desktop Chrome'], trace: 'off' },
     },
   ],
 });

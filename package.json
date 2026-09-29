@@ -11,6 +11,7 @@
     "typecheck:e2e": "tsc --noEmit -p tsconfig.json",
     "test:visual": "playwright test --grep=@visual",
     "test:visual:update": "playwright test --grep=@visual --update-snapshots",
+    "test:perf": "playwright test --grep=@perf",
     "test:tools": "node --test tools/*.test.mjs",
     "check:api-contract": "node tools/check-api-contract.mjs"
   },
