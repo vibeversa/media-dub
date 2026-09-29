@@ -23,6 +23,9 @@ export function ReviewStudio({ projectId: fixedProjectId }: ReviewStudioProps): 
   const [searchParams, setSearchParams] = useSearchParams();
   const urlFilters = useMemo(() => reviewFiltersFromSearchParams(searchParams), [searchParams]);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  // Local draft for the project field. See the note at the field: writing
+  // through on every keystroke dropped keyboard focus after one character.
+  const [projectDraft, setProjectDraft] = useState<string>(urlFilters.project);
 
   const projectId = fixedProjectId ?? urlFilters.project;
   const filters: ReviewFilters = useMemo(
@@ -34,19 +37,42 @@ export function ReviewStudio({ projectId: fixedProjectId }: ReviewStudioProps): 
     setSelectedId(undefined);
   }, [projectId]);
 
+  // Keep the draft in step with the URL when the URL changes from somewhere
+  // else (a shared link, the back button, `Clear filters`).
+  useEffect(() => {
+    setProjectDraft(urlFilters.project);
+  }, [urlFilters.project]);
+
   function writeFilters(next: ReviewFilters): void {
     const params = reviewFiltersToSearchParams(fixedProjectId === undefined ? next : { ...next, project: urlFilters.project });
     setSearchParams(params, { preventScrollReset: true });
   }
 
   function writeProject(nextProject: string): void {
-    const params = reviewFiltersToSearchParams({ ...filters, project: nextProject });
+    const trimmed = nextProject.trim();
+    if (trimmed === projectId) {
+      return;
+    }
+    const params = reviewFiltersToSearchParams({ ...filters, project: trimmed });
     setSearchParams(params, { preventScrollReset: true });
     setSelectedId(undefined);
   }
 
   return (
     <section data-testid="review-studio" aria-label="Manual review studio" data-project={projectId}>
+      {/*
+        Task 041C: the project filter used to write through to the URL on every
+        keystroke. That made it unusable from the keyboard: each character
+        replaced the search params, React Router re-rendered, and focus was lost
+        after the first character - so a keyboard user could type `p` and nothing
+        else. The audit's keyboard walk hit this and could not scope the queue
+        at all.
+
+        It now behaves like every other filter on this screen: a local draft,
+        committed on blur or Enter. The URL is still the source of truth once
+        committed, so the shareable-link behaviour is unchanged - it just stops
+        changing on every character.
+      */}
       {fixedProjectId === undefined ? (
         <div style={{ marginBlockEnd: 'var(--space-3)' }}>
           <label htmlFor="review-project">
@@ -54,11 +80,20 @@ export function ReviewStudio({ projectId: fixedProjectId }: ReviewStudioProps): 
             <input
               id="review-project"
               data-testid="review-filter-project"
-              value={urlFilters.project}
+              value={projectDraft}
               autoComplete="off"
               placeholder="prj_…"
               onChange={(event) => {
-                writeProject(event.target.value);
+                setProjectDraft(event.target.value);
+              }}
+              onBlur={() => {
+                writeProject(projectDraft);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  writeProject(projectDraft);
+                }
               }}
             />
           </label>

@@ -13,7 +13,6 @@ export function Textarea({ label, error, id, className, ...rest }: TextareaProps
   const fieldId = id ?? `textarea-${autoId}`;
   return (
     <>
-      <style>{`.dp-textarea{border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background-color:var(--color-surface);color:var(--color-text);padding:var(--space-2) var(--space-3);font-size:var(--font-size-md);min-block-size:5rem}`}</style>
       <div className={cx('dp-field', className)}>
         <label className="dp-label" htmlFor={fieldId}>
           {label}

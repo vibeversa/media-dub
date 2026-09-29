@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert } from '../../components/Alert/Alert.js';
 import { EmptyState } from '../../components/EmptyState/EmptyState.js';
+import { Modal } from '../../components/Modal/Modal.js';
 import { useToast } from '../../components/Toast/useToast.js';
 import {
   EXPORT_FORMAT_ALLOWLIST,
@@ -165,7 +166,16 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
       >
         Request export
       </button>
-      <div data-testid="export-dialog" role="dialog" aria-label="Request export">
+      {/*
+        Task 041C: this was a `role="dialog"` panel rendered inline in the page.
+        Calling a non-modal inline panel a dialog is a false claim twice over:
+        it told a screen reader "dialog" with no `aria-modal`, so browse mode
+        still walked the page behind it, and it had none of the behaviour a
+        dialog promises - no focus trap, no Escape, no focus restore. It is the
+        `Modal` primitive now, which is what it was claiming to be.
+      */}
+      <Modal open title="Request export" onClose={close}>
+        <div data-testid="export-dialog">
         {formatsEmpty ? (
           <div data-testid="export-empty-formats">
             <EmptyState
@@ -299,6 +309,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
           </form>
         )}
       </div>
+      </Modal>
     </div>
   );
 }

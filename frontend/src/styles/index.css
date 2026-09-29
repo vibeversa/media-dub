@@ -1,2 +1,5 @@
 @import "./tokens.css";
 @import "./globals.css";
+/* Task 041C: component rules, moved out of inline <style> tags that the app's
+ * own CSP (`style-src 'self'`) blocked. See the file header for the full story. */
+@import "./components.css";

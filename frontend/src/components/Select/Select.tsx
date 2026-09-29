@@ -19,7 +19,6 @@ export function Select({ label, options, error, id, className, ...rest }: Select
   const fieldId = id ?? `select-${autoId}`;
   return (
     <>
-      <style>{`.dp-select{border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background-color:var(--color-surface);color:var(--color-text);padding:var(--space-2) var(--space-3);font-size:var(--font-size-md)}`}</style>
       <div className={cx('dp-field', className)}>
         <label className="dp-label" htmlFor={fieldId}>
           {label}

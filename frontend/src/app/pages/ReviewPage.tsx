@@ -6,7 +6,7 @@ export default function ReviewPage(): ReactNode {
   return (
     <section data-testid="page-review">
       <h1 className="text-xl font-semibold">Review</h1>
-      <p className="mt-2 text-sm text-slate-600">Items awaiting human review.</p>
+      <p className="mt-2 text-sm dp-muted">Items awaiting human review.</p>
       <div className="mt-4">
         <ReviewStudio />
       </div>

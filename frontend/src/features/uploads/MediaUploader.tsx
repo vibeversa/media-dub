@@ -81,7 +81,7 @@ export function MediaUploader({ projectId, language }: MediaUploaderProps): Reac
   return (
     <section data-testid="upload-uploader" aria-label={t('uploads:title')}>
       <h1 className="text-xl font-semibold">{t('uploads:title')}</h1>
-      <p className="mt-2 text-sm text-slate-600">{t('uploads:subtitle')}</p>
+      <p className="mt-2 text-sm dp-muted">{t('uploads:subtitle')}</p>
 
       {upload.localError !== null ? (
         <div data-testid="upload-local-error">

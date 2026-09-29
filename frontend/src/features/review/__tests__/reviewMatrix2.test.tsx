@@ -613,7 +613,13 @@ describe('ReviewStudio filter-sync and settle branches', () => {
     authenticate();
     renderWithProviders(<ReviewStudio />, '/review');
     const input = await screen.findByTestId('review-filter-project');
+    // Task 041C: the field commits on blur or Enter rather than on every
+    // keystroke, because writing through per character dropped keyboard focus
+    // after the first one. See the note in `ReviewStudio`.
     fireEvent.change(input, { target: { value: 'prj_9' } });
-    expect(screen.getByTestId('review-studio').getAttribute('data-project')).toBe('prj_9');
+    fireEvent.blur(input);
+    await waitFor(() => {
+      expect(screen.getByTestId('review-studio').getAttribute('data-project')).toBe('prj_9');
+    });
   });
 });

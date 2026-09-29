@@ -160,7 +160,14 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
   }
 
   return (
-    <section data-testid="voices-preview" aria-label="Voice preview">
+    // Task 041C: the label carries the voice id because this component renders
+    // once per compatible voice inside one list. With `aria-label="Voice preview"`
+    // on every instance, axe's `landmark-unique` rule correctly reported that a
+    // screen reader would hear several identically-named "Voice preview"
+    // landmarks and have no way to tell which voice each belongs to. Naming the
+    // voice makes each one distinguishable, which is the whole point of a
+    // landmark's accessible name.
+    <section data-testid="voices-preview" aria-label={`Voice preview: ${voiceId}`}>
       {phase === 'idle' ? (
         <button
           type="button"

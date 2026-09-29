@@ -296,7 +296,7 @@ export function ProjectsPage(): ReactNode {
   return (
     <section data-testid="page-projects">
       <h1 className="text-xl font-semibold">{t('projects:title')}</h1>
-      <p className="mt-2 text-sm text-slate-600">{t('projects:subtitle')}</p>
+      <p className="mt-2 text-sm dp-muted">{t('projects:subtitle')}</p>
       {canCreate ? (
         <Link to="/projects/new" data-testid="projects-new">
           {t('projects:create.newButton')}

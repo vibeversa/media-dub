@@ -7,6 +7,7 @@ import { apiClient } from '../../api/client/index.js';
 import { normalizeError } from '../../api/errors/index.js';
 import { queryKeys } from '../../api/queryKeys/index.js';
 import { Alert } from '../../components/Alert/Alert.js';
+import { Modal } from '../../components/Modal/Modal.js';
 import { useToast } from '../../components/Toast/useToast.js';
 import i18n from '../../i18n/i18n.js';
 import { applyDirection } from '../../i18n/format.js';
@@ -784,9 +785,16 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
         </button>
       </div>
 
+      {/*
+        Task 041C: same fix as the translation guard - an inline
+        `role="dialog"` that blocked navigation but trapped nothing and restored
+        nothing. It is the `Modal` primitive now; the testid stays on the inner
+        content so the existing 035B suites keep addressing it.
+      */}
       {pendingLeave !== undefined ? (
-        <div data-testid="settings-dirty-dialog" role="dialog" aria-label="Unsaved preferences">
-          <Alert tone="warning" title="Unsaved preferences">
+        <Modal open title="Unsaved preferences" onClose={handleGuardCancel}>
+          <div data-testid="settings-dirty-dialog">
+            <Alert tone="warning" title="Unsaved preferences">
             <p data-testid="settings-dirty-dialog-text">
               {pendingLabel !== undefined
                 ? `You have unsaved preferences (navigating to ${pendingLabel}). Save them, discard them, or stay.`
@@ -822,7 +830,8 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
               </button>
             </div>
           </Alert>
-        </div>
+          </div>
+        </Modal>
       ) : null}
 
       <div hidden>

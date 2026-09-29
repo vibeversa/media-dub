@@ -134,7 +134,10 @@ export function ExportRow({ projectId, job }: ExportRowProps): ReactNode {
       data-pattern={pattern}
     >
       <header>
-        <h4 data-testid={`export-id-${job.id}`}>{job.id}</h4>
+        {/* h3, not h4: this row sits directly under the exports section's `h2`
+            (Task 041C), so `h4` skipped a level and axe reported
+            `heading-order`. */}
+        <h3 data-testid={`export-id-${job.id}`}>{job.id}</h3>
         <p data-testid={`export-status-${job.id}`} data-pattern={pattern}>
           <span data-testid={`export-status-icon-${job.id}`} aria-hidden="true">
             {icon}

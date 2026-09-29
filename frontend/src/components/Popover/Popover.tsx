@@ -18,8 +18,6 @@ export function Popover({ label, content, children }: PopoverProps): ReactNode {
   });
 
   return (
-    <>
-      <style>{`.dp-popover{position:relative;display:inline-block}.dp-popover-panel{position:absolute;inset-block-start:100%;inset-inline-start:0;z-index:30;min-inline-size:12rem;max-inline-size:min(20rem,90vw);margin-block-start:var(--space-1);background-color:var(--color-surface-overlay);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:var(--space-3);overflow:auto}`}</style>
       <div className="dp-popover">
         <button
           type="button"
@@ -39,6 +37,5 @@ export function Popover({ label, content, children }: PopoverProps): ReactNode {
           </div>
         ) : null}
       </div>
-    </>
   );
 }

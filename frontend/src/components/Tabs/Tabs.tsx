@@ -18,8 +18,6 @@ export function Tabs({ items, defaultId }: TabsProps): ReactNode {
   const current = items.find((i) => i.id === active) ?? items[0];
 
   return (
-    <>
-      <style>{`.dp-tabs{display:flex;gap:var(--space-1);border-block-end:1px solid var(--color-border)}.dp-tab{border:none;background:none;color:var(--color-text-muted);font-size:var(--font-size-md);font-weight:var(--font-weight-medium);padding:var(--space-2) var(--space-3);cursor:pointer;border-block-end:2px solid transparent}.dp-tab[aria-selected="true"]{color:var(--color-text);border-block-end-color:var(--color-brand)}.dp-tabpanel{padding-block-start:var(--space-4)}`}</style>
       <div>
         <div role="tablist" aria-label="Tabs" className="dp-tabs">
           {items.map((item) => (
@@ -58,6 +56,5 @@ export function Tabs({ items, defaultId }: TabsProps): ReactNode {
           </div>
         ) : null}
       </div>
-    </>
   );
 }

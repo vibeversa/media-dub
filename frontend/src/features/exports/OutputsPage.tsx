@@ -112,7 +112,7 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
     outputBody = (
       <div data-testid="outputs-detail">
         <section data-testid="outputs-summary" aria-label="Output summary" data-state={output.state} data-pattern={pattern}>
-          <h3>Output summary</h3>
+          <h2>Output summary</h2>
           <p data-testid="outputs-state">
             <span data-testid="outputs-state-icon" aria-hidden="true">
               {icon}
@@ -154,7 +154,7 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
           ) : null}
         </section>
         <section data-testid="outputs-items" aria-label="Output items">
-          <h3>Output items</h3>
+          <h2>Output items</h2>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {output.items.map((item, index) => {
               const id = itemTestId(item, index);
@@ -164,7 +164,7 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
               const itemLabel = labelForOutputState(item.state);
               return (
                 <li key={`${item.kind}-${String(index)}`} data-testid={`output-item-${id}`} data-kind={item.kind} data-state={item.state} data-pattern={itemPattern}>
-                  <h4 data-testid={`output-kind-${id}`}>{item.label}</h4>
+                  <h3 data-testid={`output-kind-${id}`}>{item.label}</h3>
                   <p data-testid={`output-state-${id}`} data-pattern={itemPattern}>
                     <span data-testid={`output-state-icon-${id}`} aria-hidden="true">
                       {itemIcon}
@@ -292,7 +292,7 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
         </div>
       ) : null}
       <section data-testid="exports-section" aria-label="Export jobs">
-        <h3>Exports</h3>
+        <h2>Exports</h2>
         <ExportCard projectId={projectId} output={output} />
         {exportsBody}
         {exportsQuery.isError && exportsQuery.data !== undefined ? (

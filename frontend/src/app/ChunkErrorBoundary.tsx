@@ -39,14 +39,14 @@ export class ChunkErrorBoundary extends Component<ChunkErrorBoundaryProps, Chunk
       return (
         <div role="alert" data-testid="chunk-error" className="mx-auto max-w-md py-12 text-center">
           <h1 className="text-lg font-semibold">This page failed to load</h1>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm dp-muted">
             The app was likely updated while you had it open. Reload to fetch the latest version.
           </p>
-          <p className="mt-2 text-xs text-slate-500">Version: {this.appVersion()}</p>
+          <p className="mt-2 text-xs dp-muted">Version: {this.appVersion()}</p>
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="mt-4 rounded border border-slate-300 px-4 py-2"
+            className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring mt-4"
           >
             Reload
           </button>

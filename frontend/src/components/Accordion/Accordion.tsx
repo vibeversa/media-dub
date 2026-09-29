@@ -15,8 +15,6 @@ export interface AccordionProps {
 export function Accordion({ items }: AccordionProps): ReactNode {
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   return (
-    <>
-      <style>{`.dp-acc{border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden}.dp-acc-item + .dp-acc-item{border-block-start:1px solid var(--color-border)}.dp-acc-btn{inline-size:100%;text-align:start;background-color:var(--color-surface);color:var(--color-text);border:none;padding:var(--space-3) var(--space-4);font-size:var(--font-size-md);font-weight:var(--font-weight-medium);cursor:pointer}.dp-acc-panel{padding:var(--space-3) var(--space-4);background-color:var(--color-surface-raised)}`}</style>
       <div className="dp-acc">
         {items.map((item) => {
           const isOpen = open.has(item.id);
@@ -50,6 +48,5 @@ export function Accordion({ items }: AccordionProps): ReactNode {
           );
         })}
       </div>
-    </>
   );
 }

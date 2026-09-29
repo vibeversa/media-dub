@@ -42,7 +42,6 @@ export function Combobox({ label, options, value, placeholder, onChange }: Combo
 
   return (
     <>
-      <style>{`.dp-combo{position:relative}.dp-combo-list{position:absolute;inset-inline:0;inset-block-start:100%;z-index:20;max-block-size:12rem;overflow:auto;background-color:var(--color-surface-overlay);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);list-style:none;margin:var(--space-1) 0 0;padding:var(--space-1)}.dp-combo-item{padding:var(--space-2) var(--space-3);border-radius:var(--radius-sm);cursor:pointer}.dp-combo-item[data-active="true"]{background-color:var(--color-brand-subtle)}`}</style>
       <div className="dp-field">
         <label className="dp-label" htmlFor={fieldId}>
           {label}

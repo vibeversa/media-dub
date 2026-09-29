@@ -202,7 +202,7 @@ export function CreateWizard(): ReactNode {
   return (
     <section data-testid="page-project-create">
       <h1 className="text-xl font-semibold">{t('projects:create.title')}</h1>
-      <p className="mt-2 text-sm text-slate-600">{t('projects:create.subtitle')}</p>
+      <p className="mt-2 text-sm dp-muted">{t('projects:create.subtitle')}</p>
       <ol data-testid="wizard-steps" aria-label={t('projects:create.title')}>
         {WIZARD_STEPS.map((entry, entryIndex) => (
           <li key={entry} data-testid={`wizard-nav-${entry}`}>

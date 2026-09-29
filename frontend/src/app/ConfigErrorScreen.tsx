@@ -6,10 +6,10 @@ export function ConfigErrorScreen({ error }: { readonly error: EnvError }): Reac
   return (
     <div role="alert" data-testid="config-error" className="mx-auto max-w-md py-12 text-center">
       <h1 className="text-lg font-semibold">Configuration error</h1>
-      <p className="mt-2 text-sm text-slate-600">
+      <p className="mt-2 text-sm dp-muted">
         The app is missing required configuration and cannot start. Contact your administrator.
       </p>
-      <ul className="mt-4 text-left text-xs text-slate-500">
+      <ul className="mt-4 text-left text-xs dp-muted">
         {error.issues.map((issue) => (
           <li key={issue}>{issue}</li>
         ))}

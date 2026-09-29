@@ -1,0 +1,20 @@
+{
+  "//": "Typecheck for the accessibility audit (041C). Playwright transpiles TS without checking it, so without this a spec can carry a type error that only surfaces at test time as a ReferenceError. Scoped to `e2e/a11y` deliberately: the 040A/040B/041B suites predate this config and do not typecheck cleanly under `strict` + `noUncheckedIndexedAccess`, and widening the include would turn a green repo into a red one over pre-existing debt that is not this task's. `e2e/visual/support` is pulled in transitively because the audit builds on the visual session. The application frontend has its own tsconfig under frontend/ checked by its own `typecheck` script.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["node"]
+  },
+  "include": ["e2e/a11y/**/*.ts"]
+}

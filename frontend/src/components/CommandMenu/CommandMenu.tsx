@@ -26,7 +26,6 @@ export function CommandMenu({ items, onSelect, placeholder }: CommandMenuProps):
 
   return (
     <>
-      <style>{`.dp-cmd{border:1px solid var(--color-border);border-radius:var(--radius-lg);background-color:var(--color-surface-overlay);box-shadow:var(--shadow-md);overflow:hidden;max-inline-size:28rem}.dp-cmd-input{inline-size:100%;border:none;border-block-end:1px solid var(--color-border);padding:var(--space-3) var(--space-4);font-size:var(--font-size-md);background-color:var(--color-surface-overlay);color:var(--color-text)}.dp-cmd-list{list-style:none;margin:0;padding:var(--space-1);max-block-size:16rem;overflow:auto}.dp-cmd-item{padding:var(--space-2) var(--space-3);border-radius:var(--radius-sm);cursor:pointer}.dp-cmd-item[data-active="true"]{background-color:var(--color-brand-subtle)}`}</style>
       <div className="dp-cmd" role="dialog" aria-label="Commands">
         <input
           aria-label="Search commands"

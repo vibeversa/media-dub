@@ -52,7 +52,13 @@ export function ImpactDialog({
       : `This will affect ${String(segmentCount)} ${segmentCount === 1 ? 'segment' : 'segments'} for speaker ${speakerLabel} with voice ${voiceLabel}.`;
   return (
     <Modal open={open} title={titleFor(mode)} onClose={onCancel}>
-      <div data-testid="voices-impact-dialog" role="dialog" aria-label={titleFor(mode)}>
+      {/*
+        Task 041C: this was a `role="dialog"` nested INSIDE the `Modal`'s own
+        dialog, so the page announced two dialogs for one interaction and the
+        inner one competed with the outer one for the name. The primitive
+        already provides the dialog; this is its content.
+      */}
+      <div data-testid="voices-impact-dialog">
         <p data-testid="voices-impact-segments">{segmentsText}</p>
         <p data-testid="voices-impact-invalidation">
           Assigning a new voice invalidates dependent translations and re-renders dub audio for the affected segments.

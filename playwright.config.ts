@@ -1,7 +1,7 @@
-// Root Playwright configuration: the cross-layer rig (040A/040B) and the visual
-// matrix (041B). Both run against the same real stack, so they share one
-// `globalSetup` - which is what seeds the deterministic data the visual
-// baselines depend on.
+// Root Playwright configuration: the cross-layer rig (040A/040B), the visual
+// matrix (041B) and the accessibility audit (041C). All three run against the
+// same real stack, so they share one `globalSetup` - which is what seeds the
+// deterministic data the visual baselines and the a11y audit both depend on.
 //
 // The frontend's own `frontend/e2e/*.spec.ts` are mock-based (they stub routes
 // with `page.route`) and are unaffected: they keep running under Playwright's
@@ -12,6 +12,7 @@
 //   @cross-layer          the seven named seam specs (040B)
 //   @cross-layer-ai       seam specs that need a non-default mock-AI scenario
 //   @visual               the visual matrix and its structural checks (041B)
+//   @a11y                 the WCAG 2.2 AA audit and its manual checks (041C)
 //
 // There is no `webServer` block: the stack is started with `docker compose` by
 // the documented run command, because the rig's services are health-gated and
@@ -33,7 +34,11 @@ export default defineConfig({
   // implicit, Playwright would also collect `frontend/e2e/**` (019-036's
   // mock-based feature specs), which belong to a different config entirely.
   testDir: '.',
-  testMatch: ['tests/cross-layer/**/*.spec.ts', 'e2e/visual/**/*.spec.ts'],
+  testMatch: [
+    'tests/cross-layer/**/*.spec.ts',
+    'e2e/visual/**/*.spec.ts',
+    'e2e/a11y/**/*.spec.ts',
+  ],
 
   // A cold stack can spend real time building the seeder, the frontend bundle and
   // the run's first pipeline stages. The default 30s would abort a green rig.
@@ -71,6 +76,12 @@ export default defineConfig({
     launchOptions: { args: ['--disable-lcd-text'] },
   },
 
+  // One project. The a11y audit deliberately does not get its own: it would run
+  // every spec twice, doubling the cross-layer and visual runtime to change
+  // nothing, and the two settings it needs are already what the visual matrix
+  // uses - `devices['Desktop Chrome']` and the `reducedMotion: 'reduce'`
+  // context option in `e2e/visual/support/session.ts`. 041C's specs set their
+  // own viewport explicitly so the audit never depends on a shared default.
   projects: [
     {
       name: 'cross-layer-chromium',

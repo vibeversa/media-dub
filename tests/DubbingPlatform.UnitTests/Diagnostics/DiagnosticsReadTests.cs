@@ -176,6 +176,12 @@ public sealed class DiagnosticsReadTests
         var projectId = Guid.NewGuid();
         var runId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
+        // The clock is PINNED and handed to the service. The test used to
+        // capture `UtcNow` here and let `LeaseOrphanService` read the system
+        // clock instead, so the "fresh by age" row at -299s crossed its 300s
+        // TTL whenever the query took more than about a second to start - which
+        // it does on a loaded machine. A boundary test whose outcome depends on
+        // how long the test took to start is not a boundary test.
         using var factory = CreateFactory();
         SeedMembership(factory, tenantId, userId);
         SeedStageExecutions(factory, tenantId,
@@ -189,12 +195,13 @@ public sealed class DiagnosticsReadTests
         ]);
 
         var service = new LeaseOrphanService(
-            factory, OptionsFor(ttlSeconds: 300), new AllowAccessChecker(), NullLogger<LeaseOrphanService>.Instance);
+            factory, OptionsFor(ttlSeconds: 300), new AllowAccessChecker(),
+            NullLogger<LeaseOrphanService>.Instance, new FixedTimeProvider(now));
 
         var stale = await service.GetStaleLeasesAsync(tenantId, userId);
 
         var staleLease = Assert.Single(stale);
-        Assert.True(DateTimeOffset.UtcNow - staleLease.StartedAt >= TimeSpan.FromSeconds(300));
+        Assert.True(now - staleLease.StartedAt >= TimeSpan.FromSeconds(300));
         Assert.StartsWith("run:", staleLease.OwnerHint, StringComparison.Ordinal);
         Assert.DoesNotContain("lease-token", staleLease.OwnerHint, StringComparison.OrdinalIgnoreCase);
     }
@@ -619,6 +626,16 @@ public sealed class DiagnosticsReadTests
         {
             return Task.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// Frozen clock, so a TTL-boundary assertion depends on the data and not on
+    /// how long the test took to reach the query. Mirrors the one in
+    /// `DiagnosticsAggregationTests`.
+    /// </summary>
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     private sealed class DenyAccessChecker : IDiagnosticsAccessChecker

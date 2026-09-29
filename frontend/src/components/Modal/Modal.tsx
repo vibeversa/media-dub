@@ -36,7 +36,6 @@ export function Modal({ open, title, onClose, children }: ModalProps): ReactNode
   }
   return createPortal(
     <>
-      <style>{`.dp-overlay{position:fixed;inset:0;background-color:rgb(15 23 42 / 0.5);display:flex;align-items:center;justify-content:center;padding:var(--space-4);z-index:50}.dp-modal{background-color:var(--color-surface-overlay);color:var(--color-text);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);max-inline-size:32rem;inline-size:100%;padding:var(--space-6)}.dp-modal-title{font-size:var(--font-size-lg);font-weight:var(--font-weight-semibold);margin:0 0 var(--space-4)}`}</style>
       <div className="dp-overlay" onMouseDown={onClose}>
         <div
           ref={ref}

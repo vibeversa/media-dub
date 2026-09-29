@@ -36,6 +36,32 @@ using Npgsql;
 
 namespace DubbingPlatform.CrossLayer.Seed;
 
+/// <summary>
+/// Per-project timestamps for the two seeded projects (Task 041B).
+///
+/// <para>
+/// The project list's default ordering is <c>OrderByDescending(CreatedAt)</c>
+/// with no tiebreaker, so the two seeded rows must not share an instant or the
+/// order the UI renders is whatever the query plan happens to produce that day.
+/// That is not a hypothetical: it moved one project-table row between runs and
+/// made 10 of the 12 <c>projects</c> visual baselines fail verification while
+/// baseline generation stayed perfectly deterministic.
+/// </para>
+/// </summary>
+/// <param name="PilotCreatedAt">Creation instant of the pilot project.</param>
+/// <param name="PilotUpdatedAt">Last-write instant of the pilot project.</param>
+/// <param name="PipelineCreatedAt">
+/// Creation instant of the pipeline project. One hour earlier than the pilot's,
+/// so the tie is gone AND the rendered order is fixed (pilot first) rather than
+/// merely arbitrary.
+/// </param>
+/// <param name="PipelineUpdatedAt">Last-write instant of the pipeline project.</param>
+internal sealed record ProjectStamps(
+    DateTimeOffset PilotCreatedAt,
+    DateTimeOffset PilotUpdatedAt,
+    DateTimeOffset PipelineCreatedAt,
+    DateTimeOffset PipelineUpdatedAt);
+
 /// <summary>Row counts the harness asserts after a run (040A R2 seam assertions).</summary>
 internal static class Program
 {
@@ -163,6 +189,26 @@ internal static class Program
         // timestamp comes from one captured instant rather than the wall clock.
         var now = new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero);
 
+        // Task 041B: the two seeded projects must NOT share `created_at`.
+        //
+        // `ProjectService.List` orders the default view by
+        // `OrderByDescending(p => p.CreatedAt)` with no tiebreaker, so two rows
+        // with an identical instant come back in whatever order the plan happens
+        // to produce - which differed between runs. That made one project-table
+        // row move inside the `projects` visual baseline, and 10 of the 12
+        // `projects` cells failed verification while baseline *generation* stayed
+        // perfectly deterministic. A tie in a sort key is a data defect, not a
+        // rendering one, so it is fixed in the data.
+        //
+        // The pilot project keeps `now` and the pipeline project is stamped one
+        // hour earlier, which both removes the tie and fixes the order the list
+        // renders in (pilot first) instead of merely making it arbitrary.
+        var projectStamps = new ProjectStamps(
+            now,
+            now,
+            now.AddHours(-1),
+            now.AddHours(-1));
+
         using (TenantContext.BeginMaintenanceScope())
         {
             await using var context = new AppDbContext(CreateOptions(options.ConnectionString));
@@ -221,8 +267,8 @@ internal static class Program
                     new string('a', 64),
                     null,
                     null,
-                    now,
-                    now,
+                    projectStamps.PilotCreatedAt,
+                    projectStamps.PilotUpdatedAt,
                     ProjectName,
                     "Cross-layer harness project.",
                     options.UserId,
@@ -264,8 +310,8 @@ internal static class Program
                     new string('e', 64),
                     null,
                     null,
-                    now,
-                    now,
+                    projectStamps.PipelineCreatedAt,
+                    projectStamps.PipelineUpdatedAt,
                     PipelineProjectName,
                     "Cross-layer pipeline seam project.",
                     options.UserId,
@@ -292,7 +338,7 @@ internal static class Program
             await context.SaveChangesAsync().ConfigureAwait(false);
         }
 
-        await PromoteToMediaReadyAsync(options, now).ConfigureAwait(false);
+        await PromoteToMediaReadyAsync(options, now, projectStamps).ConfigureAwait(false);
         var fixtures = await SeedSeamFixturesAsync(options, now).ConfigureAwait(false);
 
         await VerifyAsync(options, fixtures).ConfigureAwait(false);
@@ -741,7 +787,10 @@ internal static class Program
             .HashData(System.Text.Encoding.UTF8.GetBytes($"{options.TenantId:D}:{projectId:D}:{label}"))
             .AsSpan(0, 16));
 
-    private static async Task PromoteToMediaReadyAsync(SeedOptions options, DateTimeOffset now)
+    private static async Task PromoteToMediaReadyAsync(
+        SeedOptions options,
+        DateTimeOffset now,
+        ProjectStamps projectStamps)
     {
         // Both seeded projects are promoted, so either can accept a processing
         // start. Done per project rather than once, because the processing seam
@@ -806,6 +855,16 @@ internal static class Program
             }
         }
 
+        // The promotion re-stamps `updated_at`, so it must use the SAME
+        // per-project instants the insert used - stamping both rows with a
+        // single `now` here would reintroduce the tie that Task 041B had to fix
+        // for `created_at`, this time on the `updatedat` sort.
+        var stamps = new Dictionary<Guid, DateTimeOffset>
+        {
+            [options.ProjectId] = projectStamps.PilotUpdatedAt,
+            [options.PipelineProjectId] = projectStamps.PipelineUpdatedAt,
+        };
+
         using (TenantContext.BeginMaintenanceScope())
         {
             await using var context = new AppDbContext(CreateOptions(options.ConnectionString));
@@ -814,7 +873,7 @@ internal static class Program
                 await context.Database.ExecuteSqlRawAsync(
                     "UPDATE dubbing_projects SET status = {0}, updated_at = {1} WHERE id = {2}",
                     ProjectStatus.MediaReady.ToString(),
-                    now,
+                    stamps[projectId],
                     projectId).ConfigureAwait(false);
             }
         }

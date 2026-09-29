@@ -18,8 +18,6 @@ export function Tooltip({ label, content, children }: TooltipProps): ReactNode {
   });
 
   return (
-    <>
-      <style>{`.dp-tooltip{position:relative;display:inline-block}.dp-tooltip-bubble{position:absolute;inset-block-end:100%;inset-inline-start:50%;transform:translateX(-50%);margin-block-end:var(--space-1);z-index:30;max-inline-size:min(16rem,90vw);background-color:var(--color-surface-inverse);color:var(--color-text-inverse);font-size:var(--font-size-sm);border-radius:var(--radius-md);padding:var(--space-1) var(--space-2)}[dir="rtl"] .dp-tooltip-bubble{transform:translateX(50%)}`}</style>
       <span className="dp-tooltip">
         <span
           tabIndex={0}
@@ -53,6 +51,5 @@ export function Tooltip({ label, content, children }: TooltipProps): ReactNode {
           </span>
         ) : null}
       </span>
-    </>
   );
 }

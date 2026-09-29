@@ -107,7 +107,7 @@ export function DashboardPage(): ReactNode {
   return (
     <section data-testid="page-dashboard">
       <h1 className="text-xl font-semibold">{t('dashboard:title')}</h1>
-      <p className="mt-2 text-sm text-slate-600">{t('dashboard:subtitle')}</p>
+      <p className="mt-2 text-sm dp-muted">{t('dashboard:subtitle')}</p>
       {showStale ? (
         <p role="status" data-testid="dashboard-stale-indicator">
           {t('dashboard:stale')}

@@ -1,6 +1,41 @@
 import { useEffect, useRef } from 'react';
 
 /**
+ * True when an element is actually rendered.
+ *
+ * <p>
+ * `HTMLElement.offsetParent` is the obvious check and it is <strong>wrong
+ * inside a dialog</strong>. The spec says `offsetParent` is `null` when the
+ * element or any ancestor has `position: fixed`, and `Modal`/`Drawer` render
+ * their overlay as `position: fixed`. So every control inside a dialog reported
+ * `offsetParent === null`, the trap's item list came back empty, and the trap
+ * silently did nothing: Tab walked straight out of the dialog into the page
+ * behind it.
+ * </p>
+ *
+ * <p>
+ * Task 041C found this by measuring it - the dialog looked perfect in a
+ * screenshot and in `useFocusTrap`'s own unit test (which renders without the
+ * fixed-position overlay), and trapped nothing in the browser.
+ * </p>
+ *
+ * <p>
+ * `getClientRects()` is the right primitive: an element with no layout boxes is
+ * not rendered, whatever its ancestors' positioning.
+ * </p>
+ */
+function isVisible(element: HTMLElement): boolean {
+  if (element === document.activeElement) {
+    return true;
+  }
+  const style = window.getComputedStyle(element);
+  if (style.display === 'none' || style.visibility === 'hidden') {
+    return false;
+  }
+  return element.getClientRects().length > 0;
+}
+
+/**
  * Traps Tab focus inside `containerRef` while active and restores focus to the
  * element that held it on mount (R3). Used by Modal/Drawer/ConfirmDialog.
  */
@@ -30,7 +65,7 @@ export function useFocusTrap(active: boolean, containerRef: React.RefObject<HTML
       }
       const items = [...root.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )].filter((el) => el.offsetParent !== null || el === document.activeElement);
+      )].filter(isVisible);
       if (items.length === 0) {
         event.preventDefault();
         return;

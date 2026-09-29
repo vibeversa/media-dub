@@ -330,7 +330,22 @@ describe('ReviewStudio scoping matrix', () => {
     const input = await screen.findByTestId('review-filter-project');
     expect(screen.getByTestId('review-studio').getAttribute('data-project')).toBe('');
     expect(screen.getByTestId('review-queue-needs-project')).toBeDefined();
+    // Task 041C: the field used to write through to the URL on every
+    // keystroke, which dropped keyboard focus after one character and made the
+    // scope unusable without a mouse. It commits on blur or Enter now, like
+    // every other filter on this screen, so the test commits it the same way.
     fireEvent.change(input, { target: { value: 'prj_1' } });
+    expect(screen.getByTestId('review-studio').getAttribute('data-project')).toBe('');
+    fireEvent.blur(input);
+    expect(await screen.findByTestId('review-queue-list')).toBeDefined();
+  });
+
+  it('commits the project scope on Enter, for a keyboard user', async () => {
+    authenticate();
+    renderWithProviders(<ReviewStudio />);
+    const input = await screen.findByTestId('review-filter-project');
+    fireEvent.change(input, { target: { value: 'prj_1' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(await screen.findByTestId('review-queue-list')).toBeDefined();
   });
 

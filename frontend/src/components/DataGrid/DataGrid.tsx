@@ -17,13 +17,18 @@ export interface DataGridProps<T> {
   readonly onRowActivate?: (row: T, index: number) => void;
 }
 
-/** Grid with row keyboard navigation (Up/Down + Enter activates). */
+/**
+ * Grid with row keyboard navigation (Up/Down + Enter activates).
+ *
+ * Enter only activates the row when it was not pressed on a control inside a
+ * cell - see the guard in `onKeyDown`. A cell that contains a button owns its
+ * own Enter.
+ */
 export function DataGrid<T>({ columns, rows, caption, getRowId, onRowActivate }: DataGridProps<T>): ReactNode {
   const [active, setActive] = useState(0);
 
   return (
     <>
-      <style>{`.dp-grid-wrap{overflow:auto;border:1px solid var(--color-border);border-radius:var(--radius-md)}.dp-grid{border-collapse:collapse;inline-size:100%;font-size:var(--font-size-sm)}.dp-grid th,.dp-grid td{padding:var(--space-2) var(--space-3);text-align:start;border-block-end:1px solid var(--color-border)}.dp-grid thead th{position:sticky;inset-block-start:0;background-color:var(--color-surface);font-weight:var(--font-weight-semibold)}.dp-grid tbody tr[data-active="true"]{background-color:var(--color-brand-subtle)}.dp-grid tbody tr{cursor:pointer}`}</style>
       <div className="dp-grid-wrap">
         <table
           className="dp-grid"
@@ -38,6 +43,28 @@ export function DataGrid<T>({ columns, rows, caption, getRowId, onRowActivate }:
               e.preventDefault();
               setActive((a) => Math.max(a - 1, 0));
             } else if (e.key === 'Enter') {
+              // Task 041C: Enter inside a cell that holds its own control belongs
+              // to that control, not to the row.
+              //
+              // Without this, pressing Enter on a row action did BOTH things: the
+              // button's click fired *and* the row activated, so "Delete" opened
+              // the project workspace instead of the delete confirmation. The
+              // project's action cell already stopped click propagation for
+              // exactly this reason; the key path was missed, and the mouse and
+              // the keyboard behaved differently on the same control.
+              const target = e.target as HTMLElement | null;
+              const tag = target?.tagName.toLowerCase() ?? '';
+              if (
+                tag === 'button' ||
+                tag === 'a' ||
+                tag === 'input' ||
+                tag === 'select' ||
+                tag === 'textarea' ||
+                target?.getAttribute('role') === 'button' ||
+                target?.getAttribute('role') === 'link'
+              ) {
+                return;
+              }
               const row = rows[active];
               if (row) {
                 onRowActivate?.(row, active);

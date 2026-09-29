@@ -11,7 +11,6 @@ export function EntityId({ id, label }: EntityIdProps): ReactNode {
   const [copied, setCopied] = useState(false);
   return (
     <>
-      <style>{`.dp-entity{display:inline-flex;align-items:center;gap:var(--space-2);font-family:var(--font-family-mono);font-size:var(--font-size-sm);color:var(--color-text-muted)}.dp-entity code{background-color:var(--color-neutral-status-bg);border-radius:var(--radius-sm);padding:0 var(--space-1)}`}</style>
       <span className="dp-entity">
         {label ? <span>{label}</span> : null}
         <code>{id}</code>

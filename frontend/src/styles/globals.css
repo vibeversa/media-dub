@@ -20,6 +20,64 @@
     color: var(--color-text);
   }
 
+  /*
+   * Form controls, themed from tokens (Task 041C).
+   *
+   * 52 controls across the feature tree are written as bare `<input>`,
+   * `<select>` and `<textarea>` with no `dp-*` class, so they were taking the
+   * browser's own light-mode defaults: white background, near-black text. In
+   * dark theme `--color-text` is #f1f5f9, so a bare control rendered
+   * #f1f5f9-on-#ffffff at 1.09:1 - effectively invisible. axe's
+   * `color-contrast` rule found this on the review and quality filter rows.
+   *
+   * The fix is here rather than 52 `className` additions, because a rule that
+   * depends on every call site remembering a class is a rule that will be
+   * forgotten at the next call site. The base layer is the one place that
+   * cannot be bypassed.
+   */
+  input,
+  select,
+  textarea {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-md);
+    font-family: inherit;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: var(--color-brand);
+    inline-size: 1rem;
+    block-size: 1rem;
+    padding: 0;
+  }
+
+  /* A control the user cannot act on still has to be readable: WCAG does not
+   * exempt disabled text from contrast, and the browser's default grey on
+   * white is 3.0:1 in light theme. */
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    color: var(--color-text-muted);
+    background-color: var(--color-neutral-status-bg);
+    cursor: not-allowed;
+  }
+
+  /* Range inputs carry a native track that ignores background-color. */
+  input[type='range'] {
+    padding: 0;
+    border: none;
+    background: transparent;
+    accent-color: var(--color-brand);
+  }
+
+  input[type='file'] {
+    padding: var(--space-2);
+  }
+
   :focus-visible {
     outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
@@ -94,14 +152,28 @@
   background-color: transparent;
 }
 
-/* Reduced motion: disable transitions/animations; progress renders statically. */
+/* Reduced motion (WCAG 2.3.3 / prefers-reduced-motion): disable transitions and
+ * animations; progress renders statically.
+ *
+ * `!important` is load-bearing, not decorative. Without it these declarations
+ * have the specificity of `*` - zero - and ANY class-based rule wins. The app's
+ * own `.dp-btn { transition: opacity 120ms ease }` is a single class, so with a
+ * plain `*` override every button in the application still animated its opacity
+ * for 120 ms while the user had asked for no motion at all, and the audit could
+ * not tell the difference between "the rule works" and "nothing animates".
+ *
+ * A user preference that the user cannot override is the entire point of
+ * `prefers-reduced-motion`, so beating author intent is the correct behaviour
+ * here rather than an escalation.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
-    scroll-behavior: auto;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }

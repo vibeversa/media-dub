@@ -17,7 +17,6 @@ export interface TableProps<T> {
 export function Table<T>({ columns, rows, caption, getRowId }: TableProps<T>): ReactNode {
   return (
     <>
-      <style>{`.dp-table-wrap{overflow:auto;border:1px solid var(--color-border);border-radius:var(--radius-md)}.dp-table{border-collapse:collapse;inline-size:100%;font-size:var(--font-size-sm)}.dp-table th,.dp-table td{padding:var(--space-2) var(--space-3);text-align:start;border-block-end:1px solid var(--color-border)}.dp-table thead th{position:sticky;inset-block-start:0;background-color:var(--color-surface);font-weight:var(--font-weight-semibold)}`}</style>
       <div className="dp-table-wrap dp-table-sticky">
         <table className="dp-table">
           <caption className="dp-muted">{caption}</caption>

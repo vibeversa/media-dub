@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Alert } from '../../components/Alert/Alert.js';
 import { EmptyState } from '../../components/EmptyState/EmptyState.js';
 import { ErrorState } from '../../components/ErrorState/ErrorState.js';
+import { Modal } from '../../components/Modal/Modal.js';
 import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { useToast } from '../../components/Toast/useToast.js';
 import { queryKeys } from '../../api/queryKeys/index.js';
@@ -529,8 +530,16 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
           )}
         </div>
       </div>
+      {/*
+        Task 041C: the unsaved-draft guard is a modal interruption - it blocks
+        the navigation the user just asked for and demands a decision - but it
+        was an inline `role="dialog"` panel with no focus trap, no Escape and no
+        focus restore. It is the `Modal` primitive now. The testid stays on the
+        inner content so the existing 028 suites keep addressing it.
+      */}
       {guard.dialogOpen ? (
-        <div data-testid="translation-dirty-dialog" role="dialog" aria-label="Unsaved translation draft">
+        <Modal open title="Unsaved translation draft" onClose={guard.confirmCancel}>
+          <div data-testid="translation-dirty-dialog">
           <Alert tone="warning" title="Unsaved translation draft">
             <p data-testid="translation-dirty-text">
               {guard.pendingLabel !== undefined
@@ -567,7 +576,8 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
               </button>
             </div>
           </Alert>
-        </div>
+          </div>
+        </Modal>
       ) : null}
       <div hidden>
         <span data-testid="translation-query-key">{JSON.stringify(queryKeys.translations.list(projectId))}</span>

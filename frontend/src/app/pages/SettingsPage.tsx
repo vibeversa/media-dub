@@ -6,7 +6,7 @@ export default function SettingsPage(): ReactNode {
   return (
     <section data-testid="page-settings">
       <h1 className="text-xl font-semibold">Settings</h1>
-      <p className="mt-2 text-sm text-slate-600">Preferences for your account and workspace.</p>
+      <p className="mt-2 text-sm dp-muted">Preferences for your account and workspace.</p>
       <div className="mt-4">
         <FeatureSettingsPage />
       </div>

@@ -154,6 +154,26 @@ Rules:
 - Never regenerate the whole set to make a run green. That is the one failure mode
   this gate exists to prevent.
 
+### Re-baseline history
+
+**2026-09-29 (Task 041C): all 144 cells re-generated.** Reason: every component
+carried its CSS in an inline `<style>` tag, and the app's own Content Security
+Policy (`style-src 'self'`, `frontend/index.html`) blocks inline styles - so
+**no component rule ever applied** and the whole application rendered unstyled.
+The previous baselines faithfully captured that. Task 041C's axe scan found the
+consequence (dark-theme login inputs at 1.09:1 contrast, because the input never
+received its `background-color: var(--color-surface)`), and the 33 rule blocks
+moved verbatim to `frontend/src/styles/components.css`, which is served from
+`'self'` and is therefore allowed.
+
+This is the clearest illustration of what this gate is for: 155 tests, green on
+every run, pinning a page with no styling at all. The matrix was not wrong - it
+was pointed at a broken build and had nothing to say about it. A visual gate
+verifies that rendering is *stable*; something else has to notice that rendering
+is *correct*.
+
+Verified green twice after the re-baseline, per the rule above.
+
 ## N/A entries
 
 A matrix entry that cannot apply is marked in `SCREENS[].notApplicable` **with a
@@ -182,3 +202,8 @@ it, so an N/A cannot quietly reduce coverage.
   therefore pin a **mirrored layout with mostly English text**. The mirroring is
   the point of the axis and is fully covered; translated copy is 045's gap.
 - **No per-OS baselines** (Chromium only, see the font policy).
+- **A visual gate cannot tell you the page is right.** It can only tell you the
+  page did not change. The 041C re-baseline above is the worked example: a
+  completely unstyled application, committed and green. `e2e/a11y/` is the
+  complementary gate - it asserts things a screenshot cannot (contrast ratios,
+  focus indicators, accessible names) - and it is what caught the cause.

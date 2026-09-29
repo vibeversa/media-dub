@@ -12,8 +12,6 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
   const totalPages = Math.max(1, Math.ceil(total / Math.max(pageSize, 1)));
   const safe = Math.min(Math.max(page, 1), totalPages);
   return (
-    <>
-      <style>{`.dp-pager{display:flex;align-items:center;gap:var(--space-2);font-size:var(--font-size-sm);color:var(--color-text-muted)}`}</style>
       <nav aria-label="Pagination" className="dp-pager">
         <button
           type="button"
@@ -39,6 +37,5 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
           Next
         </button>
       </nav>
-    </>
   );
 }

@@ -6,7 +6,7 @@ export default function AdminPage(): ReactNode {
   return (
     <section data-testid="page-admin">
       <h1 className="text-xl font-semibold">Admin</h1>
-      <p className="mt-2 text-sm text-slate-600">Usage, quotas, queues, and provider health.</p>
+      <p className="mt-2 text-sm dp-muted">Usage, quotas, queues, and provider health.</p>
       <div className="mt-4">
         <FeatureAdminPage />
       </div>

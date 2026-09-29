@@ -7,12 +7,17 @@
   "scripts": {
     "test:cross-layer": "playwright test --grep=@cross-layer",
     "test:cross-layer:ui": "playwright test --ui",
+    "test:a11y": "playwright test --grep=@a11y",
+    "typecheck:e2e": "tsc --noEmit -p tsconfig.json",
     "test:visual": "playwright test --grep=@visual",
     "test:visual:update": "playwright test --grep=@visual --update-snapshots",
     "test:tools": "node --test tools/*.test.mjs",
     "check:api-contract": "node tools/check-api-contract.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0"
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.6.2",
+    "axe-core": "4.13.0",
+    "typescript": "5.6.3"
   }
 }

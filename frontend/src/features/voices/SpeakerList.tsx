@@ -90,13 +90,34 @@ export function SpeakerList({ projectId, selectedSpeakerId, onSelect }: SpeakerL
 
   return (
     <section data-testid="voices-speaker-list" aria-label="Speaker list">
-      <div
-        data-testid="voices-list-scroll"
-        role="listbox"
-        aria-label="Speakers"
-        tabIndex={0}
-        style={{ overflowY: 'auto', maxHeight: '640px' }}
-      >
+      {/*
+        Task 041C: this was a `role="listbox"` of `role="option"` rows, and it
+        was wrong three ways.
+
+        1. `nested-interactive` (serious). A `listbox` owns its options: the
+           option IS the focusable thing. Each option here wrapped a real
+           `<button>`, so every row put a focusable control inside a role that
+           must not contain one. A screen-reader user in browse mode hears the
+           option and then has to enter forms mode to reach the button inside it.
+
+        2. There is no listbox keyboard model. `listbox` promises arrow-key
+           navigation between options and a single active descendant. Neither
+           existed - selection happened through a button click. The role was
+           claiming behaviour the component did not have, which is worse than no
+           role: it teaches a user a gesture that does nothing.
+
+        3. `target-size` (serious). The scroll container carried `tabIndex={0}`,
+           which put a 320x8 sliver of an overflow box into the tab order and
+           into axe's pointer-target geometry. Its contents are already focusable
+           buttons, so the container never needed to be a tab stop.
+
+        So it is a plain list of buttons now, and the selected speaker is
+        expressed with `aria-current` on the button - the correct signal for
+        "this is the current item in a set", which is what a selection here is.
+        `data-selected` is kept because the visual treatment and the existing
+        unit tests read it, but it is no longer the accessible signal.
+      */}
+      <div data-testid="voices-list-scroll" style={{ overflowY: 'auto', maxHeight: '640px' }}>
         <div data-testid="voices-list" data-total={String(speakers.length)} data-rendered={String(speakers.length)}>
           {speakers.map((speaker) => {
             const isSelected = speaker.id === selectedSpeakerId;
@@ -105,8 +126,6 @@ export function SpeakerList({ projectId, selectedSpeakerId, onSelect }: SpeakerL
             return (
               <div
                 key={speaker.id}
-                role="option"
-                aria-selected={isSelected}
                 data-testid={`voices-row-${speaker.id}`}
                 data-selected={isSelected ? 'true' : 'false'}
                 data-segment-id={speaker.id}
@@ -126,6 +145,10 @@ export function SpeakerList({ projectId, selectedSpeakerId, onSelect }: SpeakerL
                   onClick={() => {
                     onSelect?.(speaker.id);
                   }}
+                  // `aria-current` rather than `aria-selected`: this is "the
+                  // speaker currently shown in the selector", not an option
+                  // inside a listbox. See the note above the scroll container.
+                  aria-current={isSelected ? 'true' : undefined}
                   aria-label={`Select speaker ${speaker.displayName}`}
                 >
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>

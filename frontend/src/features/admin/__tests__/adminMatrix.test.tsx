@@ -424,7 +424,13 @@ describe('tenants/health/routes/usage/retention matrices', () => {
 
   it('renders retention policies with windows (text signals)', async () => {
     renderWithProviders(<AdminPage />);
-    expect(await screen.findByTestId('admin-section-retention-audit')).toBeDefined();
+    // Await the DATA, not the section wrapper. The section renders immediately
+    // and the policy list arrives after `GET /admin/retention` resolves, so
+    // awaiting the section made this assertion a race that happened to pass
+    // whenever an unrelated extra render pass happened to land first. Task
+    // 041C removed an inline `<style>` node from `ToastProvider`, which removed
+    // that accidental extra pass and exposed the race.
+    expect(await screen.findByTestId('admin-retention-list')).toBeDefined();
     expect(document.body.textContent).toContain('90');
   });
 });

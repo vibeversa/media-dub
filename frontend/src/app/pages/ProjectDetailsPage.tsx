@@ -36,7 +36,7 @@ export default function ProjectDetailsPage(): ReactNode {
   return (
     <section data-testid="page-project-details">
       <h1 className="text-xl font-semibold">Project</h1>
-      <p className="mt-2 text-sm text-slate-600">Project ID: {projectId === '' ? 'unknown' : projectId}</p>
+      <p className="mt-2 text-sm dp-muted">Project ID: {projectId === '' ? 'unknown' : projectId}</p>
       {canStart && projectId !== '' ? (
         <button
           type="button"

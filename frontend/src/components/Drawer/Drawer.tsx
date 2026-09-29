@@ -22,7 +22,6 @@ export function Drawer({ open, title, onClose, children }: DrawerProps): ReactNo
   }
   return createPortal(
     <>
-      <style>{`.dp-drawer-overlay{position:fixed;inset:0;background-color:rgb(15 23 42 / 0.5);z-index:50;display:flex;justify-content:flex-end}.dp-drawer{background-color:var(--color-surface-overlay);color:var(--color-text);inline-size:min(24rem,90vw);block-size:100%;padding:var(--space-6);box-shadow:var(--shadow-lg);overflow:auto}[dir="rtl"] .dp-drawer-overlay{justify-content:flex-start}`}</style>
       <div className="dp-drawer-overlay" onMouseDown={onClose}>
         <div
           ref={ref}

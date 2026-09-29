@@ -8,7 +8,7 @@ export function LoggedOutPage(): ReactNode {
   return (
     <section data-testid="page-logged-out">
       <h1 className="text-xl font-semibold">{t('auth:loggedOut.title')}</h1>
-      <p className="mt-2 text-sm text-slate-600">{t('auth:loggedOut.description')}</p>
+      <p className="mt-2 text-sm dp-muted">{t('auth:loggedOut.description')}</p>
       <Link to="/login" data-testid="logged-out-signin" className="mt-4 inline-block rounded border px-4 py-2">
         {t('auth:loggedOut.signInAgain')}
       </Link>

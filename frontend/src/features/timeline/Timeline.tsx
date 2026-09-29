@@ -246,7 +246,6 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
       data-viewport-end={String(viewportEndMs)}
       data-duration={String(durationMs)}
     >
-      <style>{`.dp-timeline-marker{border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:var(--space-1) var(--space-2);margin-block:var(--space-1)}.dp-timeline-marker-missing{border-style:dashed}.dp-pattern-hatched-block{background-image:repeating-linear-gradient(45deg,var(--color-surface) 0,var(--color-surface) 4px,var(--color-neutral-status-bg) 4px,var(--color-neutral-status-bg) 8px)}.dp-pattern-crosshatch-block{background-image:repeating-linear-gradient(45deg,var(--color-neutral-status-bg) 0,var(--color-neutral-status-bg) 2px,transparent 2px,transparent 6px),repeating-linear-gradient(-45deg,var(--color-neutral-status-bg) 0,var(--color-neutral-status-bg) 2px,transparent 2px,transparent 6px)}.dp-pattern-diagonal-stripes{background-image:repeating-linear-gradient(45deg,transparent 0,transparent 6px,var(--color-neutral-status-bg) 6px,var(--color-neutral-status-bg) 8px)}.dp-pattern-dotted-block{border-style:dotted}.dp-timeline-gap{border:1px dashed var(--color-border);border-radius:var(--radius-sm);padding:var(--space-1) var(--space-2);margin-block:var(--space-1)}`}</style>
       <div data-testid="timeline-toolbar">
         <button
           type="button"

@@ -12,8 +12,8 @@ export function AuthForbiddenPage(): ReactNode {
   return (
     <section data-testid="page-forbidden">
       <h1 className="text-xl font-semibold">{t('common:forbidden.title')}</h1>
-      <p className="mt-2 text-sm text-slate-600">{t('common:forbidden.description')}</p>
-      <p className="mt-2 text-sm text-slate-600">{t('common:forbidden.requestAccess')}</p>
+      <p className="mt-2 text-sm dp-muted">{t('common:forbidden.description')}</p>
+      <p className="mt-2 text-sm dp-muted">{t('common:forbidden.requestAccess')}</p>
       <Link to="/dashboard" className="mt-4 inline-block rounded border px-4 py-2">
         {t('common:forbidden.backToDashboard')}
       </Link>
