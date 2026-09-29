@@ -94,6 +94,56 @@ export function requestShape(document, pathKey, method) {
 }
 
 /**
+ * True when the server document describes a body but not its fields.
+ *
+ * ASP.NET's emitter writes an empty inline schema for some `[FromBody]`
+ * parameters, so "no properties" there means "the emitter did not describe this
+ * body", not "this endpoint takes an empty body". Those two readings have very
+ * different consequences and the gate must not conflate them: reporting the
+ * bundle as wrong when the emitter simply went quiet would send the next agent to
+ * "fix" correct client code.
+ */
+export function isUnderDescribed(shape) {
+  return (
+    shape !== null &&
+    shape !== undefined &&
+    shape.name === '(inline)' &&
+    Array.isArray(shape.required) &&
+    shape.required.length === 0 &&
+    Array.isArray(shape.properties) &&
+    shape.properties.length === 0
+  );
+}
+
+/**
+ * Classifies how a divergence would actually fail at runtime.
+ *
+ * `fatal` means a request built from the bundle cannot be served: the bundle
+ * requires a field the server does not accept, or the two field sets are
+ * disjoint. Both produce a 400 before the action runs. `shape` means the request
+ * would be accepted but lose information - the client cannot send a field the
+ * server supports, or it sends fields the server ignores.
+ */
+export function classify(serverShape, bundleShape) {
+  if (serverShape === null || bundleShape === null) {
+    return 'shape';
+  }
+  const server = new Set(serverShape.properties ?? []);
+  const bundle = new Set(bundleShape.properties ?? []);
+  const requiredNotAccepted = (bundleShape.required ?? []).filter((field) => !server.has(field));
+  if (requiredNotAccepted.length > 0) {
+    return 'fatal';
+  }
+  if (bundle.size > 0 && server.size > 0) {
+    const overlap = [...bundle].filter((field) => server.has(field));
+    if (overlap.length === 0) {
+      return 'fatal';
+    }
+  }
+  return 'shape';
+}
+
+/**
  * Compares the server's emitted document against the committed bundle.
  *
  * Two documents describing the same API legitimately differ in how they spell a
@@ -105,6 +155,7 @@ export function requestShape(document, pathKey, method) {
  */
 export function compareDocuments(serverDocument, bundleDocument) {
   const divergences = [];
+  const underDescribed = [];
   const undeclared = [];
   let compared = 0;
 
@@ -130,8 +181,21 @@ export function compareDocuments(serverDocument, bundleDocument) {
         continue;
       }
       compared += 1;
+
+      if (isUnderDescribed(serverShape)) {
+        // The emitter went quiet. Recorded, not judged: the bundle may well be
+        // right and the API's own document incomplete.
+        underDescribed.push(`${method.toUpperCase()} ${serverPath} (server document declares no fields)`);
+        continue;
+      }
       if (serverShape === null || bundleShape === null) {
-        divergences.push({ operation: `${method.toUpperCase()} ${serverPath}`, reason: 'a JSON request body is declared on only one side', server: serverShape, bundle: bundleShape });
+        divergences.push({
+          operation: `${method.toUpperCase()} ${serverPath}`,
+          severity: classify(serverShape, bundleShape),
+          reason: 'a JSON request body is declared on only one side',
+          server: serverShape,
+          bundle: bundleShape,
+        });
         continue;
       }
       const sameRequired = JSON.stringify(serverShape.required) === JSON.stringify(bundleShape.required);
@@ -139,6 +203,7 @@ export function compareDocuments(serverDocument, bundleDocument) {
       if (!sameRequired || !sameProperties) {
         divergences.push({
           operation: `${method.toUpperCase()} ${serverPath}`,
+          severity: classify(serverShape, bundleShape),
           reason: !sameRequired && !sameProperties ? 'different required fields and different properties' : !sameRequired ? 'different required fields' : 'different properties',
           server: serverShape,
           bundle: bundleShape,
@@ -147,7 +212,7 @@ export function compareDocuments(serverDocument, bundleDocument) {
     }
   }
 
-  return { compared, divergences, undeclared };
+  return { compared, divergences, underDescribed, undeclared };
 }
 
 function describe(shape) {
@@ -162,18 +227,27 @@ function describe(shape) {
 
 export function formatReport(result) {
   const lines = [];
+  const fatal = result.divergences.filter((entry) => entry.severity === 'fatal');
   lines.push(`operations with a JSON request body compared: ${result.compared}`);
-  lines.push(`divergent: ${result.divergences.length}`);
-  lines.push(`declared in the server but absent from the bundle: ${result.undeclared.length}`);
-  for (const entry of result.divergences) {
-    lines.push('');
+  lines.push(`FATAL (a request built from the bundle would be rejected): ${fatal.length}`);
+  for (const entry of fatal) {
     lines.push(`  ${entry.operation}`);
+  }
+  lines.push(`divergent but survivable: ${result.divergences.length - fatal.length}`);
+  lines.push(`server document under-describes (not judged): ${result.underDescribed.length}`);
+  lines.push(`declared in the server but absent from the bundle: ${result.undeclared.length}`);
+  lines.push('');
+  for (const entry of result.divergences) {
+    lines.push(`  [${entry.severity}] ${entry.operation}`);
     lines.push(`    reason: ${entry.reason}`);
     lines.push(`    server: ${describe(entry.server)}`);
     lines.push(`    bundle: ${describe(entry.bundle)}`);
   }
   for (const entry of result.undeclared) {
     lines.push(`  MISSING ${entry}`);
+  }
+  for (const entry of result.underDescribed) {
+    lines.push(`  UNDESCRIBED ${entry}`);
   }
   return lines.join('\n');
 }
@@ -236,15 +310,17 @@ async function main() {
   const result = compareDocuments(serverDocument, bundleDocument);
   console.log(formatReport(result));
 
-  if (result.divergences.length > 0 || result.undeclared.length > 0) {
+  const fatal = result.divergences.filter((entry) => entry.severity === 'fatal');
+  if (fatal.length > 0 || result.undeclared.length > 0) {
     console.error('');
-    console.error('API CONTRACT DIVERGENCE: the committed OpenAPI bundle does not describe this API.');
+    console.error('API CONTRACT DIVERGENCE: the committed OpenAPI bundle cannot drive this API.');
     console.error('  The generated client is faithful to the bundle, so every consumer of it inherits the');
     console.error('  divergence. Regenerate the bundle from the server document, then regenerate the client.');
     return 1;
   }
   console.log('');
-  console.log('check-api-contract: the committed bundle matches the API on every JSON request body.');
+  console.log('check-api-contract: no fatal divergence. The bundle may still be incomplete - read the');
+  console.log('  "divergent but survivable" and "server document under-describes" sections above.');
   return 0;
 }
 

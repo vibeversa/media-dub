@@ -174,7 +174,7 @@ describe('restore branches', () => {
 describe('refresh confirm + classification branches', () => {
   it('expires when identity fails after a rotation', async () => {
     loginThenMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     route((url) => {
       if (url.endsWith('/auth/refresh')) return Promise.resolve(jsonResponse({ ...LOGIN_BODY, accessToken: 'access-2' }));
       if (url.endsWith('/me')) return Promise.resolve(jsonResponse(errorBody('TOKEN_EXPIRED'), 401));
@@ -186,7 +186,7 @@ describe('refresh confirm + classification branches', () => {
 
   it('marks non-401 refresh failures as error state', async () => {
     loginThenMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     route((url) => {
       if (url.endsWith('/auth/refresh')) return Promise.resolve(jsonResponse(errorBody('PROVIDER_DOWN'), 503));
       return Promise.resolve(jsonResponse({}));
@@ -198,7 +198,7 @@ describe('refresh confirm + classification branches', () => {
 
   it('expires when no refresh token exists on an authenticated session', async () => {
     loginThenMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     useAuthStore.setState({ refreshToken: undefined });
     expect(await useAuthStore.getState().refreshNow()).toBe(false);
     expect(useAuthStore.getState().status).toBe('expired');
@@ -213,7 +213,7 @@ describe('refresh confirm + classification branches', () => {
 describe('offline refresh branches', () => {
   it('expires on offline timeout without reconnect (recovery: retry)', async () => {
     loginThenMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
     try {
       route((url) => {
@@ -232,7 +232,7 @@ describe('offline refresh branches', () => {
 
   it('recovers when the reconnect retry succeeds', async () => {
     loginThenMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
     try {
       let refreshCalls = 0;
@@ -260,7 +260,7 @@ describe('offline refresh branches', () => {
 describe('logout + unauthorized + delay guards', () => {
   it('broadcasts logout even when storage throws', async () => {
     loginThenMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('denied');
     });
@@ -270,7 +270,7 @@ describe('logout + unauthorized + delay guards', () => {
 
   it('clears locally without a server round-trip', async () => {
     loginThenMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     const calls = mockFetch.mock.calls.length;
     useAuthStore.getState().logoutLocal();
     expect(useAuthStore.getState().status).toBe('anonymous');
@@ -279,7 +279,7 @@ describe('logout + unauthorized + delay guards', () => {
 
   it('resolves true when the session re-validates', async () => {
     loginThenMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     route((url) => {
       if (url.endsWith('/auth/refresh')) return Promise.resolve(jsonResponse({ ...LOGIN_BODY, accessToken: 'access-2' }));
       if (url.endsWith('/me')) return Promise.resolve(jsonResponse(ME_BODY));

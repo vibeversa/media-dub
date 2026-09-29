@@ -109,7 +109,7 @@ export const recoveryHintByCode: Record<ErrorCode, string> = Object.freeze({
   CONSENT_REQUIRED: 'Voice consent is required before proceeding. Complete the consent step first.',
   POLICY_DENIED: 'Policy denied this action. Contact your tenant admin.',
   INTERNAL_ERROR: 'Something went wrong on our side. Report this ID to support.',
-  INVALID_CREDENTIALS: 'Email, password, or tenant is incorrect. Check them and try again.',
+  INVALID_CREDENTIALS: 'Sign-in failed. Check the tenant ID and external subject, then try again.',
   TOKEN_EXPIRED: 'Your session expired. Sign in again.',
   TOKEN_REUSED: 'This session was revoked for safety. Sign in again.',
   USER_DISABLED: 'This account is disabled. Contact your tenant admin.',

@@ -27,9 +27,8 @@ export interface AdminUsageResponse {
 }
 
 export interface AuthLoginRequest {
-  readonly "email": string;
-  readonly "password": string;
-  readonly "tenantSlug": string;
+  readonly "externalSubject": string;
+  readonly "tenantId": string;
 }
 
 export interface AuthLoginResponse {

@@ -309,7 +309,7 @@ export class ApiClient {
     return this.request<S.AdminUsageResponse>('GET', filled, { query, body: undefined, options });
   }
 
-  /** authLogin — Log in with tenant credentials */
+  /** authLogin — Log in with a tenant id and external subject */
   public async authLogin(params: AuthLoginParams, body: S.AuthLoginRequest, options?: RequestOptions): Promise<S.AuthLoginResponse> {
     const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
     const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;

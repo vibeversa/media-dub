@@ -80,7 +80,7 @@ afterEach(() => {
 describe('auth store transitions', () => {
   it('logs in, registers the token provider, and syncs the shell', async () => {
     mockLoginAndMe();
-    await useAuthStore.getState().login({ email: 'owner@example.com', password: 'secret', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'owner@example.com' });
     const state = useAuthStore.getState();
     expect(state.status).toBe('authenticated');
     expect(state.accessToken).toBe('access-1');
@@ -99,7 +99,7 @@ describe('auth store transitions', () => {
       return Promise.resolve(jsonResponse({}));
     });
     await expect(
-      useAuthStore.getState().login({ email: 'owner@example.com', password: 'wrong', tenantSlug: 'acme' }),
+      useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'unknown-subject' }),
     ).rejects.toBeDefined();
     const state = useAuthStore.getState();
     expect(state.status).toBe('unknown');
@@ -123,7 +123,7 @@ describe('auth store transitions', () => {
       return Promise.resolve(jsonResponse(errorBody('USER_DISABLED'), 403));
     });
     await expect(
-      useAuthStore.getState().login({ email: 'owner@example.com', password: 'secret', tenantSlug: 'acme' }),
+      useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'owner@example.com' }),
     ).rejects.toBeDefined();
     expect(useAuthStore.getState().status).toBe('error');
     expect(useAuthStore.getState().lastErrorCode).toBe('USER_DISABLED');
@@ -132,7 +132,7 @@ describe('auth store transitions', () => {
 
   it('expires on 401 refresh and ignores stale sessions afterwards', async () => {
     mockLoginAndMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     mockFetch.mockImplementation((input) => {
       const url = typeof input === 'string' ? input : (input as Request).url;
       if (url.endsWith('/auth/refresh')) {
@@ -161,7 +161,7 @@ describe('auth store transitions', () => {
 describe('refresh coalescing (R3)', () => {
   it('shares one in-flight refresh across concurrent callers', async () => {
     mockLoginAndMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     const loginCalls = mockFetch.mock.calls.length;
 
     let releaseRefresh!: (response: Response) => void;
@@ -213,8 +213,8 @@ describe('refresh coalescing (R3)', () => {
     });
     const store = useAuthStore.getState();
     const pending = [
-      store.login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' }),
-      store.login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' }),
+      store.login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' }),
+      store.login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' }),
     ];
     await Promise.resolve();
     releaseLogin(jsonResponse(LOGIN_BODY));
@@ -248,7 +248,7 @@ describe('silent refresh schedule (80% lifetime)', () => {
         }
         return Promise.resolve(jsonResponse({}));
       });
-      await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+      await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
       const refreshBefore = mockFetch.mock.calls.filter((call) =>
         String(call[0]).includes('/auth/refresh'),
       ).length;
@@ -267,7 +267,7 @@ describe('silent refresh schedule (80% lifetime)', () => {
 describe('logout (R4)', () => {
   it('clears cache + stores before resolving, then broadcasts without token material', async () => {
     mockLoginAndMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     queryClient.setQueryData(['projects', 'list'], { items: [] });
     expect(queryClient.getQueryData(['projects', 'list'])).toBeDefined();
 
@@ -295,7 +295,7 @@ describe('logout (R4)', () => {
 
   it('clears locally even when the server call fails', async () => {
     mockLoginAndMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     mockFetch.mockRejectedValue(new TypeError('fetch failed'));
     await useAuthStore.getState().logout();
     expect(useAuthStore.getState().status).toBe('anonymous');
@@ -308,7 +308,7 @@ describe('no token persistence (R1)', () => {
     mockLoginAndMe();
     const setSpy = vi.spyOn(Storage.prototype, 'setItem');
     const sessionSpy = vi.spyOn(window.sessionStorage.__proto__ as Storage, 'setItem');
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
 
     mockFetch.mockImplementation((input) => {
       const url = typeof input === 'string' ? input : (input as Request).url;
@@ -342,7 +342,7 @@ describe('no token persistence (R1)', () => {
 describe('offline refresh', () => {
   it('retries once on reconnect, else expires', async () => {
     mockLoginAndMe();
-    await useAuthStore.getState().login({ email: 'o@e.c', password: 's', tenantSlug: 'acme' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
     Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
     try {
       let refreshCalls = 0;

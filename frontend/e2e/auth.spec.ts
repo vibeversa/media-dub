@@ -105,9 +105,13 @@ async function mockAuthApi(page: Page, mocks?: AuthMocks): Promise<void> {
 }
 
 async function loginThroughUi(page: Page): Promise<void> {
-  await page.getByTestId('auth-tenant').fill('acme');
-  await page.getByTestId('auth-email').fill('owner@example.com');
-  await page.getByTestId('auth-password').fill('secret');
+  // Task 041A: the login form collects a tenant id and an external subject. The
+  // previous email/password/tenant-slug fields could not authenticate against the
+  // real API, which resolves a (tenantId, externalSubject) pair and is
+  // passwordless. Selectors updated to follow the contract change; the API stays
+  // mocked, so this spec's coverage is unchanged.
+  await page.getByTestId('auth-tenant-id').fill('acme');
+  await page.getByTestId('auth-external-subject').fill('owner@example.com');
   await page.getByTestId('auth-submit').click();
 }
 

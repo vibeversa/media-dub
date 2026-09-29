@@ -79,8 +79,8 @@
       "post": {
         "operationId": "authLogin",
         "tags": ["auth"],
-        "summary": "Log in with tenant credentials",
-        "description": "Mints a 15-minute access JWT plus a 7-day refresh session. Never idempotent: every call mints fresh secrets. Failures use INVALID_CREDENTIALS / USER_DISABLED.",
+        "summary": "Log in with a tenant id and external subject",
+        "description": "Resolves the (tenantId, externalSubject) pair to an active tenant user and mints a 15-minute access JWT plus a 7-day refresh session. The platform is passwordless: there is no credential to present, so an unknown pair and a wrong pair are the same failure. Never idempotent: every call mints fresh secrets. Failures use INVALID_CREDENTIALS / USER_DISABLED.",
         "security": [],
         "requestBody": {
           "required": true,
@@ -90,9 +90,8 @@
                 "$ref": "#/components/schemas/AuthLoginRequest"
               },
               "example": {
-                "tenantSlug": "acme",
-                "email": "owner@example.com",
-                "password": "***"
+                "tenantId": "11111111-1111-1111-1111-111111111111",
+                "externalSubject": "owner@cross-layer.invalid"
               }
             }
           }
@@ -4018,18 +4017,16 @@
       },
       "AuthLoginRequest": {
         "type": "object",
-        "required": ["tenantSlug", "email", "password"],
+        "required": ["tenantId", "externalSubject"],
         "properties": {
-          "tenantSlug": {
-            "type": "string"
-          },
-          "email": {
+          "tenantId": {
             "type": "string",
-            "format": "email"
+            "format": "uuid"
           },
-          "password": {
+          "externalSubject": {
             "type": "string",
-            "format": "password"
+            "minLength": 1,
+            "maxLength": 256
           }
         }
       },

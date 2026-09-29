@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { compareDocuments, formatReport, requestShape, resolveSchema } from './check-api-contract.mjs';
+import { compareDocuments, formatReport, isUnderDescribed, classify, requestShape, resolveSchema } from './check-api-contract.mjs';
 
 function documentWith(paths, schemas) {
   return { openapi: '3.0.1', paths, components: { schemas: schemas ?? {} } };
@@ -129,6 +129,92 @@ test('operations with no body on either side are not compared', () => {
   const result = compareDocuments(server, bundle);
   assert.equal(result.compared, 0);
   assert.equal(result.divergences.length, 0);
+});
+
+test('a body the server document leaves undescribed is recorded, not judged as divergent', () => {
+  // This is the real shape the API emits for several `[FromBody]` parameters: an
+  // empty inline schema. Calling the bundle "wrong" here would send someone to
+  // break correct client code.
+  const server = documentWith(
+    {
+      '/api/v1/projects/{projectId}/segments/{segmentId}/transcript-edits': {
+        post: { requestBody: { content: { 'application/json': { schema: { type: 'object' } } } } },
+      },
+    },
+    {},
+  );
+  const bundle = documentWith(
+    { '/projects/{projectId}/segments/{segmentId}/transcript-edits': { post: operationWithBody('SegmentEditRequest') } },
+    { SegmentEditRequest: { type: 'object', required: ['text'], properties: { text: {} } } },
+  );
+
+  const result = compareDocuments(server, bundle);
+  assert.equal(result.divergences.length, 0, 'an undescribed server body is not a bundle defect');
+  assert.equal(result.underDescribed.length, 1);
+  assert.match(result.underDescribed[0], /transcript-edits/);
+  assert.equal(result.compared, 1);
+});
+
+test('isUnderDescribed only matches an empty inline schema, never a named one', () => {
+  assert.equal(isUnderDescribed({ name: '(inline)', required: [], properties: [] }), true);
+  assert.equal(isUnderDescribed({ name: 'LoginRequest', required: [], properties: [] }), false);
+  assert.equal(isUnderDescribed({ name: '(inline)', required: [], properties: ['a'] }), false);
+  assert.equal(isUnderDescribed(null), false);
+});
+
+test('classify separates a request the server would reject from one it would accept', () => {
+  const shape = (name, required, properties) => ({ name, required, properties });
+
+  // Disjoint field sets: nothing the bundle sends is understood.
+  assert.equal(
+    classify(
+      shape('L', ['tenantId', 'externalSubject'], ['tenantId', 'externalSubject']),
+      shape('A', ['tenantSlug', 'email', 'password'], ['tenantSlug', 'email', 'password']),
+    ),
+    'fatal',
+  );
+
+  // The bundle requires a field the server does not accept.
+  assert.equal(
+    classify(shape('A', [], ['fileName', 'contentType']), shape('U', ['partCount'], ['fileName', 'partCount'])),
+    'fatal',
+  );
+
+  // Overlapping fields, but the client cannot send what the server supports.
+  assert.equal(
+    classify(
+      shape('S', ['sourceLanguage', 'targetLanguage'], ['name', 'description', 'sourceLanguage', 'targetLanguage']),
+      shape('P', ['sourceLanguage', 'targetLanguage'], ['name', 'sourceLanguage', 'targetLanguage']),
+    ),
+    'shape',
+  );
+
+  // Identical shapes are not a divergence at all, but classify must not claim otherwise.
+  assert.equal(classify(shape('A', ['a'], ['a']), shape('B', ['a'], ['a'])), 'shape');
+});
+
+test('fatal divergences are surfaced separately from survivable ones in the report', () => {
+  const server = documentWith(
+    { '/api/v1/fatal': { post: operationWithBody('S1') }, '/api/v1/loose': { post: operationWithBody('S2') } },
+    {
+      S1: { type: 'object', required: ['a'], properties: { a: {} } },
+      S2: { type: 'object', required: ['x'], properties: { x: {}, extra: {} } },
+    },
+  );
+  const bundle = documentWith(
+    { '/fatal': { post: operationWithBody('B1') }, '/loose': { post: operationWithBody('B2') } },
+    {
+      B1: { type: 'object', required: ['totallyDifferent'], properties: { totallyDifferent: {} } },
+      B2: { type: 'object', required: ['x'], properties: { x: {} } },
+    },
+  );
+
+  const result = compareDocuments(server, bundle);
+  const report = formatReport(result);
+  assert.match(report, /FATAL .*: 1/);
+  assert.match(report, /divergent but survivable: 1/);
+  assert.match(report, /\[fatal\] POST \/api\/v1\/fatal/);
+  assert.match(report, /\[shape\] POST \/api\/v1\/loose/);
 });
 
 test('formatReport names the operation and both shapes', () => {

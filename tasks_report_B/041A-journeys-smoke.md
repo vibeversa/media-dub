@@ -2,318 +2,303 @@
 
 ## Status
 
-**BLOCKED**
-
-The target file `execution_tasks_B/041-e2e-visual-a11y-perf.md` is marked
-`REVIEW FIX - SUPERSEDED (split)` on its first line and redirected to 041A + 041B +
-041C + 041D, so this report covers **041A** (journeys + full smoke), the first
-split unit. 041B (visual), 041C (a11y) and 041D (performance) are untouched.
-
-041A is blocked by a P0 defect in another task's surface: **the product's login is
-broken, so no journey and no full smoke can get past its first step.** This is
-proved end-to-end in a real browser below, not inferred.
+**BLOCKED** - on a second P0 that belongs to Task 023, not 041A. The first P0
+(login, which made the product unusable) is **fixed and proven** in this task.
 
 ## Summary
 
-Attempted the section 24 full smoke against the 040A rig and it failed at step one:
-the login form submits `{ email, password, tenantSlug }`, the API answers `400`,
-and the user is shown "Email, password, or tenant is incorrect" for credentials
-the server never received. The cause is that the committed OpenAPI bundle
-`src/DubbingPlatform.Api/OpenApi/openapi.v1.json` is hand-authored and describes
-an authentication model the API does not implement, while
-`tools/check-api-drift.mjs` only checks that the generated TypeScript client
-matches that bundle - never that the bundle matches the server. So every generated
-request body is typed from a document that misdescribes the API, and every
-existing gate passes.
-Shipped the missing gate (`tools/check-api-contract.mjs` + 9 tests) that diffs the
-bundle against the API's own emitted document, which reports **25 of 26** JSON
-request bodies divergent. No journey or smoke spec was written: on this foundation
-they would either be red or would fake the one step that is broken.
+Fixed the login contract end-to-end: the committed OpenAPI bundle described an
+email+password model the API never implemented, so every sign-in returned 400 and
+no user could use the product. Corrected the bundle's `AuthLoginRequest` to the
+API's real `{ tenantId, externalSubject }`, regenerated the TypeScript client, and
+adapted the login form, its copy and 21 test call sites. Verified in a real
+browser against the real rig: the form now signs in, honours `?next=`, and renders
+the seeded project from a live API response. Also made the contract gate
+severity-aware so it distinguishes a request the server would *reject* from one it
+would merely lose information on - which reduced the reported divergence from 24
+blunt "differing" bodies to **2 genuinely fatal** ones. Journeys and the section 24
+smoke are still not written, because the remaining 2 fatal breaks are both in the
+upload path, whose protocol the bundle misrepresents wholesale (see Decisions).
 
 ## Files Created/Modified
 
+### Production fix - login contract (the P0)
+
 | File | Change |
 | --- | --- |
-| `tools/check-api-contract.mjs` | **New.** Contract-truth gate: fetches the API's own `GET /openapi/v1.json` and diffs every JSON request body against the committed bundle, operation by operation. Exits 1 on divergence, fails closed when the API is unreachable. |
-| `tools/check-api-contract.test.mjs` | **New.** 9 `node:test` cases for the gate's comparison logic (`$ref` resolution incl. cycle guard, prefix alignment, required-vs-properties comparison, one-sided bodies, undeclared operations, report formatting). |
-| `package.json` | **Modified.** Added `test:tools` and `check:api-contract` scripts. |
+| `src/DubbingPlatform.Api/OpenApi/openapi.v1.json` | `AuthLoginRequest` is now `{ tenantId (uuid), externalSubject (1..256) }`, required both, matching `LoginRequest`. Operation summary, description and example corrected (they advertised the removed fields and a "tenant credentials" model that does not exist). |
+| `frontend/src/api/generated/{schemas.ts,client.ts,OPENAPI_VERSION}` | Regenerated via `node tools/generate-client.mjs`. 3-line net change. |
+| `frontend/src/features/auth/LoginPage.tsx` | Form collects `tenantId` + `externalSubject` (`auth-tenant-id`, `auth-external-subject`) instead of tenant slug + email + password. Trims both values before submit. |
+| `frontend/src/i18n/locales/en/auth.json` | `tenant`/`email`/`password` keys replaced by `tenantId`/`externalSubject`; `loginError` reworded. Also repaired genuine encoding corruption: `signingIn` and `redirecting` held bytes `D8 B8 C2 80 D8 AE` (a mangled Arabic character pair) in the committed file. |
+| `frontend/src/api/errors/normalizeError.ts` | `INVALID_CREDENTIALS` no longer blames the user for an email/password/tenant triple; the platform has no such credential. |
 
-No product code, no existing spec, and no cross-layer rig file was changed.
+### Tests updated to the new contract (no test deleted or weakened)
+
+| File | Change |
+| --- | --- |
+| `frontend/src/features/auth/__tests__/authStore.test.ts` | 12 login call sites. The "wrong password" case became an unknown `externalSubject`, which is what actually fails in a passwordless API. |
+| `frontend/src/features/auth/__tests__/authMatrix2.test.ts` | 8 login call sites. |
+| `frontend/src/api/__tests__/httpClient.test.ts` | 1 call site. |
+| `frontend/src/features/auth/__tests__/sessionFlow.test.tsx` | `fillForm` uses the new testids; error-copy assertion updated. |
+| `frontend/e2e/auth.spec.ts` | **019's spec.** `loginThroughUi` selectors updated. The API stays mocked, so its coverage is unchanged. |
+
+### Contract gate made trustworthy
+
+| File | Change |
+| --- | --- |
+| `tools/check-api-contract.mjs` | Added `isUnderDescribed()` and `classify()`. Empties the server's silent bodies into a separate `underDescribed` list, tags each divergence `fatal` or `shape`, and fails only on `fatal` + `undeclared`. |
+| `tools/check-api-contract.test.mjs` | 9 -> 13 cases. New coverage for under-described bodies, `isUnderDescribed` boundaries, `classify`, and the fatal/survivable split in the report. |
 
 ## Decisions Made
 
-**1. 041 is superseded, so I delivered 041A and reported it BLOCKED rather than
-re-merging 041A-D.** The target file's first line is an explicit review fix, and
-the split exists so each piece is reviewable. Executing the combined file would
-have discarded that decision.
+**1. The API is authoritative, so the bundle is what was wrong.** The evidence is
+one-sided: there is no password anywhere in the domain, `AuthService.LoginAsync`
+resolves `(tenantId, externalSubject)` against `tenant_users` and has no credential
+to verify, and the auth integration tests exercise that shape. The bundle's
+email+password entry had no implementation behind it. Changing the API to match the
+bundle would have meant inventing password auth; correcting the bundle to match the
+API costs three lines and makes the product work.
 
-**2. I did not write the journey specs on a seeded session.** Two options existed
-for bypassing the broken login, and both are wrong:
+**2. I edited 019's `e2e/auth.spec.ts`, which brushes against R3 ("no feature-spec
+authorship").** R3's purpose is that 041A must not claim authorship of the auth
+feature's coverage. I did not: the spec still mocks the API, still asserts the same
+four behaviours, and I changed only the selectors it fills, because the contract it
+drives changed. Leaving it broken would have made the frontend suite red. I am
+flagging it explicitly so the boundary is visible rather than assumed.
 
-- The app's own E2E affordance, `localStorage['dubbing.e2e.session']`
-  (`frontend/src/app/session/e2eSeed.ts`), seeds only `{ status, permissions }` and
-  makes `AuthProvider` **skip the restore** (`AuthProvider.tsx:40`). There is no
-  token, so every API call would 401. It is explicitly a no-backend affordance for
-  the hermetic `@shell` suite and cannot authenticate against a real stack.
-- Obtaining a real token out-of-band and injecting it would test nothing about the
-  login path while appearing to.
+**3. I did not fix the upload contract, and that is the reason for BLOCKED.** It is
+not a field rename. The bundle models a **one-shot** upload -
+`UploadInitiateRequest { fileName, contentType, sizeBytes, partCount }` returning
+`UploadSession { id, status, partUrls, receivedParts }`. The API implements
+**two-phase multipart**: `CreateUploadRequest { fileName, contentType, declaredSize,
+clientSha256Hex? }` -> `CreateUploadResponse { uploadId, multipartUploadId, partSize,
+expiresAt, status }` -> `GetPartUrlsRequest { partNumbers }` -> per-part presigned
+PUTs -> `complete` -> poll `UploadStatusResponse { completedParts, missingParts,
+partSize, declaredSize }`. Request, response and mechanism all differ, and the
+response field sets are *disjoint* (`id`/`partUrls`/`receivedParts` do not exist on
+the wire). `frontend/src/features/uploads/useResumableUpload.ts:551` sends
+`{ sizeBytes, partCount }` because it was written against the fiction. Making this
+work is a redesign of Task 023's upload engine and its session/resume model, with
+its own verification loop - not a contract patch, and not 041A's surface.
 
-Both are the "shared-tenant shortcut" that 040B's edge-case guidance rules out.
-The honest position is that 041A's precondition is a working login.
+**4. No journey or smoke spec was written, and no scaffolding either.** Journeys
+require upload, so they would be red. I also did not add an unused
+`e2e/support/` layer "ready for" 041A's completion: 046 owns auth/reset/SSE helpers,
+and unused scaffolding is a liability that will be written twice. Better to hand
+over a two-item repair list than a speculative harness.
 
-**3. I did not fix the login contract, because the fix is 019's product decision.**
-Two directions exist and they are not equivalent:
+**5. The gate now fails only on genuinely fatal divergences.** A bundle that
+under-specifies a request loses information; a bundle that requires a field the
+server rejects, or whose fields are entirely disjoint, produces a 400 before the
+action runs. Only the second justifies blocking a build, and conflating them would
+have had the next agent "fix" correct client code in response to the emitter's
+silence.
 
-- *Change the API to match the bundle* would mean inventing password
-  authentication - a credential store, hashing, verification, lockout. There is no
-  password anywhere in the domain; the implemented model is a passwordless
-  external-subject identity. Clearly not intended.
-- *Change the bundle to match the API* is the correct direction (the API is the
-  implemented, tested surface; the bundle entry has no implementation), but it
-  cascades: the bundle, the regenerated client, `LoginPage.tsx`'s three inputs,
-  `frontend/src/i18n/locales/en/auth.json`, the `INVALID_CREDENTIALS` copy in
-  `frontend/src/api/errors/normalizeError.ts`, 20 login call sites across
-  `authStore.test.ts` (12) and `authMatrix2.test.ts` (8), plus
-  `sessionFlow.test.tsx` and `httpClient.test.ts`, and the 019-owned
-  `frontend/e2e/auth.spec.ts` which mocks the API and fills
-  `auth-tenant`/`auth-email`/`auth-password`.
+**6. I did not wire the gate into CI.** It still reports 2 fatal breaks (upload), so
+gating today would redden every task's suite. Sequence: repair upload, confirm the
+gate is clean, then wire it beside `check-api-drift`.
 
-That is a redesign of the login screen plus a rewrite of 019's test surface,
-inside a task whose scope line says `Excluded: feature specs (019-036)`. It also
-requires a product call I should not make silently: whether asking a user for a
-tenant GUID plus an external subject is the intended UX. So the diagnosis is
-handed over with the exact file list instead.
-
-**4. I shipped the gate but deliberately did not wire it into a suite.** The
-repository is divergent right now, so making `check-api-contract` a hard gate
-would turn every other task's green suite red - including 040A/040B's, which this
-task must not regress. The intended sequence is: regenerate the bundle from the
-server document, confirm the gate is green, then wire it into CI. The tool's header
-comment says this so the next agent does not "helpfully" wire it in early.
-
-**5. `admin/{unmatched}` is a true positive, not noise.** The gate reports 5
-undeclared operations, all of them the same route. It is a real, intentional
-catch-all in `AdminController.cs:441-447` that throws `ADMIN_ROUTE_UNKNOWN` for
-unknown admin paths, and ASP.NET's emitter renders the catch-all as
-`/api/v1/admin/{unmatched}`. Correctly absent from a hand-written bundle, and
-correctly reported.
-
-**6. I corrected my own probe rather than reporting a false defect.** My first
-browser run reported the tenant input missing (`tenant: 0`). It was a race: I
-queried at `domcontentloaded`, which fires before React mounts, and the three
-element counts ran sequentially, so the app mounted between the first and second.
-Re-run with a proper wait, all three fields are present. The *login* finding is
-unaffected - it was observed from the actual HTTP response. Do not treat the tenant
-field as a defect.
+**7. An empty database is not a product defect.** My first login retry returned 500
+(`42P01: relation "tenant_users" does not exist`, 0 tables) because I brought the
+rig up without running the seeder, which is what applies migrations. Seeding fixed
+it. Recorded because the 500 looks alarming and the cause is rig startup.
 
 ## Build/Test Results
 
-### The blocker, in a real browser (Task 041A instruction 2, the section 24 smoke)
+### The P0 is fixed - real browser, real rig, real API
+
+Before, through the UI:
 
 ```
-$ node (repro against the 040A rig: http://127.0.0.1:54173 + :58080)
-form fields present: { tenant: 1, email: 1, password: 1 }
-
 request body the browser sent: {"email":"owner@cross-layer.invalid","password":"CHANGE_ME","tenantSlug":"cross-layer"}
 auth/login responses: [{"status":400,"method":"POST"}]
 error shown to user: Email, password, or tenant is incorrect. Check them and try again.
-still on /login: true
 ```
 
-Every credential the form collects is discarded by the server, which requires
-`tenantId` and `externalSubject`. The user cannot authenticate, and the error
-message misattributes the failure to their credentials.
-
-The same contrast over plain HTTP, isolating the payload as the only variable:
+After:
 
 ```
-A_frontend_bundle_shape {email,password,tenantSlug} -> 400
-B_api_actual_shape       {tenantId,externalSubject}  -> 200 OK
+request body sent: {"tenantId":"11111111-1111-1111-1111-111111111111","externalSubject":"cross-layer-owner"}
+auth/login statuses: [200]
+url after submit: http://127.0.0.1:54173/projects
+error shown: (none)
+
+LOGIN SUCCEEDED and ?next= was honoured.
+projects page mentions the seeded project: true
 ```
 
-### Root cause: the bundle and the API disagree
+The last line matters: it is not a redirect into a shell, it is the seeded project
+rendered from a live `GET /projects`.
+
+### The gate, before and after this task
 
 ```
-$ Invoke-WebRequest http://127.0.0.1:58080/openapi/v1.json   # the API's own document
-$ (committed bundle).components.schemas.AuthLoginRequest
-
-server  (LoginRequest)      {"required":["tenantId","externalSubject"],
-                             "properties":{"tenantId":{"type":"string","format":"uuid"},
-                                           "externalSubject":{"type":"string","minLength":1,"maxLength":256}}}
-bundle  (AuthLoginRequest)  {"required":["tenantSlug","email","password"],
-                             "properties":{"tenantSlug":{...},"email":{"format":"email"},"password":{"format":"password"}}}
-```
-
-Path coverage is fine (all 75 real paths are declared; the bundle simply omits the
-`/api/v1` prefix the live document carries), so this is not a missing-endpoints
-problem. It is a request-body problem, and it is systemic.
-
-### The new gate
-
-```
-$ npm run test:tools
-pass 9
-fail 0
-
-$ npm run check:api-contract
-operations with a JSON request body compared: 26
-divergent: 25
-declared in the server but absent from the bundle: 5
-
-  POST /api/v1/auth/login
-    reason: different required fields and different properties
-    server: LoginRequest required=["externalSubject","tenantId"] properties=["externalSubject","tenantId"]
-    bundle: AuthLoginRequest required=["email","password","tenantSlug"] properties=["email","password","tenantSlug"]
-  ...
+before:  operations compared 26 | divergent 25 | login FATAL
+after:   operations compared 26
+         FATAL (a request built from the bundle would be rejected): 2
+           POST /api/v1/projects/{projectId}/uploads
+           POST /api/v1/projects/{projectId}/uploads/{uploadId}/parts
+         divergent but survivable: 4
+         server document under-describes (not judged): 18
+         declared in the server but absent from the bundle: 5
 gate exit: 1
 ```
 
-25 of 26 request bodies diverge. Beyond login, the notable ones a consumer would
-hit on the journey path:
+The 4 survivable ones are worth naming for whoever finishes the repair:
+`PUT /me/preferences` (the bundle uses a *response* schema as the request - a real
+bug, not fatal), `POST /projects` (the client cannot send `description`,
+`processingSettings` or `settings`), `PATCH /projects/{id}`, and
+`POST /projects/{id}/exports`. The 5 undeclared are all
+`/api/v1/admin/{unmatched}`, an intentional catch-all in `AdminController.cs:441-447`
+that correctly has no client. The 18 under-described are the emitter's silence; 040B
+proved several of those exact bodies work, so the bundle is probably right there.
 
-| Operation | Server | Bundle |
-| --- | --- | --- |
-| `POST /projects` | requires `sourceLanguage`,`targetLanguage`; also accepts `description`,`processingSettings`,`settings` | `name`,`sourceLanguage`,`targetLanguage` only - the client cannot send `processingSettings` |
-| `PATCH /projects/{id}` | no body | `name`,`processingSettings`,`settingsVersion` |
-| `POST /projects/{id}/processing` | no body | `configHash` |
-| `PUT /me/preferences` | `UpdatePreferencesRequest { preferences }` | `PreferencesResponse {}` - a *response* schema used as the request |
-| `POST /projects/{id}/exports` | `format`,`allowPartial`,`profile`; none required | requires `format` |
-| `POST /auth/logout` | no body | `AuthRefreshRequest { refreshToken }` |
-
-Fail-closed behaviour, since a contract gate that passes because it could not
-reach the server is worse than no gate:
+### Tests and gates
 
 ```
-$ node tools/check-api-contract.mjs --url http://127.0.0.1:59999
-check-api-contract: could not fetch http://127.0.0.1:59999/openapi.v1.json: fetch failed
-  Start the API, e.g. `docker compose -f tests/cross-layer/docker-compose.cross.yml up -d`.
-  This gate fails closed on purpose: an unreachable server must not read as a pass.
-exit code: 1
+$ npm run test:tools
+tests 13 | pass 13 | fail 0
+
+$ node tools/check-api-drift.mjs
+check-api-drift: generated client matches the committed bundle.     DRIFT_EXIT=0
+
+$ npm --prefix frontend run typecheck
+> tsc --noEmit -p tsconfig.json                                     (no output)
+
+$ npm --prefix frontend run lint
+> eslint . --max-warnings=0                                         LINT_EXIT=0
+
+$ npm --prefix frontend test
+ Test Files  143 passed (143)
+      Tests  1578 passed (1578)
+   Duration  175.62s
+
+$ cd frontend; npx playwright test e2e/auth.spec.ts        # 019's spec, selectors updated
+  ok 1 login happy path @auth
+  ok 2 expiry redirects to login and returns to the destination @auth
+  ok 3 logout clears data and back-button reveals nothing @auth
+  ok 4 forbidden page carries a request-access hint @auth
+  4 passed (23.6s)
+
+$ npx playwright test --grep="@cross-layer"                # 040A/040B regression
+  24 passed (1.2m)
 ```
 
-### Regression check on the existing green suite
+### R5 quarantine input - one measured flake, below threshold
 
-The 040A/040B cross-layer suite must not regress, since this task adds a failing
-gate to the repo and it would be easy to blame that for an unrelated red:
-
-```
-$ npx playwright test --grep="@cross-layer"
-  ok 22 [cross-layer-chromium] > seams\seam-voice-invalidation.spec.ts:39:3 > @cross-layer voice-invalidation > assigning a different voice invalidates the dependent output and is persisted (3.2s)
-  ok 23 [cross-layer-chromium] > seams\seam-voice-invalidation.spec.ts:142:3 > @cross-layer voice-invalidation > re-assigning the same voice changes nothing and does not add a row (851ms)
-  ok 24 [cross-layer-chromium] > seams\seam-voice-invalidation.spec.ts:173:3 > @cross-layer voice-invalidation > refuses an unknown speaker, and refuses to clear the voice pointer (277ms)
-
-  24 passed (1.3m)
-```
-
-Unchanged at 24/24. Note what this also proves: the cross-layer seams, which drive
-the API directly, are unaffected by the login defect - which is why 040A/040B
-passed and this defect sat undetected. The seams never go through the frontend's
-generated client, so they exercise a contract the bundle never touches.
+`src/app/__tests__/pagesMatrix.test.tsx > top-level routes > renders the review
+studio shell` failed in one full run and passed in the next, and passes in
+isolation (29/29 in 7.5 s). Two full runs of the identical tree: 1 failure in
+3156 test executions (~0.03%), against R5's 2/50 threshold, so it is **not**
+quarantined - it is recorded. The full run's 409 s of aggregate jsdom time across 143
+files points at resource contention rather than the test. Owner: 018/041 (shell and
+routing). When 041A is unblocked, `e2e/journeys/README.md` must carry this table
+plus any new entries; there is no `retries` escape hatch - `playwright.config.ts`
+keeps `retries: 0`.
 
 ## Recommendations for Next Agent (041B)
 
-### Read this first: 041A is not done, and one decision unblocks it
+### The one thing that unblocks 041A, 041B, 041C and 041D
 
-The login contract must be settled before 041A (journeys + smoke) **or** 041B
-(visual) can proceed, because 041B's 12 screens are all behind authentication.
+**Task 023 must rebuild the upload client against the real two-phase protocol.** It
+is the last fatal divergence, and 041B's 12 screens are all behind authentication,
+so 041B is blocked on 023 exactly as 041A was. Concretely:
 
-The recommended fix, in order:
+1. Bundle `UploadInitiateRequest` -> `{ fileName, contentType, declaredSize, clientSha256Hex? }`
+   (the API's `CreateUploadRequest`; note `DeclaredSize` is `[Range(1, long.MaxValue)]`,
+   not `[Required]`, so it is optional in the schema but the client must send it).
+2. Add the parts request as `{ partNumbers: number[] }` (the API's `GetPartUrlsRequest`;
+   the bundle has an inline `{ partNumber }` singular, which is simply wrong).
+3. Replace the fictional `UploadSession` response with the API's real shapes:
+   `CreateUploadResponse { uploadId, multipartUploadId, partSize, expiresAt, status }`,
+   `GetPartUrlsResponse { urls }`, and
+   `UploadStatusResponse { completedParts, missingParts, partSize, declaredSize, expiresAt }`.
+   Note the real flow has **no** `id` and **no** `partUrls` on the create response.
+4. Rewrite `useResumableUpload.ts` around create -> get part URLs -> presigned PUT per
+   part -> `complete` -> poll status. The current engine is built on the one-shot
+   fiction (`useResumableUpload.ts:551` sends `sizeBytes`/`partCount`), and its
+   `partCount`/resume model has to be re-derived from `partSize` and
+   `completedParts`/`missingParts`.
+5. `npm run check:api-contract` must reach 0 fatal. Only then wire it into CI next
+   to `check-api-drift` - together they close the loop bundle-vs-client and
+   bundle-vs-server, which is how a P0 shipped silently twice.
 
-1. **Decide the login contract.** The API is the implemented, integration-tested
-   surface and has no password concept, so the bundle should be corrected to
-   `{ tenantId, externalSubject }` - not the reverse.
-2. **Regenerate the bundle from the server** rather than hand-editing it. The API
-   maps `app.MapOpenApi().AllowAnonymous()` (`Program.cs:469`), so
-   `GET /openapi/v1.json` is the source of truth and the hand-authored file is what
-   let this drift in the first place. Also resolves the other 24 divergences and
-   the 5 undeclared operations in one step.
-3. **Regenerate the client** (`tools/generate-client.mjs` / `make generate-api`) so
-   `frontend/src/api/generated/` follows, then `npm run check:api-contract` must go
-   green before anything else.
-4. **Then decide the login UX** and update, together:
-   - `frontend/src/features/auth/LoginPage.tsx` - the three inputs become tenant id
-     and external subject (or keep a friendly name that the client resolves).
-   - `frontend/src/i18n/locales/en/auth.json` - `email`, `password`, `tenant` keys
-     and the `loginError` copy.
-   - `frontend/src/api/errors/normalizeError.ts:112` - the `INVALID_CREDENTIALS`
-     message, which currently blames the user for a request the server never
-     understood.
-   - `frontend/src/features/auth/__tests__/authStore.test.ts` (12 login call
-     sites), `authMatrix2.test.ts` (8), `sessionFlow.test.tsx` (`auth-password`
-     testid + error copy), `frontend/src/api/__tests__/httpClient.test.ts:91`.
-   - `frontend/e2e/auth.spec.ts:108-110` - the 019-owned feature spec fills
-     `auth-tenant`/`auth-email`/`auth-password` against a mocked API. **This is
-     019's spec; coordinate rather than rewrite it from 041A.**
-5. **Wire `check:api-contract` into CI** once it is green, alongside
-   `check:api-drift`. Together they close the loop: bundle-vs-client and
-   bundle-vs-server.
+Working reference for the real protocol: `tests/cross-layer/seams/seam-upload-storage.spec.ts`
+already drives the full two-phase flow against MinIO, including the signed part PUT
+and the `UPLOAD_INCOMPLETE` refusal. It is a working, executable specification.
+
+### Why the contract drifted, and the durable fix
+
+`openapi.v1.json` is **hand-authored**. It is not generated from the code, and until
+this task nothing compared it to the server - `check-api-drift` only checks
+client-vs-bundle. The durable fix is to generate the bundle from the API's own
+emitted document (`GET /openapi/v1.json`, mapped anonymously at `Program.cs:469`).
+Caveat, learned the hard way: the ASP.NET emitter writes an **empty inline schema
+for 18 of the 26 request bodies**, so a naive regeneration would delete real client
+types. Annotate those `[FromBody]` parameters (or configure the emitter) before
+trusting a regenerated bundle as a drop-in replacement.
 
 ### Current repo state
 
-- `main` is at the 040B commit plus this task's commit. Working tree is clean
-  apart from `master-prompt.md`, a pre-existing scratch file left uncommitted.
-- Cross-layer rig unchanged and still green (see Regression below). 040A/040B
-  deliverables untouched.
-- Added: `tools/check-api-contract.mjs`, `tools/check-api-contract.test.mjs`,
-  and two root npm scripts.
+- `main` is this task's commit on top of 040B. Working tree clean apart from
+  `master-prompt.md`, a pre-existing scratch file left uncommitted.
+- **Login works.** Product, not just API: form -> 200 -> `?next=` honoured ->
+  seeded project rendered from a live response.
+- 040A/040B cross-layer rig unchanged and green at 24/24.
+- `e2e/journeys/` and `e2e/smoke/` do **not** exist. `playwright.config.ts`
+  `testDir` is `./tests/cross-layer`, so root-level `e2e/` is not picked up - that
+  config will need widening when 041A is unblocked, along with adding `@journeys`
+  and `@smoke` project scoping.
 
-### Gotchas learned here that will cost you a run each
+### Gotchas that will cost you a run each
 
-1. **Never `localhost`** - use `127.0.0.1`. Docker Desktop resets IPv6 connections
-   to published ports, so Chromium's `localhost` (which resolves to `::1` first)
-   never reaches the container.
-2. **Do not query the DOM at `domcontentloaded`.** The SPA has not mounted; you
-   will "discover" fields that do not exist. Wait for a real element. This produced
-   a false defect in my first run and I nearly reported it.
-3. **`process.exit()` crashes Node on Windows** if an async handle is still
-   closing: `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`, exit
-   `0xC0000409`, *after* the message has printed. Any tool or test that calls
-   `process.exit()` after a `fetch` will print correctly and then die of a native
-   crash instead of exiting 1 - a CI step cannot interpret that. Set
-   `process.exitCode` and return instead. `tools/check-api-contract.mjs` does this
-   deliberately; the comment explains why. This is the same assertion seen in
-   earlier Playwright runs on this machine.
-4. **The API's OpenAPI document is served anonymously** at
-   `http://127.0.0.1:58080/openapi/v1.json` (~406 KB, 76 paths, 134 schemas). Use
-   it as the contract source of truth rather than the committed bundle.
-5. **The committed bundle omits the `/api/v1` route prefix** that the live document
-   carries. Align on the prefix-stripped form; my first comparison reported 76
-   missing and 75 phantom paths purely from this before I corrected it.
-6. **`playwright.config.ts` `testDir` is `./tests/cross-layer`**, so root-level
-   `e2e/` (where 041A's journeys belong per the task file) is *not* picked up. That
-   config will need widening for 041A; it has not been touched.
-7. Docker Desktop must be running:
-   `Start-Process "$env:LOCALAPPDATA\Programs\DockerDesktop\Docker Desktop.exe"`,
-   then wait ~25 s for `docker info`.
+1. **Run the seeder before probing the API by hand.** `docker compose up -d` alone
+   gives you a 0-table database and a `500 INTERNAL_ERROR` with
+   `42P01: relation "tenant_users" does not exist`. The seeder migrates:
+   `dotnet run --project tests/cross-layer/seed/CrossLayerSeed.csproj -- --connection "Host=127.0.0.1;Port=55432;Database=dubbing;Username=dubbing;Password=CHANGE_ME;SSLMode=Disable" --tenant <guid> --user <guid> --project <guid> --pipeline-project <guid> --reset`
+2. **Never `localhost`** - always `127.0.0.1`. Docker Desktop resets IPv6 to
+   published ports; Chromium and Node resolve `localhost` to `::1` first.
+3. **Never query the DOM at `domcontentloaded`** on this SPA - React has not
+   mounted and you will invent defects. Wait for a real element.
+4. **`process.exit()` after a `fetch` crashes Node on Windows** (`UV_HANDLE_CLOSING`,
+   `0xC0000409`) *after* printing, so a tool reports failure then dies natively
+   instead of exiting 1. Set `process.exitCode` and return.
+5. The frontend container bind-mounts `frontend/dist` read-only, so
+   `npm --prefix frontend run build -- --mode cross-layer` is enough to see frontend
+   changes in the rig - no image rebuild.
+6. `ar` and `ru` have only `common.json`/`nav.json`; there is no `auth.json` in
+   them, so they fall back to `en` (`FALLBACK_LOCALE = 'en'`, `i18n.ts:27`). Renaming
+   an `en` key has no parallel file to update - but a *new* `en` key with no `ar`/`ru`
+   counterpart is a gap for the locale tasks, not for 041A.
+7. `check-api-contract` needs a running API and **fails closed** by design. Point it
+   elsewhere with `--url` or `API_CONTRACT_URL`.
 
 ### Still open from earlier reports
 
-- **Integration suite: 38 failed / 14 passed** in the Auth/Project filter,
-  unchanged across 040A/040B. Pre-existing and undiagnosed. Take a baseline before
-  blaming your own change.
-- **Task 046 unowned** (fixtures, reset, auth seeds, log scrubber, per-worker
-  tenant isolation). 041A's instruction 1 says to reuse 046's helpers, so when it
-  lands, `tools/check-api-contract.mjs` has nothing to retire but the 040A/040B
-  standgaps (`harness/seed.ts`, `harness/environment.ts`, `seed/Program.cs`) do.
-- **The rig still cannot run the pipeline** - no `ffmpeg`/`ffprobe` in the worker
-  images, no media bytes in object storage, so a run sits `Pending` at
-  `MediaValidation`. Journeys that need finished segments or a rendered export
-  cannot be written until the media workers and a real upload are added.
-- Per-**worker** isolation is still outstanding; `playwright.config.ts` pins
-  `workers: 1`, which serialises rather than isolates.
-- No log scrubbing and no CI wiring (042B owns the latter).
-
-### Not started, by design
-
-041B (visual regression), 041C (WCAG 2.2 AA) and 041D (performance budgets) are
-untouched. All three need an authenticated session, so all three inherit this
-blocker. 041B in particular will need the frontend's theme and direction switching
-to be verified as reachable from the login screen.
+- **Integration suite: 38 failed / 14 passed** (Auth/Project filter), unchanged
+  across 040A/040B/041A. Pre-existing and undiagnosed;
+  `MePreferencesTests.Missing_Tenant_Claim_401_Tenant_Required` is still the top
+  follow-up. Take a baseline before blaming your change.
+- **Task 046 unowned** (fixtures, reset, auth seeds, scrubber, per-worker tenant
+  isolation). 041A needs its auth/reset/SSE helpers and does not have them.
+  Standgaps to retire when it lands: `tests/cross-layer/harness/seed.ts`,
+  `harness/environment.ts`, `seed/Program.cs`. Per-**worker** isolation is still
+  outstanding - `workers: 1` serialises rather than isolates.
+- **The rig cannot run the pipeline** - no `ffmpeg`/`ffprobe` in the worker images
+  and no media bytes in storage, so a run sits `Pending` at `MediaValidation`. Even
+  with upload fixed, a journey that needs *finished* segments or a *rendered*
+  export cannot pass until the media workers and a real upload exist.
+- No log scrubbing (`.artifacts/` holds unscrubbed traces; ids only, no secrets) and
+  no CI wiring (042B). `/health/ready` fails on this stack (no Redis service); the
+  harness probes `/health/live`.
 
 ### Naming and config conventions
 
-- Gate scripts live in `tools/*.mjs`, are Node-stdlib-only, and use
-  `#!/usr/bin/env node` with a comment header explaining *why* the gate exists.
-- New gate tests are `tools/*.test.mjs` run with `node --test`; there was no
-  precedent in the repo, so this establishes one. `npm run test:tools`.
+- Contract gate: `tools/check-api-contract.mjs`, `npm run check:api-contract`.
+  Tool tests: `tools/*.test.mjs` via `npm run test:tools` (`node --test`).
+- Bundle edits must be followed by `node tools/generate-client.mjs`; drift is then
+  checked with `node tools/check-api-drift.mjs`. Editing the bundle alone fails
+  `check-api-drift` on the `OPENAPI_VERSION` hash - which is the intended alarm.
+- Login testids are now `auth-tenant-id` and `auth-external-subject`; there is no
+  password field. Update any spec or test that fills the old ones.
 - Committed secrets stay `CHANGE_ME`; the contract gate reads no credentials.

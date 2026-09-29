@@ -103,9 +103,10 @@ describe('login page', () => {
   const destination = <div data-testid="dest-page" />;
 
   function fillForm(): void {
-    fireEvent.change(screen.getByTestId('auth-tenant'), { target: { value: 'acme' } });
-    fireEvent.change(screen.getByTestId('auth-email'), { target: { value: 'owner@example.com' } });
-    fireEvent.change(screen.getByTestId('auth-password'), { target: { value: 'secret' } });
+    fireEvent.change(screen.getByTestId('auth-tenant-id'), { target: { value: 'acme' } });
+    fireEvent.change(screen.getByTestId('auth-external-subject'), {
+      target: { value: 'owner@example.com' },
+    });
   }
 
   it('logs in and restores the destination (R2)', async () => {
@@ -162,7 +163,9 @@ describe('login page', () => {
     fillForm();
     fireEvent.click(screen.getByTestId('auth-submit'));
     const alert = await screen.findByTestId('auth-error');
-    expect(alert.textContent).toContain('Email, password, or tenant is incorrect. Check them and try again.');
+    expect(alert.textContent).toContain(
+      'Sign-in failed. Check the tenant ID and external subject, then try again.',
+    );
     expect(screen.queryByTestId('dest-page')).toBeNull();
     expect(useAuthStore.getState().status).not.toBe('authenticated');
   });

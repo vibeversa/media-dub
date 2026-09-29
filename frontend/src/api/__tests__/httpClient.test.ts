@@ -88,7 +88,7 @@ describe('httpClient auth (R3, in-memory token only)', () => {
 
   it('lets the anonymous client call login without a provider', async () => {
     mockOk({ accessToken: 'a', refreshToken: 'r' });
-    await anonymousClient.authLogin({ path: {} }, { email: 'e', password: 'p', tenantSlug: 't' });
+    await anonymousClient.authLogin({ path: {} }, { tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'e' });
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(headerOf(mockFetch.mock.calls[0] as readonly unknown[], 'Authorization')).toBeNull();
   });
