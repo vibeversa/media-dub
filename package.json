@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "test:cross-layer": "playwright test",
-    "test:cross-layer:ui": "playwright test --ui"
+    "test:cross-layer:ui": "playwright test --ui",
+    "test:tools": "node --test tools/*.test.mjs",
+    "check:api-contract": "node tools/check-api-contract.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"
