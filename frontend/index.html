@@ -3,9 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      connect-src allows loopback in both spellings on purpose. `localhost` and
+      `127.0.0.1` are different browser origins but both are loopback, and
+      whether `localhost` resolves to ::1 or 127.0.0.1 is up to the host: Docker
+      Desktop's published ports complete an IPv6 handshake and then reset it, so
+      a stack served on 127.0.0.1 could not reach its own API and every request
+      failed as an opaque "TypeError: Failed to fetch". The widening is loopback
+      only - still no wildcard, still no bare `http:`.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https: http://localhost:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     />
     <meta name="referrer" content="no-referrer" />
     <title>Dubbing Platform</title>

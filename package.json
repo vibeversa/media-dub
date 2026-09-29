@@ -1,0 +1,14 @@
+{
+  "name": "media-dub",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Repository tooling root. The application frontend lives in frontend/; this manifest exists so the cross-layer Playwright rig can be driven from the repository root.",
+  "type": "module",
+  "scripts": {
+    "test:cross-layer": "playwright test",
+    "test:cross-layer:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

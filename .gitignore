@@ -54,3 +54,14 @@ frontend/playwright-report/
 *.coverage
 *.coveragexml
 coverage*/
+
+## Task 040A cross-layer rig
+# Playwright output.
+tests/cross-layer/.artifacts/
+test-results/
+playwright-report/
+# The rig's build profile holds public VITE_* values only and is committed on
+# purpose: the frontend origin, the API base URL and the CSP allow-list are a
+# single contract, and a silently untracked file breaks it. Negated because the
+# blanket `.env.*` rule above exists to keep real secrets out of the repo.
+!frontend/.env.cross-layer

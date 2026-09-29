@@ -1,0 +1,207 @@
+# Task 040A: cross-layer seam harness.
+#
+# Real FE + API + PostgreSQL + object storage + transport, mock AI only.
+# Endpoint integration lives in tests/DubbingPlatform.IntegrationTests (006-013);
+# this stack exists so the 040B seam specs exercise real wiring.
+#
+# Ports are fixed and deliberately disjoint from the root docker-compose.yml
+# (5432/5672/6379/8080/9000) so a running dev stack cannot collide silently.
+# A collision is a hard error naming the holder, never a silent skip.
+#
+# Usage (from the repo root):
+#   docker compose -f tests/cross-layer/docker-compose.cross.yml up -d --build
+#   npx playwright test --grep="@cross-layer-harness"
+#   docker compose -f tests/cross-layer/docker-compose.cross.yml down -v
+#
+# Secrets: emulator images plus CHANGE_ME placeholders only. Never a real
+# credential or a production connection string.
+
+name: dubbing-cross-layer
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: dubbing
+      POSTGRES_USER: dubbing
+      # Local harness only; every real environment sources this from a secret store.
+      POSTGRES_PASSWORD: CHANGE_ME
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dubbing -d dubbing"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-02-06T21-36-22Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: CHANGE_ME
+      MINIO_ROOT_PASSWORD: CHANGE_ME
+    ports:
+      - "59000:9000"
+      - "59001:9001"
+    healthcheck:
+      # The pinned Feb-2024 image ships no curl/wget/grep, so this is a
+      # builtins-only bash /dev/tcp HTTP probe. Two details are load-bearing:
+      #   * `CMD` (not CMD-SHELL) - nested single-quote escaping in CMD-SHELL
+      #     makes the probe silently unrunnable, and a healthcheck that cannot
+      #     run must not look like a slow-starting service.
+      #   * HTTP/1.1 with a `Host` header - MinIO answers HTTP/1.0 without one
+      #     with 400, which is indistinguishable from "not up yet".
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9000; printf 'GET /minio/health/live HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; read -r -t 5 line <&3; case \"$$line\" in *200*) exit 0;; *) exit 1;; esac"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.api
+    ports:
+      - "58080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      DOTNET_ENVIRONMENT: Development
+      # `SSL Mode=Disable` is load-bearing: Npgsql defaults to `Prefer`, which
+      # attempts a TLS handshake the stock `postgres:16` image does not serve and
+      # then fails with an opaque "Exception while reading from stream".
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=CHANGE_ME;SSL Mode=Disable
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: CHANGE_ME
+      Storage__SecretKey: CHANGE_ME
+      # Mock AI is mandatory for the rig: a seam must never call a real provider.
+      Providers__DefaultProvider: mock
+      # A real broker, not the in-memory bus. R1 requires a real transport, and
+      # the in-memory bus cannot cross a process boundary at all: with it, the
+      # control and ai worker containers receive nothing, the run stays Pending
+      # at MediaValidation forever, and the only thing the rig could prove is
+      # that a 202 was returned.
+      Transport__Provider: RabbitMq
+      Messaging__Transport: rabbitmq
+      RabbitMq__Host: rabbitmq
+      # Must match the frontend's exact origin: the same spelling as
+      # VITE_API_BASE_URL in frontend/.env.cross-layer and the Playwright
+      # baseURL. 127.0.0.1 rather than localhost because Docker Desktop resets
+      # IPv6 connections to published ports, so localhost resolves to a dead
+      # ::1 for both Chromium and Node.
+      CORS__AllowedOrigins__0: http://127.0.0.1:54173
+      # `AuthOptions.SigningKey` has no default and `AuthService.CreateAccessToken`
+      # throws when it is under 32 chars, so every authenticated request 500s with
+      # no other signal (the exception middleware does not log the exception).
+      # The placeholder is long enough to satisfy the floor and is not a secret.
+      Auth__SigningKey: CHANGE_ME-cross-layer-hs256-signing-key-placeholder
+      Auth__Audience: dubbing-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/live"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 20s
+
+  frontend:
+    image: node:20-alpine
+    # Serves the prebuilt frontend/dist. The bundle's VITE_API_BASE_URL is baked
+    # at build time, so the harness builds it before `up` (see README).
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    ports:
+      - "54173:4173"
+    volumes:
+      - ../../frontend/dist:/app/dist:ro
+      - ./frontend-server.mjs:/app/server.mjs:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1, never `localhost`: busybox wget resolves `localhost` to ::1
+      # first, the static server binds IPv4, and the probe then fails with
+      # "Connection refused" forever while the server is perfectly healthy.
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4173/"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    # No credentials beyond the image default guest/guest, which is confined to
+    # the compose network and never published to a real interface.
+    ports:
+      - "55672:5672"
+      - "55673:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # The pipeline orchestrator. Without it a run is accepted and then sits in
+  # Pending at MediaValidation, so no seam downstream of "processing started"
+  # could ever be proven.
+  control:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.worker.control
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DOTNET_WORKER_ROLE: control
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=CHANGE_ME;SSL Mode=Disable
+      RabbitMq__Host: rabbitmq
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: CHANGE_ME
+      Storage__SecretKey: CHANGE_ME
+      Providers__DefaultProvider: mock
+      Transport__Provider: RabbitMq
+      Messaging__Transport: rabbitmq
+    volumes:
+      - mediatmp:/tmp/media
+
+  # Provider stages (transcription, translation, TTS). Mock AI only: the rig
+  # must never reach a real provider.
+  ai:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.worker.ai
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DOTNET_WORKER_ROLE: ai
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=CHANGE_ME;SSL Mode=Disable
+      RabbitMq__Host: rabbitmq
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: CHANGE_ME
+      Storage__SecretKey: CHANGE_ME
+      Providers__DefaultProvider: mock
+      Transport__Provider: RabbitMq
+      Messaging__Transport: rabbitmq
+    volumes:
+      - mediatmp:/tmp/media
+
+volumes:
+  mediatmp:

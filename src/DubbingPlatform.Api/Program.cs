@@ -3,6 +3,7 @@ using DubbingPlatform.Api.Errors;
 using DubbingPlatform.Api.Filters;
 using DubbingPlatform.Api.Middleware;
 using DubbingPlatform.Api.OpenApi;
+using DubbingPlatform.Api.Validation;
 using DubbingPlatform.Application.Auth;
 using DubbingPlatform.Application.Authorization;
 using DubbingPlatform.Application.Diagnostics;
@@ -231,9 +232,14 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddFluentValidationAutoValidation();
-builder.Services.AddValidatorsFromAssembly(typeof(DubbingPlatform.Application.Placeholder).Assembly);
-builder.Services.AddValidatorsFromAssembly(typeof(Program).Assembly);
+// `ProjectProcessingSettingsValidator` is `AbstractValidator<string>`, and
+// `AddValidatorsFromAssembly` registers validators by the type they validate.
+// Auto-validation therefore ran it against *every* string action parameter -
+// route values and headers - so every project-scoped endpoint answered
+// 400 "Processing settings must be valid JSON." on its own `projectId`. It is a
+// domain-level validator that `ProjectService.NormalizeProcessingSettings` calls
+// explicitly, so it must not be auto-discovered. See ValidationRegistration.
+builder.Services.AddDubbingValidators();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IdempotencyService>();
@@ -340,6 +346,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         o.Authority = string.IsNullOrWhiteSpace(authConfig.Authority) ? null : authConfig.Authority.Trim();
         o.Audience = authConfig.Audience;
         o.RequireHttpsMetadata = authConfig.RequireHttps;
+        // Inbound claim mapping must stay OFF. `AuthService.CreateAccessToken`
+        // mints the platform short names (`tid`, `sub`, `roles` - see
+        // DubbingPlatform.Application.Authorization.ClaimTypes) and every reader
+        // in ClaimsPrincipalExtensions looks those up by short name, but the
+        // default map rewrites them to long URIs on validation: `tid` becomes
+        // `http://schemas.microsoft.com/identity/claims/tenantid`, `sub` becomes
+        // `.../nameidentifier`, `roles` becomes `.../claims/role`. The result is
+        // that the API mints a token it cannot itself read, and every
+        // authenticated request fails with 401 TENANT_REQUIRED or 403 FORBIDDEN
+        // while the signature still validates.
+        //
+        // `MapInboundClaims` was never set, so the real HTTP auth path was
+        // broken end to end and only escaped notice because the unit tests read
+        // the minted token directly and the integration tests stub the
+        // principal. Regression guard: Auth/JwtInboundClaimMappingTests.
+        o.MapInboundClaims = false;
         o.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = !string.IsNullOrWhiteSpace(authConfig.Authority),

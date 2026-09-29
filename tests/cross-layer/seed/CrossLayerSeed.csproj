@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Task 040A: cross-layer harness seeder.
+
+    The cross-layer rig needs a tenant, an active user, a project, and a project
+    promoted to `MediaReady` so `POST /processing` accepts a start. There is no
+    public provisioning endpoint (by design), and the unit/integration suites seed
+    through `AppDbContext` directly, so this is a deliberately separate console
+    tool rather than a new production endpoint.
+
+    It is NOT part of the product: it is referenced by nothing in `src/`, it is
+    never published, and `tests/cross-layer/harness/seed.ts` invokes it as a
+    process. Task 040A instruction 2 explicitly allows a `seed.cs` seeder.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>DubbingPlatform.CrossLayer.Seed</RootNamespace>
+    <AssemblyName>CrossLayerSeed</AssemblyName>
+    <!-- The rig asserts real behaviour; a suppressed warning would hide a real defect. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <!-- Analyzers target product code; a seeding tool is not held to the same bar. -->
+    <RunAnalyzers>false</RunAnalyzers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <!-- Migrations are applied by the seeder, so the design-time assembly is needed. -->
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\DubbingPlatform.Infrastructure\DubbingPlatform.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\src\DubbingPlatform.Application\DubbingPlatform.Application.csproj" />
+    <ProjectReference Include="..\..\..\src\DubbingPlatform.Domain\DubbingPlatform.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
