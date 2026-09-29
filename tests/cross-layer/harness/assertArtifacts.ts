@@ -159,8 +159,70 @@ const PROJECT_LINKS: Readonly<Record<string, (uuid: string) => string>> = {
   processing_runs: (uuid) => `project_id = '${uuid}'::uuid`,
   provider_executions: (uuid) => `project_id = '${uuid}'::uuid`,
   review_items: (uuid) => `project_id = '${uuid}'::uuid`,
+  // `review_decisions` has no project column: it links through its review item.
+  review_decisions: (uuid) =>
+    `review_item_id IN (SELECT id FROM review_items WHERE project_id = '${uuid}'::uuid)`,
   speech_segments: (uuid) => `project_id = '${uuid}'::uuid`,
+  transcript_versions: (uuid) => `project_id = '${uuid}'::uuid`,
+  translation_versions: (uuid) => `project_id = '${uuid}'::uuid`,
+  speakers: (uuid) => `project_id = '${uuid}'::uuid`,
+  speaker_voice_assignments: (uuid) => `project_id = '${uuid}'::uuid`,
+  voice_profiles: (uuid) => `id IN (SELECT voice_profile_id FROM speaker_voice_assignments WHERE project_id = '${uuid}'::uuid)`,
+  upload_sessions: (uuid) => `project_id = '${uuid}'::uuid`,
+  upload_parts: (uuid) => `upload_session_id IN (SELECT id FROM upload_sessions WHERE project_id = '${uuid}'::uuid)`,
+  artifacts: (uuid) => `project_id = '${uuid}'::uuid`,
+  export_jobs: (uuid) => `project_id = '${uuid}'::uuid`,
+  activity_events: (uuid) => `project_id = '${uuid}'::uuid`,
 };
+
+/**
+ * Reads the voice profile a speaker is actually assigned, straight from the
+ * database.
+ *
+ * <para>
+ * Deliberately a pointer read rather than a row count.
+ * `speaker_voice_assignments` holds one row per speaker and the API *replaces*
+ * it on a change, so "a new row appeared" is false even for a real voice change -
+ * verified, not assumed. The stored pointer is the fact the seam is about.
+ * </para>
+ */
+export async function readAssignedVoiceProfileId(speakerId: string): Promise<string | null> {
+  const raw = (
+    await queryPostgres(
+      `SELECT coalesce(voice_profile_id::text, '') FROM speaker_voice_assignments ` +
+        `WHERE speaker_id = '${toUuid(speakerId)}'::uuid ORDER BY created_at DESC LIMIT 1;`,
+    )
+  ).trim();
+
+  return raw.length === 0 ? null : raw;
+}
+
+/**
+ * Counts the *open* review items belonging to one processing run.
+ *
+ * <para>
+ * Deliberately run-scoped, and deliberately not the same as
+ * `countRows('review_items', projectId)`. The workspace read reports
+ * `review.pendingCount` for the project's <em>active run</em>, so comparing it
+ * against a project-wide count compares two different scopes: with the seeded
+ * anchor run holding an open item and a freshly started run holding none, the
+ * project count is 1, the workspace says 0, and both are correct. Comparing them
+ * anyway fails a green rig - which is what happened the first time.
+ * </para>
+ */
+export async function countOpenReviewItemsForRun(runId: string): Promise<number> {
+  const raw = (
+    await queryPostgres(
+      `SELECT count(*) FROM review_items WHERE processing_run_id = '${toUuid(runId)}'::uuid ` +
+        "AND status = 'Open';",
+    )
+  ).trim();
+  const count = Number.parseInt(raw, 10);
+  if (Number.isNaN(count)) {
+    throw new ArtifactAssertionError('Could not read the open review count for a run.');
+  }
+  return count;
+}
 
 /** Counts the rows a table holds for one project. */
 export async function countRows(table: string, projectId: string): Promise<number> {
@@ -208,9 +270,10 @@ export async function assertRunArtifacts(input: {
 
   const projectRow = await readProjectRow(projectId);
   const reloadedRun = await api.readRun(token, projectId, run.runId);
-  const reviewCount = await countRows('review_items', projectId);
   const exportArtifactCount = await countRows('export_artifacts', projectId);
   const notificationCount = await countRows('notifications', projectId);
+  // Run-scoped, matching the scope the workspace uses for `review.pendingCount`.
+  const reviewCount = await countOpenReviewItemsForRun(reloadedRun.runId);
 
   if (projectRow.status === 'Created' || projectRow.status === 'MediaReady') {
     throw new ArtifactAssertionError(

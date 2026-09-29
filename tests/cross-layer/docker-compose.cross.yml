@@ -78,7 +78,14 @@ services:
       # attempts a TLS handshake the stock `postgres:16` image does not serve and
       # then fails with an opaque "Exception while reading from stream".
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=CHANGE_ME;SSL Mode=Disable
-      Storage__Endpoint: http://minio:9000
+      Storage__Endpoint: minio:9000
+      # `UseSsl: false` is load-bearing, not decorative. `StorageRegistration`
+      # normalises `Endpoint` with `UseSsl` to build the SDK `ServiceURL`, and the
+      # SDK signs the presigned URL against that scheme: with it left at the
+      # default the export seam gets an `https://minio:9000/...` URL against a
+      # plaintext MinIO and every download fails with an OpenSSL
+      # "wrong version number" error that reads like a MinIO fault.
+      Storage__UseSsl: false
       Storage__AccessKey: CHANGE_ME
       Storage__SecretKey: CHANGE_ME
       # Mock AI is mandatory for the rig: a seam must never call a real provider.
@@ -167,7 +174,8 @@ services:
       DOTNET_ENVIRONMENT: Development
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=CHANGE_ME;SSL Mode=Disable
       RabbitMq__Host: rabbitmq
-      Storage__Endpoint: http://minio:9000
+      Storage__Endpoint: minio:9000
+      Storage__UseSsl: false
       Storage__AccessKey: CHANGE_ME
       Storage__SecretKey: CHANGE_ME
       Providers__DefaultProvider: mock
@@ -194,7 +202,8 @@ services:
       DOTNET_ENVIRONMENT: Development
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=dubbing;Username=dubbing;Password=CHANGE_ME;SSL Mode=Disable
       RabbitMq__Host: rabbitmq
-      Storage__Endpoint: http://minio:9000
+      Storage__Endpoint: minio:9000
+      Storage__UseSsl: false
       Storage__AccessKey: CHANGE_ME
       Storage__SecretKey: CHANGE_ME
       Providers__DefaultProvider: mock

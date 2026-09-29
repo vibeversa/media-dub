@@ -21,6 +21,12 @@ export interface SeedResult {
   readonly projectId: string;
   readonly externalSubject: string;
   readonly projectStatus: string;
+  /**
+   * Seam fixture ids (Task 040B). Declared loosely as `unknown`-shaped here and
+   * narrowed by `environment.ts`, which owns the contract, so this module does
+   * not have to know what a voice profile is.
+   */
+  readonly fixtures?: unknown;
 }
 
 export class SeedError extends Error {
@@ -93,6 +99,8 @@ export async function seedCrossLayerEnvironment(): Promise<SeedResult> {
     SEED.userId,
     '--project',
     SEED.projectId,
+    '--pipeline-project',
+    SEED.pipelineProjectId,
     '--reset',
   ]);
 

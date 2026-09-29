@@ -7,13 +7,19 @@
 export {
   API_BASE_URL,
   COMPOSE_FILE,
+  CONTAINERS,
   FRONTEND_BASE_URL,
   PORTS,
   REQUIRED_RUNNING_SERVICES,
   REQUIRED_SERVICES,
   SEED,
+  SEEDED_PIPELINE_PROJECT_NAME,
+  SEEDED_PROJECT_NAME,
   SEEDER_CONNECTION_STRING,
   SEEDER_PROJECT,
+  STORAGE_ACCESS_KEY,
+  STORAGE_BUCKET,
+  STORAGE_SECRET_KEY,
   RigPreflightError,
   assertRigPortsOpen,
   formatServiceMatrix,
@@ -26,12 +32,21 @@ export type {
   ApiFailure,
   ProcessingRun,
   ProjectSummary,
+  RawResponse,
+  RequestOptions,
   TokenPair,
   WorkspaceSnapshot,
 } from './apiClient.js';
 
 export { SeedError, buildSeeder, seedCrossLayerEnvironment } from './seed.js';
 export type { SeedResult } from './seed.js';
+
+export {
+  environmentSnapshotPath,
+  readEnvironment,
+  writeEnvironmentSnapshot,
+} from './environment.js';
+export type { CrossLayerEnvironment, SeamFixtures } from './environment.js';
 
 export { SseClient, SseTimeoutError } from './sseClient.js';
 export type { SseEvent } from './sseClient.js';
@@ -52,7 +67,20 @@ export {
   ArtifactAssertionError,
   assertRunArtifacts,
   assertRunPersisted,
+  countOpenReviewItemsForRun,
   countRows,
+  readAssignedVoiceProfileId,
   readProjectRow,
 } from './assertArtifacts.js';
 export type { ProjectRow, RunArtifacts } from './assertArtifacts.js';
+
+export {
+  ObjectStorageError,
+  ensureBucket,
+  fetchSignedUrl,
+  getObject,
+  putObject,
+  putPart,
+  toTransportUrl,
+} from './objectStorage.js';
+export type { FetchedObject } from './objectStorage.js';

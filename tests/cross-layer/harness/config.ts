@@ -52,6 +52,29 @@ export const API_BASE_URL = `http://127.0.0.1:${PORTS.api}`;
 export const FRONTEND_BASE_URL = `http://127.0.0.1:${PORTS.frontend}`;
 
 /**
+ * The seeded project's name, as written by `seed/Program.cs`. The harness
+ * resolves the project by name because the seeder knows only the GUID while
+ * every route takes the public id.
+ */
+export const SEEDED_PROJECT_NAME = 'Cross Layer Pilot';
+
+/** Container names the rig's helpers reach into. Disjoint from the dev stack. */
+export const CONTAINERS = {
+  postgres: 'dubbing-cross-layer-postgres-1',
+  minio: 'dubbing-cross-layer-minio-1',
+  api: 'dubbing-cross-layer-api-1',
+} as const;
+
+/**
+ * Object-storage credentials, matching the `CHANGE_ME` placeholders in
+ * `docker-compose.cross.yml`. Emulator credentials for a local rig only - never a
+ * real key, and the seam reports them as such rather than as a finding.
+ */
+export const STORAGE_ACCESS_KEY = 'CHANGE_ME';
+export const STORAGE_SECRET_KEY = 'CHANGE_ME';
+export const STORAGE_BUCKET = 'dubbing';
+
+/**
  * The seeded identity and project. Fixed so a failure is reproducible and a
  * `reset` can address exactly one tenant. `cross-layer.invalid` is an RFC 2606
  * reserved domain, so the seeded email can never reach a real mailbox.
@@ -60,9 +83,22 @@ export const SEED = {
   tenantId: '11111111-1111-1111-1111-111111111111',
   userId: '22222222-2222-2222-2222-222222222222',
   projectId: '33333333-3333-3333-3333-333333333333',
+  /**
+   * A second, fixture-free project.
+   *
+   * A project has exactly one run slot: a start pins an active run and a second
+   * start is 409 RUN_ALREADY_ACTIVE. The 040A harness smoke already starts a run
+   * on the pilot project, so a processing seam that shares it is testing the
+   * smoke's leftover - the 040B edge case "seam passes alone but fails in full
+   * suite". Per-spec isolation is the fix.
+   */
+  pipelineProjectId: '44444444-4444-4444-4444-444444444444',
   externalSubject: 'cross-layer-owner',
   email: 'owner@cross-layer.invalid',
 } as const;
+
+/** The pipeline project's display name, as written by `seed/Program.cs`. */
+export const SEEDED_PIPELINE_PROJECT_NAME = 'Cross Layer Pipeline';
 
 /**
  * Connection string for the seeder.

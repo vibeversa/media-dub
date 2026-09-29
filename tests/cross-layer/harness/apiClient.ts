@@ -6,7 +6,7 @@
 // The helpers therefore fail with a message that names the seam, and they do
 // not re-implement a route matrix.
 
-import { API_BASE_URL } from './config.js';
+import { API_BASE_URL, SEEDED_PIPELINE_PROJECT_NAME, SEEDED_PROJECT_NAME } from './config.js';
 
 export interface ApiFailure {
   readonly status: number;
@@ -70,7 +70,7 @@ export interface WorkspaceSnapshot {
   readonly permissions: Readonly<Record<string, unknown>>;
 }
 
-interface RequestOptions {
+export interface RequestOptions {
   readonly method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   readonly path: string;
   readonly token?: string;
@@ -96,8 +96,53 @@ async function readFailure(response: Response): Promise<ApiFailure> {
   }
 }
 
+/**
+ * A response that was expected to fail, or whose failure mode is the assertion.
+ * A seam asserting a 409 needs the status and the error code, not an exception,
+ * so `request` is bypassed for those calls.
+ */
+export interface RawResponse {
+  readonly status: number;
+  readonly body: unknown;
+  readonly headers: Headers;
+}
+
 export class ApiClient {
   constructor(private readonly baseUrl: string = API_BASE_URL) {}
+
+  /**
+   * Issues a request and returns the response without throwing on a non-2xx
+   * status. Used for the failure half of every seam, where the status and the
+   * error code *are* the assertion.
+   */
+  async requestRaw(options: RequestOptions): Promise<RawResponse> {
+    const response = await fetch(`${this.baseUrl}${options.path}`, {
+      method: options.method,
+      headers: {
+        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(options.token === undefined ? {} : { Authorization: `Bearer ${options.token}` }),
+        ...options.headers,
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      redirect: 'manual',
+    });
+
+    const text = await response.text();
+    let body: unknown = text;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // Non-JSON bodies (HTML error pages, empty 204s) are kept as text.
+    }
+
+    return { status: response.status, body, headers: response.headers };
+  }
+
+  /** Extracts the stable error code from an error envelope, if present. */
+  static errorCode(response: RawResponse): string | undefined {
+    const body = response.body as { error?: { code?: string } } | undefined;
+    return body?.error?.code;
+  }
 
   private async request<T>(options: RequestOptions): Promise<T> {
     const response = await fetch(`${this.baseUrl}${options.path}`, {
@@ -147,6 +192,36 @@ export class ApiClient {
     token: string,
   ): Promise<{ items: ProjectSummary[]; total: number }> {
     return this.request({ method: 'GET', path: '/api/v1/projects?page=1&pageSize=50', token });
+  }
+
+  /**
+   * Returns the public project id for the seeded project. Seam specs need the
+   * public id (every route takes it) while the seeder knows the GUID, so this is
+   * the single place the translation happens.
+   */
+  async resolveSeededProjectId(token: string): Promise<string> {
+    return this.resolveProjectIdByName(token, SEEDED_PROJECT_NAME);
+  }
+
+  /**
+   * The pipeline project's public id. Seams that start a processing run use this
+   * one so they cannot collide with the 040A smoke's run on the pilot project.
+   */
+  async resolveSeededPipelineProjectId(token: string): Promise<string> {
+    return this.resolveProjectIdByName(token, SEEDED_PIPELINE_PROJECT_NAME);
+  }
+
+  private async resolveProjectIdByName(token: string, name: string): Promise<string> {
+    const projects = await this.listProjects(token);
+    const seeded = projects.items.find((candidate) => candidate.name === name);
+    if (seeded === undefined) {
+      throw new Error(
+        `The seeded project '${name}' is not in the project list ` +
+          `(${projects.total} project(s) present). The rig was not seeded, or a previous ` +
+          'run left different state. The seam cannot proceed without it.',
+      );
+    }
+    return seeded.id;
   }
 
   /**

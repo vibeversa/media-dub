@@ -4,6 +4,7 @@ using DubbingPlatform.Application.Configuration;
 using DubbingPlatform.Application.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace DubbingPlatform.Api.Filters;
 
@@ -159,15 +160,59 @@ public sealed class IdempotencyFilter : IAsyncActionFilter
             || string.Equals(method, "PATCH", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Projects the bound action arguments into the map that is hashed.
+    ///
+    /// <para>
+    /// Framework-injected parameters must be excluded. <c>ActionArguments</c>
+    /// contains everything MVC bound, including the action's
+    /// <c>CancellationToken</c>, and
+    /// <see cref="ConfigurationHashCalculator"/> canonicalises the map with
+    /// <c>System.Text.Json</c> - which walks into <c>CancellationToken.WaitHandle</c>
+    /// and throws <c>NotSupportedException: Serialization and deserialization of
+    /// 'System.IntPtr' instances is not supported. Path: $.WaitHandle.Handle</c>.
+    /// Every mutation endpoint that takes a <c>CancellationToken</c> and is
+    /// called with an <c>Idempotency-Key</c> therefore answered <c>500
+    /// INTERNAL_ERROR</c> before the action ever ran.
+    /// </para>
+    ///
+    /// <para>
+    /// Excluding them is also correct on its own terms: the hash identifies the
+    /// <em>request</em>, and a cancellation token is per-call plumbing that
+    /// changes on every request, so including it would make a replay of an
+    /// identical request hash differently and defeat replay detection.
+    /// </para>
+    /// </summary>
     private static Dictionary<string, object?> FlattenArguments(IDictionary<string, object?> arguments)
     {
         var flattened = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var pair in arguments)
         {
+            if (IsFrameworkInjected(pair.Key, pair.Value))
+            {
+                continue;
+            }
+
             flattened[pair.Key] = pair.Value;
         }
 
         return flattened;
+    }
+
+    private static bool IsFrameworkInjected(string name, object? value)
+    {
+        // Type-based: an action parameter of one of these types is plumbing
+        // whatever it is called. `Stream` is here because a raw file parameter
+        // cannot be canonicalised either, and including it would reintroduce
+        // the same throw through a different route.
+        if (value is CancellationToken or HttpContext or ModelStateDictionary or Stream)
+        {
+            return true;
+        }
+
+        // Name-based: MVC binds these names itself and they are never request
+        // content.
+        return name is "cancellationToken" or "httpContext" or "modelState";
     }
 
     private static (int StatusCode, string BodyJson) CaptureResult(IActionResult result)

@@ -432,6 +432,33 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseMiddleware<ErrorMappingMiddleware>();
+if (app.Environment.IsDevelopment())
+{
+    // `ErrorMappingMiddleware` answers 500 with a generic envelope and does not
+    // otherwise surface the exception, so a failing request is undiagnosable
+    // from the log - the correlation id is the only handle and it resolves to
+    // nothing. Development only: in production this would log request detail
+    // that must not reach an operator's log sink.
+    app.Use(async (context, next) =>
+    {
+        try
+        {
+            await next(context).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            var logger = context.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("UnhandledRequestException");
+            logger.LogError(
+                exception,
+                "Unhandled exception for {Method} {Path}",
+                context.Request.Method,
+                context.Request.Path);
+            throw;
+        }
+    });
+}
 
 app.UseCors("dubbing-cors");
 app.UseRateLimiter();

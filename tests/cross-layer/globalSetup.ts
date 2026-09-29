@@ -23,9 +23,11 @@ import {
   SEED,
   assertRigPortsOpen,
   buildSeeder,
+  environmentSnapshotPath,
   formatServiceMatrix,
   isPortListening,
   seedCrossLayerEnvironment,
+  writeEnvironmentSnapshot,
 } from './harness/index.js';
 
 // Absolute repository root, discovered by walking up from the working
@@ -265,9 +267,16 @@ async function main(): Promise<void> {
   // Reset always precedes seed (040A edge case: leftover state from a prior run).
   await buildSeeder();
   const seeded = await seedCrossLayerEnvironment();
+
+  // Handed to the 040B seam specs. Without this a seam would have to search for
+  // "a" review item or "a" voice profile, which silently retargets the seam
+  // whenever the fixture set changes.
+  const environment = writeEnvironmentSnapshot(seeded);
+
   process.stdout.write(
-    `cross-layer: seeded tenant=${seeded.tenantId} project=${seeded.projectId} ` +
-      `status=${seeded.projectStatus}\n` +
+    `cross-layer: seeded tenant=${environment.tenantId} project=${environment.projectId} ` +
+      `status=${environment.projectStatus}\n` +
+      `cross-layer: snapshot ${environmentSnapshotPath()}\n` +
       `cross-layer: api=${API_BASE_URL} frontend=${FRONTEND_BASE_URL}\n` +
       `cross-layer: identity subject=${SEED.externalSubject}\n`,
   );
