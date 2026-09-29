@@ -1,0 +1,266 @@
+name: contract
+
+# Task 042B - the OpenAPI contract gate.
+#
+# This is the workflow that decides whether a change to the API surface is
+# allowed to merge, so it is deliberately the SMALLEST of the three. It does not
+# build, test, or deploy anything. It reads two documents, compares them, and
+# exits.
+#
+#   breaking change                      -> fail, annotated, exit 1
+#   any contract change, no version bump -> fail, annotated, exit 2
+#   additive change + version bump       -> pass
+#   anything that stopped it running      -> fail, exit 3 (never a pass)
+#
+# WHY IT IS A SEPARATE REQUIRED CHECK
+# ----------------------------------
+# Three reasons, and the third is the one that matters:
+#   1. Its inputs are two git refs, so it runs in seconds and gives a verdict
+#      before anyone has waited for a build.
+#   2. It is the only check whose input is the MERGED `main` document, so its
+#      verdict does not depend on any other pipeline having succeeded. A
+#      contract regression cannot hide behind a red build.
+#   3. It is the check that must keep working when everything else is broken. A
+#      contract rule enforced as a step inside the backend workflow inherits every
+#      failure mode of the backend workflow: a bad restore, an unavailable
+#      runner, a full disk.
+#
+# THE CANARY IS A JOB, NOT A NOTE
+# ------------------------------
+# `scripts/contract-canary.sh` runs here on every PR and asserts that each class
+# of deliberate break is still REJECTED. A gate that nobody has watched fire is a
+# gate that can be "simplified" into a no-op by someone who never saw it fail.
+# The canary is what stops that: it runs on the same runner, with the same pinned
+# tool, as the real comparison.
+#
+# SCRIPT INJECTION
+# ----------------
+# Every `${{ }}` in a `run:` block arrives through the step's `env:` mapping
+# instead. A pull request's title, body, branch name and head ref are all
+# attacker-controlled, and `run: git fetch ${{ github.event.pull_request.head.ref }}`
+# hands them to a shell. `scripts/workflow-lint.sh` fails the build on the unsafe
+# form, so the rule is enforced rather than remembered.
+#
+# SECRETS
+# -------
+# OIDC only, and nothing beyond `GITHUB_TOKEN`. There is no cloud credential, no
+# registry PAT and no signing key in this repository. cosign signing (backend.yml)
+# is keyless via the Actions OIDC token.
+
+on:
+  # ONLY `workflow_call` and `workflow_dispatch` - see the note in backend.yml for
+  # why a direct `pull_request` trigger here would run every job twice per PR and
+  # why a `paths:` filter on a required check is a merge block. `ci.yml` is the
+  # sole subscriber.
+  #
+  # The path filters that used to be here were actively wrong for a required
+  # check, and the reason is worth recording: a filtered check does not report on
+  # a PR it does not match, so branch protection waits on a status that will
+  # never arrive. Every PR gets the contract gate; the gate itself is ~40 seconds
+  # plus a one-off oasdiff download, and the canary is the part that earns its
+  # runtime by proving the gate still fails when it should.
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'Base ref to compare against.'
+        required: false
+        default: main
+        type: string
+concurrency:
+  group: contract-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  breaking:
+    name: breaking changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the base document is read with `git show <ref>:<path>`,
+          # so a shallow clone would either miss the ref or fetch it at the wrong
+          # depth - and a gate that compares HEAD against HEAD reports every PR
+          # as compatible.
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # A pull request is compared against the tip of `main` MERGED WITH the PR
+      # head, not against the PR's own merge base. The difference matters the
+      # moment two PRs touch the bundle: a merge-base comparison cannot see the
+      # conflict resolution, so a change that survived a merge conflict could
+      # pass a gate that never looked at the merged result.
+      - name: Compute the merge ref
+        if: github.event_name == 'pull_request'
+        id: refs
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git fetch --no-tags --depth=1 origin "$PR_BASE_REF"; then
+            if git merge --no-edit --no-ff -m "contract gate: synthetic merge" "origin/$PR_BASE_REF" >/dev/null 2>&1; then
+              echo "merge=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              echo "Compared the PR head merged with origin/$PR_BASE_REF, so a conflict resolution is part of the compared document." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::warning::the PR head does not merge cleanly with origin/$PR_BASE_REF; comparing the head directly. The bundle is normally regenerated by a later step of the same PR, which is where a real conflict shows up." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "merge=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Compare against the base
+        id: diff
+        env:
+          DIFF_BASE: ${{ inputs.base || (github.event_name == 'pull_request' && github.base_ref) || 'HEAD~1' }}
+          DIFF_HEAD: ${{ steps.refs.outputs.merge || github.sha }}
+        run: |
+          set -euo pipefail
+          echo "base=$DIFF_BASE" >> "$GITHUB_OUTPUT"
+          echo "head=$DIFF_HEAD" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Contract gate"
+            echo
+            echo "- base: \`$DIFF_BASE\`"
+            echo "- head: \`$DIFF_HEAD\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          # The gate's own exit code is the job's: 1 breaking, 2 bump owed,
+          # 3 could-not-run. The step records the code and exits 0, because
+          # failing HERE would skip the artifact upload - and the annotated diff
+          # is the evidence needed to understand the failure. The `Verdict` step
+          # re-raises it afterwards.
+          set +e
+          bash scripts/openapi-diff.sh \
+            --base "$DIFF_BASE" --head "$DIFF_HEAD" \
+            --summary "$RUNNER_TEMP/contract-diff.md" \
+            | tee "$RUNNER_TEMP/contract-diff.txt"
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "exit=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the contract diff
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-diff
+          path: ${{ runner.temp }}/contract-diff.*
+          retention-days: 30
+
+      - name: Verdict
+        env:
+          VERDICT: ${{ steps.diff.outputs.exit }}
+        run: |
+          set -euo pipefail
+          case "$VERDICT" in
+            0) echo "compatible" >> "$GITHUB_STEP_SUMMARY" ;;
+            1) echo "::error::breaking OpenAPI change. See the annotations and the contract-diff artifact."; exit 1 ;;
+            2) echo "::error::the contract changed without an info.version bump."; exit 1 ;;
+            3) echo "::error::the contract gate could not run; this is a failure, not a pass."; exit 1 ;;
+            *) echo "::error::the contract gate produced no verdict (exit '$VERDICT')."; exit 1 ;;
+          esac
+          cat "$RUNNER_TEMP/contract-diff.md" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+  canary:
+    name: gate canary
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # The gate's own rules, hermetically. Cheap, and it means a change to
+      # `tools/openapi-*.mjs` that breaks a decision is caught by a unit test
+      # rather than by whatever the next real PR happens to change.
+      - name: Contract rules unit tests
+        run: bash scripts/openapi-diff.sh --self-test
+
+      # The end-to-end canary: one deliberate break per class, each of which must
+      # be REJECTED, plus the classes that must be accepted. This is the task's
+      # "deliberate-break canary PR" turned into something that runs on every PR
+      # instead of once, by hand, and never again.
+      - name: Deliberate-break canary
+        run: bash scripts/contract-canary.sh
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks scans history, not just the diff, so a shallow clone would
+          # under-report.
+          fetch-depth: 0
+
+      # The security requirement: a secrets scan on every PR touching `deploy/` or
+      # the workflows.
+      #
+      # The decision about WHICH files to scan is made INSIDE the job, by
+      # comparing refs, rather than with a `paths:` filter on the workflow. A
+      # `paths:` filter makes the check "pending" forever on a PR that does not
+      # touch those paths, and a required check that never reports is a merge
+      # block - which is how branches end up with a required check that everyone
+      # bypasses. Deciding inside the job means the check always reports, and the
+      # scan runs exactly when it is needed.
+      - name: Does this PR touch deploy or the workflows?
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_PR" != "true" ]; then
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+            echo "push: scanning the full history." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          files=$(git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA" 2>/dev/null || true)
+          if [ -z "$files" ]; then
+            # A first push to a new branch, or a base the runner cannot resolve.
+            # Scanning is the safe reading of an unknown.
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+            echo "base ref unavailable; scanning the whole history rather than assuming the PR is out of scope." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if printf '%s\n' "$files" | grep -Eq '^(deploy/|\.github/workflows/)'; then
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+            echo "this PR touches deploy/ or the workflows: scanning." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "scan=false" >> "$GITHUB_OUTPUT"
+            echo "this PR touches neither deploy/ nor the workflows: no secrets scan needed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: gitleaks
+        if: steps.scope.outputs.scan == 'true'
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # The only credential involved, and it is used to post the SARIF rather
+          # than to read anything private.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --redact --verbose --no-banner
+
+      - name: Report the skipped scan
+        if: steps.scope.outputs.scan != 'true'
+        run: |
+          {
+            echo "gitleaks did not run."
+            echo "This PR touches neither deploy/ nor .github/workflows/, so the secrets scan is out of scope."
+            echo "The check still reports, so it can be a required status check."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,67 @@
+# syntax=docker/dockerfile:1.7
+# Frontend image (Task 042).
+#
+# This is a STATIC SPA behind nginx. Two decisions in it are load-bearing and
+# both are the kind that produce a bug that only appears in production:
+#
+#   1. The SPA fallback. Every unknown path must serve index.html, because a deep
+#      link like /projects/01H.../workspace is handled by the client router and the
+#      server has never heard of it. Without `try_files ... /index.html` that URL
+#      is a 404 that a user sees, and no amount of client-side routing fixes it.
+#   2. The cache policy. `/assets/*` filenames carry a content hash, so they are
+#      immutable and can be cached for a year. `index.html` MUST NOT be, or a
+#      deploy ships new hashed assets while browsers keep serving the old
+#      document that references the previous hashes - which is a white screen
+#      after every release, and the single most common way a hashed-asset setup
+#      fails in production.
+#
+# The VITE_* variables are inlined at BUILD time by Vite, so this image is
+# specific to the API it was built against. That is why the image is versioned
+# and signed like the backend ones (R5): an `index.html` baked with the wrong
+# API base URL is a different product, not a different build of the same one.
+
+# --- build --------------------------------------------------------------------
+FROM node:24-alpine AS build
+WORKDIR /app
+
+# The lockfile is copied on its own so a source-only change reuses the cached
+# install layer. `npm ci` - never `npm install` - so the image is built from
+# exactly the tree the lockfile pins, which is also the tree the audit gate read.
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+# `.env.example` is copied in by the caller before this build; the fallback here
+# keeps `docker build` working on a bare checkout, and the resulting bundle
+# points at the documented local API.
+RUN cp -n .env.example .env || true
+RUN npm run build
+
+# The build output is copied into its own stage so the runtime image carries no
+# node_modules, no package.json, and no source. A static file server has no
+# business carrying a package tree, and `npm audit` findings in a dev dependency
+# are one less thing to reason about in a deployed artifact.
+FROM scratch AS dist
+COPY --from=build /app/dist /
+
+# --- runtime ------------------------------------------------------------------
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+
+# Port 8080, not 80: the unprivileged image cannot bind a port below 1024, and
+# binding 80 anyway would be the kind of privilege the rest of this image is
+# built to avoid. The ingress targets 8080 (deploy/k8s/ingress.yaml).
+EXPOSE 8080
+
+COPY deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY --from=dist / /usr/share/nginx/html
+
+# nginx-unprivileged runs as uid 101 with a writable /tmp and a pid file under
+# /tmp; nothing here needs root, and the image says so.
+USER nginx
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["/bin/sh", "-c", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+
+# `CMD` not `ENTRYPOINT`: an operator overriding the command should not have to
+# fight an entrypoint script to do it.
+CMD ["nginx", "-g", "daemon off;"]

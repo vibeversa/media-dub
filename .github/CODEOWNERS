@@ -1,0 +1,109 @@
+# CODEOWNERS (Task 042)
+#
+# WHAT THIS FILE IS FOR
+# ---------------------
+# Two gates resolve an owner from it and neither can do anything useful without
+# it:
+#   * `tools/npm-audit-gate.mjs` assigns a dependency advisory to a team, and
+#     reports "No owner is assigned" - loudly, in the job summary - while any
+#     handle below is still CHANGE_ME.
+#   * `gitleaks` findings on a PR touching `deploy/` or the workflows are
+#     reviewed by whoever owns those paths.
+#
+# >>> REPLACE EVERY `CHANGE_ME` HANDLE BEFORE ENABLING THE GATES ON A REAL REPO <<<
+# The gate does not fail on a placeholder (a repository whose owner is not known
+# yet is a normal state, and failing on it would mean the audit job is red before
+# anyone has done anything). It says so in the report instead, because a finding
+# assigned to `@CHANGE_ME/frontend` reads as assigned and is not.
+#
+# ORDER MATTERS: the LAST matching pattern wins, exactly as GitHub resolves it.
+# `frontend/` appears before `frontend/package-lock.json` on purpose - the
+# lockfile is a frontend concern, but its own team is the one that has to be able
+# to run `npm audit fix` without asking anybody, so it gets the more specific
+# rule. Reversing these two lines silently reassigns every lockfile finding to
+# the frontend team.
+#
+# Keep this file in step with `docs/ci-branch-protection.md` ("Owners"), which
+# records the same mapping in prose for the humans who set up branch protection.
+
+# Default: the engineering team owns anything not claimed below.
+*                                       @CHANGE_ME/engineering
+
+# --- Frontend -----------------------------------------------------------------
+frontend/src/                            @CHANGE_ME/frontend
+frontend/e2e/                            @CHANGE_ME/frontend
+frontend/package.json                    @CHANGE_ME/frontend
+frontend/vite.config.ts                  @CHANGE_ME/frontend
+frontend/tailwind.config.ts              @CHANGE_ME/frontend
+frontend/index.html                      @CHANGE_ME/frontend
+# The lockfile has its own owner on purpose: it is the file `npm audit fix`
+# rewrites, so it belongs to whoever can run that without a cross-team ask.
+frontend/package-lock.json               @CHANGE_ME/frontend-platform
+
+# --- Generated client (Task 014) ---------------------------------------------
+# The generated client is produced by `make generate-api` and never hand-edited,
+# but the BUNDLE it is generated from is hand-written, so a review request here
+# means "review the contract", not "review generated code".
+src/DubbingPlatform.Api/OpenApi/         @CHANGE_ME/api
+frontend/src/api/generated/              @CHANGE_ME/api
+
+# --- Contract gate ------------------------------------------------------------
+tools/openapi-compat.mjs                 @CHANGE_ME/api
+tools/openapi-gate.mjs                   @CHANGE_ME/api
+tools/openapi-compat.test.mjs            @CHANGE_ME/api
+tools/openapi-gate.test.mjs              @CHANGE_ME/api
+scripts/openapi-diff.sh                  @CHANGE_ME/api
+scripts/contract-canary.sh               @CHANGE_ME/api
+.github/workflows/contract.yml           @CHANGE_ME/api
+
+# --- Backend ------------------------------------------------------------------
+src/DubbingPlatform.Domain/              @CHANGE_ME/backend
+src/DubbingPlatform.Application/         @CHANGE_ME/backend
+src/DubbingPlatform.Infrastructure/      @CHANGE_ME/backend
+src/DubbingPlatform.Api/                 @CHANGE_ME/backend
+src/DubbingPlatform.Workers/             @CHANGE_ME/backend
+src/DubbingPlatform.Contracts/           @CHANGE_ME/backend
+tests/DubbingPlatform.UnitTests/         @CHANGE_ME/backend
+tests/DubbingPlatform.IntegrationTests/  @CHANGE_ME/backend
+tests/DubbingPlatform.ContractTests/     @CHANGE_ME/backend
+tests/DubbingPlatform.E2ETests/          @CHANGE_ME/backend
+
+# --- Test rigs (040A-041D) ----------------------------------------------------
+# The cross-layer rig is shared: it is the thing a backend bug is reproduced
+# against and a frontend bug is rendered in. It gets both, deliberately.
+tests/cross-layer/                       @CHANGE_ME/frontend-platform  @CHANGE_ME/backend
+e2e/visual/                              @CHANGE_ME/frontend
+e2e/a11y/                                @CHANGE_ME/frontend
+e2e/perf/                                @CHANGE_ME/frontend
+playwright.config.ts                     @CHANGE_ME/frontend-platform
+
+# --- CI and pipelines (this task) --------------------------------------------
+.github/workflows/backend.yml            @CHANGE_ME/platform
+.github/workflows/frontend.yml           @CHANGE_ME/platform
+.github/workflows/ci.yml                 @CHANGE_ME/platform
+scripts/require-docker.sh                @CHANGE_ME/platform
+scripts/migration-compat.sh              @CHANGE_ME/platform
+scripts/contract-snapshot.sh             @CHANGE_ME/platform
+scripts/visual-baseline-gate.sh          @CHANGE_ME/platform
+scripts/workflow-lint.sh                 @CHANGE_ME/platform
+tools/trx-assert.mjs                     @CHANGE_ME/platform
+tools/trx-parse.mjs                      @CHANGE_ME/platform
+tools/npm-audit-gate.mjs                 @CHANGE_ME/platform
+
+# --- Deployment ---------------------------------------------------------------
+# Anything that can put something in front of a user, or roll it back, is owned by
+# platform AND by the team that owns the thing being deployed. A single owner here
+# is how a manifest change ships without anyone from the affected team seeing it.
+deploy/k8s/                              @CHANGE_ME/platform  @CHANGE_ME/backend
+deploy/helm/                             @CHANGE_ME/platform  @CHANGE_ME/backend
+deploy/observability/                    @CHANGE_ME/platform
+deploy/verify.sh                         @CHANGE_ME/platform
+deploy/README.md                         @CHANGE_ME/platform
+.github/CODEOWNERS                       @CHANGE_ME/platform
+docs/ci-branch-protection.md             @CHANGE_ME/platform
+
+# --- Coverage and quality gates ----------------------------------------------
+docs/coverage.md                         @CHANGE_ME/quality
+docs/api-contract.md                     @CHANGE_ME/api
+scripts/coverage-gap.mjs                 @CHANGE_ME/quality
+scripts/presence-gate.mjs                @CHANGE_ME/quality

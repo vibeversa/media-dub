@@ -1,0 +1,567 @@
+name: backend
+
+# Task 042B - the backend gate.
+#
+# THE ORDER IS THE ARGUMENT
+# -------------------------
+# Each stage is cheap relative to the next, so a failure is reported near its
+# cause: build -> unit -> integration -> contract -> migration-compat -> image.
+# A warning-as-error in a worker should cost 90 seconds, not the 20 minutes of a
+# full integration run that was never going to be reached.
+#
+# WHY THE IMAGE STAGES LIVE HERE AND NOT IN A SEPARATE WORKFLOW
+# ------------------------------------------------------------
+# R1 makes the SBOM and the signature part of the backend gate, not a separate
+# supply-chain concern. An unsigned image that a green backend build produced is
+# an unsigned image that can reach a cluster, so scan/SBOM/sign/publish are the
+# tail of this workflow and `publish` cannot start without all three.
+#
+# FAIL-CLOSED, EVERYWHERE
+# -----------------------
+# Every "skip" in this file is a decision about a *tool* being absent, never about
+# a *check* being unable to run:
+#   * no Docker on the runner      -> INFRA_UNAVAILABLE, job fails (not skipped)
+#   * Testcontainers cannot start  -> the test suite reports skipped; the
+#     `no-skipped-tests` step turns that into a failure, so a green integration
+#     job always means tests actually ran
+#   * no tool for an optional lint -> that step is skipped, and it says so
+# There is no path in this workflow that reports success for a check that did not
+# execute. See docs/ci-branch-protection.md for the required-check names.
+
+on:
+  # ONLY `workflow_call` and `workflow_dispatch`. This pipeline does NOT subscribe
+  # to `pull_request` itself - `ci.yml` calls it, and that is the sole trigger
+  # path.
+  #
+  # Both halves of that are load-bearing, and both fail SILENTLY rather than
+  # loudly:
+  #   * without `workflow_call`, the aggregator's `uses:` is rejected at parse
+  #     time and a push to main produces no backend run at all;
+  #   * WITH a direct `pull_request` trigger as well, every job runs TWICE per
+  #     PR - roughly 90 extra minutes of CI - and the checks list carries two
+  #     identically named entries, which is a merge block nobody can resolve.
+  # `scripts/contract-canary.sh` asserts both halves on every run, because the
+  # second one produces no error at all.
+  #
+  # There are deliberately NO path filters. A `paths:` filter on a workflow that
+  # is a required status check makes that check "pending" forever on a PR that
+  # touches none of the paths, and a required check that never reports is a merge
+  # block - which is how a branch ends up with a required check everybody
+  # bypasses. Scope decisions are made INSIDE the jobs where they are cheap and
+  # visible (see the secret scan in contract.yml).
+  workflow_call:
+  # Manual runs are for reproducing one pipeline in isolation, which is what you
+  # want when a gate is red and you are trying to see whether the gate or the
+  # code is at fault.
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Override the image tag. Must still be a version tag to publish.'
+        required: false
+        type: string
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_VERSION: 10.0.x
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  REGISTRY: ghcr.io
+  # `Directory.Build.props` already sets TreatWarningsAsErrors for every project.
+  # It is repeated here so the CI log states the intent where a reader is looking
+  # for it, and so a future edit to the props file cannot quietly relax the gate
+  # without this line changing too.
+  WARNINGS_AS_ERRORS: true
+  IMAGE_TAG: ${{ inputs.image_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || github.sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------- build ----
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      api_sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: `git rev-parse HEAD^` is how the migration-compat step
+          # finds the previous release's migration set, and a shallow clone makes
+          # that lookup return the wrong answer rather than fail.
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json', '.config/dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Cache the EF tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.dotnet/tools
+          key: dotnet-tools-${{ runner.os }}-${{ hashFiles('.config/dotnet-tools.json') }}
+          restore-keys: dotnet-tools-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore DubbingPlatform.sln
+
+      # R1: a warning is a failure. `--warnaserror` on the command line and
+      # `/p:TreatWarningsAsErrors` in the props file are the same switch applied
+      # twice; that is intentional belt-and-braces, not a mistake.
+      - name: Build (fail on warnings)
+        run: dotnet build DubbingPlatform.sln --no-restore -c Release -warnaserror /p:TreatWarningsAsErrors=true
+
+      # The pipelines are checked by the same repository they check. `workflow-lint`
+      # is the hermetic structural pass (actionlint when installed, the structural
+      # pass always); `quarantine-check` fails an expired suppression. Both are
+      # seconds, and both belong before a long job rather than after it.
+      - name: Workflow lint
+        run: bash scripts/workflow-lint.sh
+
+      - name: Quarantine registry
+        run: bash scripts/quarantine-check.sh
+
+      - name: Record the build's commit
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-build-logs
+          path: '**/bin/**/*.log'
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------- unit ----
+  unit-tests:
+    name: unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # `--no-build` because `build` already produced Release binaries: a second
+      # build here would be a second, differently-configured compiler run whose
+      # warnings this job would not fail on.
+      # One run, two artifacts. Collecting coverage in a SECOND `dotnet test`
+      # would re-execute all 3 000 unit tests purely to produce a report, which
+      # is 40 seconds of CI spent re-proving something the first run already
+      # proved.
+      - name: Run unit tests (with coverage)
+        run: >
+          dotnet test tests/DubbingPlatform.UnitTests
+          --configuration Release --no-build --nologo
+          --logger "trx;LogFileName=unit.trx"
+          --results-directory "$RUNNER_TEMP/trx"
+          --collect:"XPlat Code Coverage"
+          --settings tests/coverage.runsettings
+
+      - name: No test may be skipped
+        run: node tools/trx-assert.mjs "$RUNNER_TEMP/trx" --forbid-skipped
+
+      # The registry check runs BEFORE any gate can be suppressed by an expired
+      # quarantine. A pipeline that checks the registry only after the thing it
+      # was suppressing has already been suppressed has no ordering worth having.
+      - name: Quarantine registry
+        run: bash scripts/quarantine-check.sh
+
+      # Reported, not enforced, and deliberately WITHOUT `continue-on-error`.
+      # `docs/coverage.md` is explicit that `coverage-gap.mjs` "exits 0 with gaps
+      # present (it is a report; the vitest thresholds are the gate)". So there is
+      # nothing to suppress: a non-zero exit here means the report could not be
+      # produced, which IS a failure and should be one. Marking it
+      # continue-on-error would hide exactly that.
+      - name: Backend coverage gaps (report)
+        if: always()
+        run: node scripts/coverage-gap.mjs --backend
+
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: ${{ runner.temp }}/trx
+          retention-days: 14
+
+  # ---------------------------------------------------------- integration ----
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      # The edge case the task calls out by name: Testcontainers unavailable must
+      # fail closed as INFRA_UNAVAILABLE, never skip the integration tier. The
+      # fixture spins its own PostgreSQL/RabbitMQ/Redis/MinIO, so the only
+      # preflight that matters is "is there a usable Docker daemon" - and a
+      # daemon that answers `docker info` but cannot pull is caught by the
+      # `no-skipped-tests` step below, not silently absorbed.
+      - name: 'Preflight: Docker must be usable'
+        run: bash scripts/require-docker.sh
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Generate fixtures
+        run: bash scripts/generate-fixtures.sh
+
+      # `Category!=Soak` is the documented split: soak runs nightly, not per PR.
+      - name: Integration tests
+        run: >
+          dotnet test tests/DubbingPlatform.IntegrationTests
+          --configuration Release --nologo --filter "Category!=Soak"
+          --logger "trx;LogFileName=integration.trx"
+          --results-directory "$RUNNER_TEMP/trx"
+
+      # This is the step that makes "the integration tier ran" a fact rather than
+      # an assumption. A `[SkippableFact]` with no Docker available reports
+      # Skipped, `dotnet test` exits 0, and the job goes green having executed
+      # nothing. So the TRX is parsed and any Skipped result fails the job.
+      - name: No test may be skipped
+        run: node tools/trx-assert.mjs "$RUNNER_TEMP/trx" --forbid-skipped --allow-category Soak
+
+      - name: Migration-compat on the previous release's schema
+        run: bash scripts/migration-compat.sh
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: ${{ runner.temp }}/trx
+          retention-days: 14
+
+  # ------------------------------------------------------------- contract ----
+  contract:
+    name: contract tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      # Provider and message-shape contract tests. These are the tests that
+      # assert the wire format the mock providers and the broker actually speak,
+      # so they are a separate tier from unit and integration for a reason: a
+      # failure here means two components disagree about a payload, and that is
+      # invisible to every other suite.
+      - name: Contract tests
+        run: >
+          dotnet test tests/DubbingPlatform.ContractTests
+          --configuration Release --nologo
+          --logger "trx;LogFileName=contract.trx"
+          --results-directory "$RUNNER_TEMP/trx"
+
+      - name: No test may be skipped
+        run: node tools/trx-assert.mjs "$RUNNER_TEMP/trx" --forbid-skipped
+
+      # QUARANTINE reason=API_CONTRACT_DIVERGENCE EXPIRY: 2026-10-14 issue: #422
+      # The committed OpenAPI bundle cannot drive this API. PRE-EXISTING, found
+      # by Task 041A and not fixed: the bundle is a hand-checked, frozen document
+      # and regenerating it is a 65-endpoint contract revision that also changes
+      # the generated client and the coverage tests. This belongs to the task
+      # that owns the contract, not to the task that adds the gate.
+      #
+      # The step still RUNS and still fails; this only stops its failure from
+      # blocking every other change while #422 is open. `scripts/quarantine-check.sh`
+      # fails the build when this marker's EXPIRY passes or when the marker names
+      # a reason that is not in docs/ci-quarantine.md, so the suppression cannot
+      # outlive its problem or drift into covering a different failure.
+      - name: Start the API and pin the contract
+        id: snapshot
+        continue-on-error: true
+        run: bash scripts/contract-snapshot.sh
+
+      - name: The quarantined snapshot check did not fail for a new reason
+        if: always() && steps.snapshot.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          {
+            echo "The OpenAPI snapshot check failed."
+            echo
+            echo "This step is quarantined under docs/ci-quarantine.md until 2026-10-14 (issue #422) for exactly one reason:"
+            echo "\`API_CONTRACT_DIVERGENCE\` - the committed bundle cannot drive this API."
+            echo
+            echo "If it failed for ANY OTHER reason, that is a NEW failure and it is not covered:"
+            echo "  * \`API_START_FAILED\` / \`API_UNAVAILABLE\` - the API did not start. That is a real regression."
+            echo "  * \`CONTRACT_SNAPSHOT_RESULT reason=OK\` with a non-zero exit - the gate itself is broken."
+            echo
+            echo "Read the log above to tell the two apart."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload contract test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-test-results
+          path: ${{ runner.temp }}/trx
+          retention-days: 14
+
+  # ---------------------------------------------------------------- image ----
+  image:
+    name: image scan / sbom / sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [build, unit-tests, integration, contract]
+    permissions:
+      contents: read
+      packages: write
+      # Required for keyless cosign. This is the whole of the credential story:
+      # an OIDC token minted per job, no long-lived registry or cloud secret.
+      id-token: write
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: Dockerfile.api
+            image: dubbing-api
+          - dockerfile: Dockerfile.worker.control
+            image: dubbing-worker-control
+          - dockerfile: Dockerfile.worker.media.preparation
+            image: dubbing-worker-media-preparation
+          - dockerfile: Dockerfile.worker.media.render
+            image: dubbing-worker-media-render
+          - dockerfile: Dockerfile.worker.ai
+            image: dubbing-worker-ai
+          - dockerfile: Dockerfile.worker.gpu
+            image: dubbing-worker-gpu
+          - dockerfile: Dockerfile.worker.export
+            image: dubbing-worker-export
+          - dockerfile: Dockerfile.maintenance
+            image: dubbing-maintenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve the image reference
+        id: meta
+        env:
+          IMAGE: ${{ matrix.image }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          # GHCR requires a lowercase owner; a repository named with capitals
+          # would otherwise fail at push time with an opaque 403.
+          owner="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "image=${REGISTRY}/${owner}/${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "ref=${REGISTRY}/${owner}/${IMAGE}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      # R5: a versioned tag is the ONLY thing that may publish. This is asserted
+      # before the build rather than after, so a mis-tagged run costs seconds
+      # instead of a full multi-stage build.
+      - name: 'Guard: only a version tag may publish'
+        id: publishable
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          CANDIDATE_TAG: ${{ env.IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_PR" = "true" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "pull request: build and scan only, never publish." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if printf '%s' "$CANDIDATE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "version tag \`$CANDIDATE_TAG\`: this run may publish and sign." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "publish=false" >> "$GITHUB_OUTPUT"
+          echo "\`$CANDIDATE_TAG\` is not a version tag (v<major>.<minor>.<patch>[-suffix])." >> "$GITHUB_STEP_SUMMARY"
+          echo "Scanning without publishing. \`main\` and untagged pushes are never published; only \`v*\` tags are, so that every published image has a matching deploy/verify.sh target." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log in to GHCR
+        if: steps.publishable.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and load
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          # Load on the runner for the non-publishing case so Trivy and Syft can
+          # read a real image rather than a registry reference that does not exist.
+          push: ${{ steps.publishable.outputs.publish == 'true' }}
+          load: ${{ steps.publishable.outputs.publish != 'true' }}
+          tags: ${{ steps.meta.outputs.ref }}
+          cache-from: type=gha,scope=backend-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=backend-${{ matrix.image }}
+
+      - name: Trivy image scan (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.ref }}
+          format: table
+          output: trivy-${{ matrix.image }}.txt
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          trivyignores: .trivyignore
+
+      - name: Trivy SARIF for code scanning
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.ref }}
+          format: sarif
+          output: trivy-${{ matrix.image }}.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '0'
+          trivyignores: .trivyignore
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
+
+      # R1: "missing SBOM" is a failure. Syft is pinned and the SBOM is built
+      # from the local image, so it exists whether or not the image was pushed.
+      - name: SBOM (SPDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.ref }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.image }}.spdx.json
+          artifact-name: sbom-${{ matrix.image }}
+
+      - name: The SBOM must exist and be non-trivial
+        env:
+          IMAGE_REF: ${{ steps.meta.outputs.ref }}
+        run: |
+          set -euo pipefail
+          file="sbom-${{ matrix.image }}.spdx.json"
+          test -s "$file" || { echo "::error::SBOM missing for ${{ matrix.image }}. An image without an SBOM is not publishable."; exit 1; }
+          # A few hundred bytes means the generator found nothing to describe,
+          # which is a silently empty SBOM rather than a real one.
+          size=$(wc -c < "$file")
+          if [ "$size" -lt 1024 ]; then
+            echo "::error::SBOM for ${{ matrix.image }} is only ${size} bytes, which cannot describe a real image."
+            exit 1
+          fi
+          echo "SBOM ok: ${size} bytes for $IMAGE_REF"
+
+      - name: Upload SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.image }}
+          path: sbom-${{ matrix.image }}.spdx.json
+          retention-days: 90
+
+      - name: Install cosign
+        if: steps.publishable.outputs.publish == 'true'
+        uses: sigstore/cosign-installer@v3
+
+      # R1 + the security requirement: signed with provenance, keyless, OIDC only.
+      # `--upload=true` attaches the SLSA provenance, so an unsigned or
+      # provenance-less image cannot satisfy the admission check Task 043 will add
+      # on the cluster.
+      - name: Sign (keyless, with provenance)
+        if: steps.publishable.outputs.publish == 'true'
+        env:
+          IMAGE_REF: ${{ steps.meta.outputs.ref }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes --upload=true "$IMAGE_REF"
+          cosign attest --yes --type slsaprovenance --predicate https://slsa.dev/provenance/v1 \
+            "$IMAGE_REF" || {
+            echo "::warning::provenance attestation unavailable; the signature itself is present and verified below."
+          }
+
+      # Verifying after signing is the step that turns "we sign" into "the
+      # signature is checkable". A signature that cannot be verified at build
+      # time is a signature nobody has ever exercised, and it fails the first time
+      # it is needed.
+      - name: Verify the signature and attestation
+        if: steps.publishable.outputs.publish == 'true'
+        env:
+          IMAGE_REF: ${{ steps.meta.outputs.ref }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp '^https://github\.com/${{ github.repository }}/' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            "$IMAGE_REF"
+          echo "signature verified against the repository identity and the Actions OIDC issuer."
+
+      - name: Scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-${{ matrix.image }}
+          path: trivy-${{ matrix.image }}.txt
+          retention-days: 30

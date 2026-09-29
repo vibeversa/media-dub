@@ -37,6 +37,15 @@ opencode.json
 Thumbs.db
 Desktop.ini
 
+## Task 042 CI / release-gate artifacts
+# deploy/verify.sh writes its machine-readable result here on every run. The
+# artifacts are evidence for a specific rollout, not source: a committed one
+# would be a file that is wrong the moment anything is redeployed.
+deploy/.artifacts/
+# Local scratch for the throwaway API stand-in used to exercise verify.sh's
+# post-deploy branches. See docs/ci-branch-protection.md §9.
+.verify-stub/
+
 ## Frontend (Task 014: generated client is committed; never ignore it)
 node_modules/
 frontend/node_modules/

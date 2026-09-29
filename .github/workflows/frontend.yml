@@ -1,0 +1,525 @@
+name: frontend
+
+# Task 042B - the frontend gate.
+#
+# ORDER, AND WHY IT IS THIS ORDER
+# -------------------------------
+# install -> lint -> typecheck -> unit/coverage -> build -> codegen-verify ->
+# E2E -> visual -> a11y -> audit -> image
+#
+# `codegen-verify` runs AFTER the build rather than before it, and that is
+# deliberate. The build's own `prebuild` already runs the drift check, so running
+# it again first would be a duplicate. What the standalone step adds is the
+# `git diff --exit-code` half: the drift check proves the generated output
+# matches the bundle, and the diff proves the author actually COMMITTED the
+# regenerated output. A PR that regenerates nothing and the bundle changes
+# therefore fails twice, in two different ways, and the second failure names the
+# file to commit.
+#
+# EVERY GATE FAILS. NONE OF THEM WARNS
+# ------------------------------------
+# R2. There is no `continue-on-error` on a gate in this file. The two places
+# `continue-on-error: true` appears are (a) a job that runs a *report* the repo
+# documents as a report, and (b) an artifact upload, which must run on failure.
+#
+# THE BROWSER SUITES ARE NOT A SINGLE COMMAND
+# -------------------------------------------
+# `@visual`, `@a11y` and `@perf` are separate jobs, not one `--grep`. They share
+# the cross-layer rig and the login rate limit, and running them together in one
+# process is a known pre-existing failure (see the 041D report: 21 visual
+# failures with the suites combined, identical with and without this workflow).
+# Splitting them is not a workaround for a flaky test - it is the configuration
+# those suites were verified in.
+
+on:
+  # ONLY `workflow_call` and `workflow_dispatch` - see the note in backend.yml for
+  # why a direct `pull_request` trigger here would run every job twice per PR and
+  # why a `paths:` filter on a required check is a merge block. `ci.yml` is the
+  # sole subscriber.
+  workflow_call:
+  workflow_dispatch:
+concurrency:
+  group: frontend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: 24
+  REGISTRY: ghcr.io
+  # The cross-layer rig's fixed ports (tests/cross-layer/docker-compose.cross.yml).
+  # Hard-coded here so a port change in one place is a change in two reviewed
+  # places rather than a CI job that starts a stack nothing can reach.
+  RIG_COMPOSE: tests/cross-layer/docker-compose.cross.yml
+
+permissions:
+  contents: read
+
+jobs:
+  # ------------------------------------------------------- install + gates ----
+  static:
+    name: lint / typecheck / unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci`, never `npm install`: `ci` fails when the lockfile and the
+      # manifest disagree and installs exactly the locked tree. A gate that can
+      # resolve a different dependency graph than the one under test is not a gate.
+      - name: Install (locked)
+        run: npm ci --prefix frontend
+
+      - name: Lint
+        run: npm run lint --prefix frontend
+
+      - name: Typecheck
+        run: npm run typecheck --prefix frontend
+
+      - name: Typecheck the e2e suites
+        run: npm run typecheck:e2e
+
+      # The presence gate and the token gate are cheap structural checks that
+      # would otherwise only be enforced by convention.
+      - name: Test-ownership presence gate
+        run: npm run test:presence --prefix frontend
+
+      - name: No hardcoded hex outside tokens.css
+        run: npm run check:no-hex --prefix frontend
+
+      # R2: the coverage thresholds live in `frontend/vite.config.ts`
+      # (`test.coverage.thresholds`, 80/80/80/80). Vitest enforces them and exits
+      # non-zero below the floor, so there is no second threshold to keep in sync
+      # and no way to lower one without a reviewed diff to the config.
+      - name: Unit and component tests (with coverage gate)
+        run: npm run test --prefix frontend -- --coverage
+
+      # Reported, not enforced, and deliberately WITHOUT `continue-on-error`:
+      # `docs/coverage.md` states the script "exits 0 with gaps present (it is a
+      # report; the vitest thresholds are the gate)". A non-zero exit therefore
+      # means the report could not be produced - no coverage summary, or a
+      # vitest/coverage-v8 major mismatch - and THAT is a real failure that a
+      # `continue-on-error` would have hidden.
+      - name: Per-file coverage gap report
+        if: always()
+        run: node scripts/coverage-gap.mjs
+
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+          retention-days: 14
+
+  # ------------------------------------------------------------- build -------
+  build:
+    name: build + codegen verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: static
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install (locked)
+        run: npm ci --prefix frontend
+
+      # The build inlines VITE_* values, and Task 015's R5 makes the example env
+      # the required input. Without it `npm run build` fails on a missing
+      # VITE_API_BASE_URL, which reads as a bundler fault.
+      - name: Seed the example env
+        run: cp frontend/.env.example frontend/.env
+
+      # `prebuild` runs `check-drift` first, so a bundle edited without
+      # regenerating stops the build here.
+      - name: Build
+        run: npm run build --prefix frontend
+
+      # The other half of the drift gate, and the half that catches the mistake
+      # the first half cannot see: a contributor who edited the bundle AND ran
+      # `make generate-api` but forgot to commit the result. `check-drift`
+      # compares generated output against what is COMMITTED, so it passes; this
+      # compares the working tree against the COMMIT, so it does not.
+      - name: Codegen verify (no drift in the committed generated client)
+        run: |
+          set -euo pipefail
+          node tools/generate-client.mjs
+          if ! git diff --exit-code -- frontend/src/api/generated/; then
+            echo "::error::frontend/src/api/generated/ differs from a fresh \`make generate-api\`. Run it and commit the result in the SAME commit as the bundle change."
+            exit 1
+          fi
+          echo "generated client is byte-identical to a fresh generation."
+
+      - name: Build the Storybook (the 016 primitives are a shipped surface)
+        run: npm run build-storybook --prefix frontend
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 14
+
+  # -------------------------------------------------------------- audit ------
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: static
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install (locked)
+        run: npm ci --prefix frontend
+
+      # R2, and the edge case the task names: a NEW advisory on an existing
+      # lockfile fails with the advisory id, the vulnerable range, the fixed
+      # range and a resolved owner. `node tools/npm-audit-gate.mjs` produces all
+      # four; `npm audit --audit-level=high` alone produces one and exits.
+      #
+      # `--omit=dev` is deliberately NOT used. A dev dependency is still code that
+      # runs in CI with repository access, and the 014-era toolchain
+      # (esbuild, vite) is exactly where a compromised transitive lands.
+      - name: npm audit (fail on high)
+        run: |
+          set -uo pipefail
+          report="$RUNNER_TEMP/npm-audit.md"
+          # The gate's own exit code is the step's: 1 for "found something", 2
+          # for "could not run". Both are failures; the `CI_GATE_RESULT` reason
+          # line distinguishes them, so the step does not have to.
+          node tools/npm-audit-gate.mjs \
+            --manifest frontend/package-lock.json \
+            --level high \
+            --owners .github/CODEOWNERS > "$report" 2>&1
+          status=$?
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          cat "$report"
+          exit "$status"
+
+  # ------------------------------------------------------ cross-layer E2E ----
+  cross-layer:
+    name: e2e (cross-layer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install (locked)
+        run: |
+          npm ci
+          npm ci --prefix frontend
+
+      - name: 'Preflight: Docker must be usable'
+        run: bash scripts/require-docker.sh
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Start the cross-layer rig
+        run: docker compose -f "$RIG_COMPOSE" up -d --build
+
+      # `wait_stack.sh` blocks until the API's `/health/live` answers, so a run
+      # never spends its Playwright timeout waiting for a container that was never
+      # going to be ready - and fails with the container's own log instead.
+      - name: Wait for the stack
+        run: bash tests/cross-layer/wait_stack.sh
+
+      - name: E2E (@cross-layer, @cross-layer-harness, @smoke, @journeys)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          npx playwright test
+          --grep="@cross-layer|@cross-layer-harness|@smoke|@journeys"
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-layer-artifacts
+          path: |
+            tests/cross-layer/.artifacts
+            test-results
+            playwright-report
+          retention-days: 14
+
+      - name: Dump the API log on failure
+        if: failure()
+        run: docker compose -f "$RIG_COMPOSE" logs --no-color --tail 400 api > api-container.log || true
+
+      - name: Upload the API log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-layer-api-log
+          path: api-container.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f "$RIG_COMPOSE" down -v
+
+  # ---------------------------------------------------------------- rig -------
+  # One job brings the rig up, runs the three browser gates that need it, and
+  # tears it down. They are separate `playwright test` invocations rather than one
+  # combined `--grep` because the combined run is a KNOWN pre-existing failure
+  # (the 041D report measured 21 visual failures with the suites merged, identical
+  # with and without this file's changes - per-worker isolation is 046's item).
+  browser-gates:
+    name: visual / a11y / perf
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install (locked)
+        run: |
+          npm ci
+          npm ci --prefix frontend
+
+      - name: 'Preflight: Docker must be usable'
+        run: bash scripts/require-docker.sh
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Start the cross-layer rig
+        run: docker compose -f "$RIG_COMPOSE" up -d --build
+
+      - name: Wait for the stack
+        run: bash tests/cross-layer/wait_stack.sh
+
+      # `--update-snapshots` must never appear in a CI job. It would rewrite the
+      # committed baselines in the runner's working tree, the job would go green,
+      # and the change would vanish with the runner - so the "visual regression"
+      # would never have happened. Baselines are approved by a human, in a PR.
+      - name: Visual regression (@visual, compare against committed baselines)
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/visual.log"
+          set +e
+          npx playwright test --grep="@visual" --reporter=list 2>&1 | tee "$log"
+          status=${PIPESTATUS[0]}
+          set -e
+          bash scripts/visual-baseline-gate.sh "$log"
+          exit "$status"
+
+      - name: Accessibility audit (@a11y)
+        run: npx playwright test --grep="@a11y"
+
+      - name: Performance budgets (@perf)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run test:perf
+
+      - name: Upload the perf reports and scrubbed traces
+        # `if: always()`: the whole point of 041D's scrubber is that a breaching
+        # run's evidence survives a red build. Without this the most valuable
+        # artifact is attached to the run that passed.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-reports
+          path: tests/cross-layer/.artifacts/perf/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload browser-gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-gate-artifacts
+          path: |
+            tests/cross-layer/.artifacts
+            test-results
+            playwright-report
+          retention-days: 14
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f "$RIG_COMPOSE" down -v
+
+  # --------------------------------------------------------------- image -----
+  image:
+    name: frontend image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build, static, cross-layer, browser-gates, audit]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install (locked)
+        run: npm ci --prefix frontend
+
+      - name: Seed the example env
+        run: cp frontend/.env.example frontend/.env
+
+      - name: Resolve the image reference
+        id: meta
+        env:
+          OWNER: ${{ github.repository_owner }}
+          WANTED_TAG: ${{ inputs.image_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || github.sha }}
+        run: |
+          set -euo pipefail
+          owner="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "ref=${REGISTRY}/${owner}/dubbing-frontend:${WANTED_TAG}" >> "$GITHUB_OUTPUT"
+
+      # Same R5 rule as the backend, enforced before the build: only `v*` tags
+      # publish. The two workflows must not be able to disagree about which tags
+      # are releasable, so the rule is stated in both and neither is "the primary".
+      - name: 'Guard: only a version tag may publish'
+        id: publishable
+        env:
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          CANDIDATE_TAG: ${{ inputs.image_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_PR" = "true" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "pull request: build and scan only, never publish." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if printf '%s' "$CANDIDATE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "version tag \`$CANDIDATE_TAG\`: this run may publish and sign." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "publish=false" >> "$GITHUB_OUTPUT"
+          echo "\`$CANDIDATE_TAG\` is not a version tag; the image is built and scanned but not published." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log in to GHCR
+        if: steps.publishable.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and load
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: ${{ steps.publishable.outputs.publish == 'true' }}
+          load: ${{ steps.publishable.outputs.publish != 'true' }}
+          tags: ${{ steps.meta.outputs.ref }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Trivy image scan (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.ref }}
+          format: table
+          output: trivy-frontend.txt
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          trivyignores: .trivyignore
+
+      - name: SBOM (SPDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.ref }}
+          format: spdx-json
+          output-file: sbom-frontend.spdx.json
+          artifact-name: sbom-frontend
+
+      - name: The SBOM must exist
+        run: |
+          set -euo pipefail
+          test -s sbom-frontend.spdx.json || { echo "::error::SBOM missing for the frontend image."; exit 1; }
+          echo "SBOM ok: $(wc -c < sbom-frontend.spdx.json) bytes"
+
+      - name: Install cosign
+        if: steps.publishable.outputs.publish == 'true'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign (keyless)
+        if: steps.publishable.outputs.publish == 'true'
+        env:
+          IMAGE_REF: ${{ steps.meta.outputs.ref }}
+        run: cosign sign --yes "$IMAGE_REF"
+
+      - name: Verify the signature
+        if: steps.publishable.outputs.publish == 'true'
+        env:
+          IMAGE_REF: ${{ steps.meta.outputs.ref }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-identity-regexp '^https://github\.com/${{ github.repository }}/' \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            "$IMAGE_REF"
