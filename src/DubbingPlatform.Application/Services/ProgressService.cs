@@ -134,10 +134,15 @@ public sealed class ProgressService
         var phase = DerivePhase(run.Status, currentStage, completed);
         var warnings = BuildWarnings(run.Status, openReviews);
 
+        // GeneratedAt is the run's own UpdatedAt, deliberately NOT UtcNow. The
+        // workspace renders this as "Updated <time>", so stamping it with the
+        // current clock made every read look like a fresh update even when nothing
+        // had changed - and made the response unreproducible for any consumer that
+        // diffs or caches it, which the cross-layer visual matrix relies on.
         return new ProgressSnapshot(
             projectId, run.Id, run.Status.ToString(), phase, currentStage,
             completed, failed, Math.Max(0, retryingUnits), review, skipped, cancelled,
-            expected, remaining, percentage, true, warnings, DateTimeOffset.UtcNow);
+            expected, remaining, percentage, true, warnings, run.UpdatedAt);
     }
 
     /// <summary>

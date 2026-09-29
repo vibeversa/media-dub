@@ -1,14 +1,17 @@
-// Task 040A: root Playwright configuration for the cross-layer rig.
+// Root Playwright configuration: the cross-layer rig (040A/040B) and the visual
+// matrix (041B). Both run against the same real stack, so they share one
+// `globalSetup` - which is what seeds the deterministic data the visual
+// baselines depend on.
 //
-// Scope is deliberately narrow. The frontend's own `frontend/e2e/*.spec.ts` are
-// mock-based (they stub routes with `page.route`) and are unaffected: this config
-// only picks up `tests/cross-layer/**`, and the existing specs keep running under
-// Playwright's defaults from `frontend/` exactly as before.
+// The frontend's own `frontend/e2e/*.spec.ts` are mock-based (they stub routes
+// with `page.route`) and are unaffected: they keep running under Playwright's
+// defaults from `frontend/` exactly as before.
 //
-// Tag conventions (040A/040B):
-//   @cross-layer-harness  the rig smoke in this task
-//   @cross-layer          the seven named seam specs added by 040B
+// Tag conventions:
+//   @cross-layer-harness  the rig smoke (040A)
+//   @cross-layer          the seven named seam specs (040B)
 //   @cross-layer-ai       seam specs that need a non-default mock-AI scenario
+//   @visual               the visual matrix and its structural checks (041B)
 //
 // There is no `webServer` block: the stack is started with `docker compose` by
 // the documented run command, because the rig's services are health-gated and
@@ -26,8 +29,11 @@ const CROSS_LAYER_PORT = 54173;
 const CROSS_LAYER_ORIGIN = `http://127.0.0.1:${CROSS_LAYER_PORT}`;
 
 export default defineConfig({
-  testDir: './tests/cross-layer',
-  testMatch: /.*\.spec\.ts/,
+  // Two trees, so the root is the testDir and the inclusions are explicit. Left
+  // implicit, Playwright would also collect `frontend/e2e/**` (019-036's
+  // mock-based feature specs), which belong to a different config entirely.
+  testDir: '.',
+  testMatch: ['tests/cross-layer/**/*.spec.ts', 'e2e/visual/**/*.spec.ts'],
 
   // A cold stack can spend real time building the seeder, the frontend bundle and
   // the run's first pipeline stages. The default 30s would abort a green rig.
@@ -35,7 +41,9 @@ export default defineConfig({
   expect: { timeout: 30_000 },
 
   // Seams share one seeded tenant and one API; parallel workers would race on
-  // the reset and on the processing run. Serial by design, not by omission.
+  // the reset and on the processing run. Serial by design, not by omission. The
+  // visual matrix also needs one worker: it signs in once per file and holds a
+  // single in-memory session.
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
@@ -45,6 +53,13 @@ export default defineConfig({
   globalSetup: './tests/cross-layer/globalSetup.ts',
 
   outputDir: './tests/cross-layer/.artifacts',
+
+  // 041B: baselines are flat and self-describing - the test title already
+  // carries screen, breakpoint, theme and direction, so no extra folder
+  // hierarchy would add information. The `{platform}` token is kept out so a
+  // baseline is not silently forked per OS; the font policy is in
+  // `e2e/visual/README.md` instead.
+  snapshotPathTemplate: '{testDir}/e2e/visual/__screenshots__/{arg}{ext}',
 
   use: {
     baseURL: CROSS_LAYER_ORIGIN,

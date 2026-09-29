@@ -376,7 +376,7 @@ internal static class Program
         {
             await using var context = new AppDbContext(CreateOptions(options.ConnectionString));
 
-            var anchorRunId = Guid.NewGuid();
+            var anchorRunId = DeterministicId(options, "run/anchor");
             context.Set<ProcessingRun>().Add(new ProcessingRun(
                 anchorRunId, options.TenantId, options.ProjectId, 1,
                 ProcessingRunStatus.Completed, "1.0.0",
@@ -387,7 +387,7 @@ internal static class Program
             // at all is fine for a start, but the export path resolves a run and a
             // per-project anchor keeps each project self-consistent.
             context.Set<ProcessingRun>().Add(new ProcessingRun(
-                Guid.NewGuid(), options.TenantId, options.PipelineProjectId, 1,
+                DeterministicId(options, "run/pipeline-anchor"), options.TenantId, options.PipelineProjectId, 1,
                 ProcessingRunStatus.Completed, "1.0.0",
                 new string('a', 64), new string('b', 64), new string('c', 64),
                 now, now, now, now));
@@ -396,18 +396,18 @@ internal static class Program
             // selected versions are what a stale-edit seam edits against, and
             // `SelectionVersion` starts at 1 so the first edit succeeds and the
             // second (stale) one conflicts.
-            var segmentId = Guid.NewGuid();
+            var segmentId = DeterministicId(options, "segment");
             context.Set<SpeechSegment>().Add(new SpeechSegment(
                 segmentId, options.TenantId, options.ProjectId, anchorRunId,
                 1, 0, 2000, "Ready", null, now));
 
-            var transcriptVersionId = Guid.NewGuid();
+            var transcriptVersionId = DeterministicId(options, "transcript-version");
             context.Set<TranscriptVersion>().Add(new TranscriptVersion(
                 transcriptVersionId, options.TenantId, options.ProjectId, anchorRunId, segmentId,
                 "mock", "mock-transcribe", "en", MockTranscriptText,
                 MockConfidence, null, isSelected: true, needsReview: false, now));
 
-            var translationVersionId = Guid.NewGuid();
+            var translationVersionId = DeterministicId(options, "translation-version");
             context.Set<TranslationVersion>().Add(new TranslationVersion(
                 translationVersionId, options.TenantId, options.ProjectId, anchorRunId, segmentId,
                 MockTranslationText, [], 0.9, 0.9, 0.9, "mock", "mock-translate",
@@ -419,34 +419,34 @@ internal static class Program
             // selection at all and `selectionVersion` is 0, so a stale-edit seam
             // would have no version to make stale.
             context.Set<SegmentSelection>().Add(new SegmentSelection(
-                Guid.NewGuid(), options.TenantId, options.ProjectId, segmentId,
+                DeterministicId(options, "segment-selection"), options.TenantId, options.ProjectId, segmentId,
                 transcriptVersionId, translationVersionId, null,
                 InitialSelectionVersion, now, options.UserId));
 
             // A speaker with two selectable voices, so the voice seam can change
             // the assignment and observe the dependent invalidation.
-            var speakerId = Guid.NewGuid();
+            var speakerId = DeterministicId(options, "speaker");
             context.Set<Speaker>().Add(new Speaker(
                 speakerId, options.TenantId, options.ProjectId, "spk-1", "Speaker 1",
                 0, 2000, "mock", "1", 0.9, "mock", now));
 
-            var voiceA = Guid.NewGuid();
+            var voiceA = DeterministicId(options, "voice/a");
             context.Set<VoiceProfile>().Add(new VoiceProfile(
                 voiceA, options.TenantId, "mock", "mock-voice-a", "1", "es",
                 VoiceType.Stock, false, null, now));
 
-            var voiceB = Guid.NewGuid();
+            var voiceB = DeterministicId(options, "voice/b");
             context.Set<VoiceProfile>().Add(new VoiceProfile(
                 voiceB, options.TenantId, "mock", "mock-voice-b", "1", "es",
                 VoiceType.Stock, false, null, now));
 
             context.Set<SpeakerVoiceAssignment>().Add(new SpeakerVoiceAssignment(
-                Guid.NewGuid(), options.TenantId, options.ProjectId, anchorRunId, speakerId, voiceA,
+                DeterministicId(options, "voice-assignment"), options.TenantId, options.ProjectId, anchorRunId, speakerId, voiceA,
                 "seeded", new string('d', 64), now));
 
             // An open review item scoped to the segment, so the review seam has a
             // real decision to make.
-            var reviewItemId = Guid.NewGuid();
+            var reviewItemId = DeterministicId(options, "review-item");
             context.Set<ReviewItem>().Add(new ReviewItem(
                 reviewItemId, options.TenantId, options.ProjectId, anchorRunId,
                 ScopeType.Segment, segmentId.ToString("D"), segmentId,
@@ -454,7 +454,7 @@ internal static class Program
 
             // An unread notification, so the notification seam can prove a
             // durable row reaches the centre and that read state is a mutation.
-            var notificationId = Guid.NewGuid();
+            var notificationId = DeterministicId(options, "notification");
             context.Set<Notification>().Add(new Notification(
                 notificationId, options.TenantId, options.UserId, options.ProjectId,
                 NotificationType.ManualReviewRequired, NotificationSeverity.Warning,
@@ -465,8 +465,8 @@ internal static class Program
             // to object storage by the seam spec itself (via `mc` in the storage
             // container), so the download proves real bytes travelled through a
             // real signed URL rather than a stubbed response.
-            var exportJobId = Guid.NewGuid();
-            var contentId = Guid.NewGuid();
+            var exportJobId = DeterministicId(options, "export-job");
+            var contentId = DeterministicId(options, "export-content");
             var contentKey = string.Concat(options.TenantId.ToString("N"), "/seed/export.json");
             var contentHash = MockContentHash;
 
@@ -475,7 +475,7 @@ internal static class Program
                 ExportFixtureBytes.Length, "application/json", contentKey,
                 ContentObjectStatus.Committed, now, now));
 
-            var artifactId = Guid.NewGuid();
+            var artifactId = DeterministicId(options, "export-artifact");
             context.Set<Artifact>().Add(new Artifact(
                 artifactId, options.TenantId, options.ProjectId, anchorRunId,
                 null, ArtifactType.Export, "1", contentId, null, null,
@@ -490,7 +490,7 @@ internal static class Program
                 artifactId.ToString("D"), ExportCompletenessJson, false, now, now));
 
             context.Set<ExportArtifact>().Add(new ExportArtifact(
-                Guid.NewGuid(), options.TenantId, exportJobId, artifactId, now));
+                DeterministicId(options, "export-artifact-link"), options.TenantId, exportJobId, artifactId, now));
 
             await context.SaveChangesAsync().ConfigureAwait(false);
 
@@ -704,6 +704,43 @@ internal static class Program
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(projectId.ToByteArray()))
             .ToLowerInvariant();
 
+    /// <summary>
+    /// A deterministic GUID derived from a label.
+    ///
+    /// <para>
+    /// Task 041B: the visual matrix pins screenshots of screens that render entity
+    /// ids as visible text - the exports screen shows <c>exp_&lt;32 hex&gt;</c>
+    /// directly. With <c>Guid.NewGuid()</c> that value changes on every seed, so
+    /// those baselines could never match and the matrix was unrunnable.
+    /// </para>
+    ///
+    /// <para>
+    /// Deterministic ids are also what makes a rig failure reproducible at all: a
+    /// seam or a visual diff found on one run cannot be re-examined on the next if
+    /// every row has moved. This is the fixture determinism Task 046 was meant to
+    /// own; deriving ids from stable labels here means the rig no longer depends on
+    /// that task landing first.
+    /// </para>
+    ///
+    /// <para>
+    /// Labels are namespaced with the tenant and project so ids stay unique per
+    /// tenant and per project even though the derivation is a pure function of the
+    /// label.
+    /// </para>
+    /// </summary>
+    private static Guid DeterministicId(SeedOptions options, string label) =>
+        DeterministicId(options, options.ProjectId, label);
+
+    /// <summary>
+    /// As <see cref="DeterministicId(SeedOptions, string)"/>, but scoped to an
+    /// explicit project. Required wherever one label is used for more than one
+    /// project - two rows sharing a label would share a primary key.
+    /// </summary>
+    private static Guid DeterministicId(SeedOptions options, Guid projectId, string label) =>
+        new(System.Security.Cryptography.SHA256
+            .HashData(System.Text.Encoding.UTF8.GetBytes($"{options.TenantId:D}:{projectId:D}:{label}"))
+            .AsSpan(0, 16));
+
     private static async Task PromoteToMediaReadyAsync(SeedOptions options, DateTimeOffset now)
     {
         // Both seeded projects are promoted, so either can accept a processing
@@ -726,8 +763,11 @@ internal static class Program
                     continue;
                 }
 
-                var contentId = Guid.NewGuid();
-                var assetId = Guid.NewGuid();
+                // Scoped to `projectId`, not just the label: this loop runs once per
+                // seeded project, and a shared label would hand two projects the
+                // same primary key.
+                var contentId = DeterministicId(options, projectId, "media-content");
+                var assetId = DeterministicId(options, projectId, "media-asset");
                 // Keyed per project: the storage key carries a uniqueness
                 // constraint, so two projects sharing `{tenant}/seed/source.mp4`
                 // fail the second insert. (Found by running it.)

@@ -5,8 +5,10 @@
   "description": "Repository tooling root. The application frontend lives in frontend/; this manifest exists so the cross-layer Playwright rig can be driven from the repository root.",
   "type": "module",
   "scripts": {
-    "test:cross-layer": "playwright test",
+    "test:cross-layer": "playwright test --grep=@cross-layer",
     "test:cross-layer:ui": "playwright test --ui",
+    "test:visual": "playwright test --grep=@visual",
+    "test:visual:update": "playwright test --grep=@visual --update-snapshots",
     "test:tools": "node --test tools/*.test.mjs",
     "check:api-contract": "node tools/check-api-contract.mjs"
   },
