@@ -20,6 +20,16 @@
 # expected JavaScript, and the resulting SyntaxError names the frontend rather
 # than the CDN, which is where the investigation then goes.
 #
+# Task 043A added two more things, and both are visible in the file:
+#   * a precompression pass in the `dist` stage, because the origin's
+#     `gzip_static on;` needs `.gz` siblings to exist and this image has NO
+#     brotli module - brotli is served from the CDN edge instead;
+#   * the HEALTHCHECK moved from `/` to `/healthz`, a static 200 served from the
+#     nginx config with no dependency on the build output. Asking for the document
+#     conflated "the process can serve" with "the build produced an index.html",
+#     which is a distinction worth having on the morning somebody changes the
+#     build.
+#
 # The VITE_* variables are inlined at BUILD time by Vite, so this image is
 # specific to the API it was built against. That is why the image is versioned
 # and signed like the backend ones (R5): an `index.html` baked with the wrong API
@@ -83,6 +93,97 @@ RUN { [ -f .env.production ] || cp .env.example .env; } \
  && (ls -1 .env.production 2>/dev/null || echo "  .env (fallback: .env.example)")
 RUN npm run build
 
+# --- the version document, placed AFTER the build (Task 043A) ----------------
+# `deploy/config-inject.sh` stages the document at `frontend/version.json` - a
+# SIBLING of `.env.production`, not a bundler output - and this copies it into the
+# build output afterwards.
+#
+# The ordering is the whole point. `vite build` empties `outDir` by default, so the
+# document used to be written straight into `dist/` by config-inject.sh and then
+# DELETED by the build: every release image shipped without one, and the hosting
+# gate reported the resulting 404 as "as expected for an image built without
+# config-inject.sh" - indistinguishable from the local case, because it was the
+# release case. A version-skew check that can never see the document is a check
+# that reports nothing and looks healthy.
+#
+# The `if` is deliberate and its failure mode is the point: a build that did not
+# run the injector produces an image with no document, which the gate reports as a
+# 404 and the client reports as UNKNOWN (no banner). A build that DID run it always
+# gets one. Silently substituting a placeholder would be worse: a placeholder
+# reports a version, and a version that is wrong is a skew check that agrees with
+# itself.
+RUN if [ -f version.json ]; then \
+      cp version.json dist/version.json && \
+      echo "version document in use: frontend/version.json -> dist/version.json"; \
+    else \
+      echo "  no version document: this image was built without deploy/config-inject.sh,"; \
+      echo "  so /version.json is a 404 and the client's skew check reports UNKNOWN."; \
+    fi
+
+# --- precompress (Task 043A) -------------------------------------------------
+# Writes a `.gz` and a `.br` sibling next to every asset over 4 KiB, so the origin
+# serves a file that already exists instead of compressing the same bytes once per
+# request, and so a CDN configured for Brotli has something to serve.
+#
+# `node:zlib` only - no `gzip`/`brotli` binary to install, no extra layer, and no
+# dependency whose CVE would appear in this image's scan. Both algorithms are in
+# the node that is already here to run the build.
+#
+# ONLY assets. A `.gz` of index.html would sit next to it at the top level, where
+# `location /` (not `location ^~ /assets/`) matches it - and `location /` declares
+# no Cache-Control, so the precompressed document would be served with none at all.
+# The document is under 2 KiB and is never cached anyway, so there is nothing to
+# win there.
+#
+# `.map` is absent from the set deliberately. `vite build` sets `sourcemap: false`
+# and `deploy/nginx/default.conf` refuses `.map` with a 404; a `.map.gz` next to a
+# map nobody builds would be a second thing to remember to exclude.
+#
+# A HEREDOC, not a `\` continuation. The first version indented the script
+# directly under `RUN node -e '`, and the build failed at PARSE time with
+# `dockerfile parse error on line 115: unknown instruction: import` - a
+# Dockerfile continuation is a trailing backslash, and a multi-line quoted string
+# is not one. The script was never run; the image was never produced. `<<'EOF'`
+# (available from `# syntax=docker/dockerfile:1.4`, and this file declares 1.7)
+# passes the block to the shell verbatim, so the quoting below is the shell's
+# problem and not the parser's.
+RUN <<'PRECOMPRESS'
+node --input-type=module -e '
+  import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+  import { extname, join } from "node:path";
+  import { brotliCompressSync, constants, gzipSync } from "node:zlib";
+
+  const COMPRESSIBLE = new Set([".js", ".css", ".svg", ".woff", ".woff2"]);
+  const MIN_BYTES = 4096;
+  let written = 0;
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!COMPRESSIBLE.has(extname(entry.name))) continue;
+      const bytes = readFileSync(full);
+      if (bytes.length < MIN_BYTES) continue;
+      writeFileSync(full + ".gz", gzipSync(bytes, { level: constants.Z_BEST_COMPRESSION }));
+      writeFileSync(
+        full + ".br",
+        brotliCompressSync(bytes, {
+          params: {
+            [constants.BROTLI_PARAM_QUALITY]: 11,
+            [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length,
+          },
+        }),
+      );
+      written += 1;
+    }
+  };
+  walk(join(process.cwd(), "dist"));
+  console.log("precompressed " + written + " asset(s) to .gz and .br");
+'
+PRECOMPRESS
+
 # The build output is copied into its own stage so the runtime image carries no
 # node_modules, no package.json, and no source. A static file server has no
 # business carrying a package tree, and `npm audit` findings in a dev dependency
@@ -95,8 +196,8 @@ FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 
 # Port 8080, not 80: the unprivileged image cannot bind a port below 1024, and
 # binding 80 anyway would be the kind of privilege the rest of this image is
-# built to avoid. The CDN origin Service targets 8080
-# (deploy/k8s/static-deployment.yaml).
+# built to avoid. The origin Service targets 8080
+# (deploy/k8s/frontend/service.yaml).
 EXPOSE 8080
 
 COPY deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
@@ -112,7 +213,7 @@ COPY --from=dist / /usr/share/nginx/html
 USER nginx
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD ["/bin/sh", "-c", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+  CMD ["/bin/sh", "-c", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
 
 # `CMD` not `ENTRYPOINT`: an operator overriding the command should not have to
 # fight an entrypoint script to do it.

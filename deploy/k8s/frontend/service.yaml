@@ -1,0 +1,32 @@
+# The static origin's Service (Task 043A, instruction 2).
+#
+# ClusterIP, never NodePort or LoadBalancer, and this is the property the whole
+# edge arrangement exists to preserve: the pods are reachable only from the
+# ingress controller that the CDN is the only client of, so there is exactly ONE
+# public route to the document and it is the one that adds the security headers
+# and redirects plain HTTP.
+#
+# A NodePort or a LoadBalancer here would be a second public route reachable by
+# anyone who learns a node address, serving the identical bytes over plain HTTP
+# with no TLS and no edge policy. `deploy/verify.sh` asserts this field, so the
+# mistake fails the release gate rather than the incident review.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: static
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: static
+  ports:
+    - name: http
+      port: 80
+      # 8080, not 80: `nginxinc/nginx-unprivileged` cannot bind a port below
+      # 1024, and the image is built so that nothing needs root. A targetPort of
+      # 80 against a container listening on 8080 is a connection refused that
+      # reads as a pod problem, so it is asserted.
+      targetPort: 8080

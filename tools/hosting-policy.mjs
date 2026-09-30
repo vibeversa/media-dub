@@ -56,7 +56,19 @@ export const REQUIRED_CLASS_IDS = [
   'source-map',
   'unhashed-asset',
   'spa-route',
+  'healthz',
 ];
+
+/**
+ * Cache classes that must NEVER be stored, whatever else is true about them.
+ *
+ * A list rather than a per-class check inside `validateOriginConfig`, because
+ * these three are refusals of a specific kind - "a cached answer here is a wrong
+ * answer" - and the same reasoning applies to all of them. A general
+ * "the class has no cacheControl" rule would not catch a class that declares
+ * `public, max-age=60`, which is exactly the mistake worth catching.
+ */
+export const NEVER_STORED_CLASS_IDS = ['runtime-version', 'healthz'];
 
 /** Headers both the static origin and the API must send, and the same value. */
 export const SHARED_SECURITY_HEADERS = [
@@ -328,6 +340,41 @@ export function validateOriginConfig(config) {
         "the 'runtime-version' class must not be cached. Its job is to report what the CDN is CURRENTLY serving; " +
           'a cached /version.json makes the skew check answer yesterday\'s question.',
       );
+    }
+  }
+
+  // `/healthz` and `/version.json` are the two endpoints whose whole purpose is
+  // to answer a question about NOW. A cache on either of them does not make a
+  // response slightly out of date; it makes the answer to a liveness question be
+  // about a pod that has since been replaced. `no-store` is asserted rather than
+  // "some directive that reduces caching", because `no-cache` still permits a
+  // stored copy and `max-age=0` is a revalidation the caller may skip.
+  const healthz = byId('healthz');
+  if (healthz !== undefined) {
+    const cacheControl = String(healthz.cacheControl ?? '').toLowerCase();
+    if (!cacheControl.includes('no-store')) {
+      problems.push(
+        "the 'healthz' class must carry Cache-Control containing 'no-store'. A stored health response is a 200 " +
+          'that outlives the thing it reported, which is the worst possible answer from the one endpoint a ' +
+          'monitor trusts absolutely.',
+      );
+    }
+    if (healthz.spaFallback !== false) {
+      problems.push(
+        "the 'healthz' class must set spaFallback: false. A probe handed the HTML document is a probe that " +
+          'cannot tell a working origin from a broken one.',
+      );
+    }
+  }
+
+  // The remaining never-stored classes, asserted through the shared rule so a
+  // future one is added in one place. `runtime-version` is checked above with a
+  // fuller message; re-reporting it here would double every finding.
+  for (const id of NEVER_STORED_CLASS_IDS) {
+    if (id === 'runtime-version' || id === 'healthz') continue;
+    const cacheClass = byId(id);
+    if (cacheClass !== undefined && isStorable(String(cacheClass.cacheControl ?? ''))) {
+      problems.push(`the '${id}' class must not be storable; it carries ${JSON.stringify(cacheClass.cacheControl)}`);
     }
   }
 
@@ -618,6 +665,48 @@ export function evaluateHosting({ originConfig, nginxText, securitySnippet, apiS
     }
     if (!/\.map/.test(nginxText)) {
       problems.push('deploy/nginx/default.conf has no .map refusal, so a source map is served if one is ever built');
+    }
+
+    // `/healthz` must exist as an exact-match block. The liveness probe, the
+    // readiness probe and the image HEALTHCHECK all request it, and a missing
+    // block does not 404 in a way anybody notices before a rollout: `location /`
+    // answers it with the HTML document and a 200, so every probe passes while
+    // measuring nothing.
+    if (!/location\s*=\s*\/healthz/.test(nginxText)) {
+      problems.push(
+        'deploy/nginx/default.conf has no exact `location = /healthz` block. The liveness probe, the readiness ' +
+          'probe and the image HEALTHCHECK all request it, and without the block `location /` answers with the ' +
+          'HTML document and a 200 - so every probe passes while measuring nothing.',
+      );
+    }
+
+    // `gzip_static on;`. The build precompresses every asset over 4 KiB
+    // (Dockerfile.frontend, `dist` stage, node:zlib) and writes the `.gz`
+    // siblings next to the originals. Without `gzip_static` those files are dead
+    // weight in the image and the origin compresses on every request instead.
+    if (!/gzip_static\s+on\s*;/.test(nginxText)) {
+      problems.push(
+        'deploy/nginx/default.conf does not set `gzip_static on;`. Dockerfile.frontend precompresses every asset ' +
+          'over 4 KiB into `.gz` siblings, and without gzip_static they are dead weight and the origin compresses ' +
+          'the same bytes once per request.',
+      );
+    }
+
+    // `brotli on;` WOULD STOP THE CONTAINER FROM STARTING. The origin image is
+    // built `--with-http_gzip_static_module` and is NOT built
+    // `--with-http_brotli_module` (established with `nginx -V` against
+    // nginxinc/nginx-unprivileged:1.27-alpine), and an unknown directive is a
+    // configuration error nginx refuses to start on. This is asserted because the
+    // instinct on reading "the task asks for brotli" is to add the line, and the
+    // failure it produces - an origin that will not boot, in a deployment - is
+    // exactly the kind that is discovered by a page load failing.
+    if (/^\s*brotli\s+[a-z_]+\s*;/m.test(nginxText)) {
+      problems.push(
+        'deploy/nginx/default.conf contains a `brotli` directive. The origin image has NO brotli module ' +
+          '(nginxinc/nginx-unprivileged:1.27-alpine is built --with-http_gzip_static_module and not ' +
+          '--with-http_brotli_module), so this is an unknown directive and nginx will refuse to start. Brotli is ' +
+          'served from the CDN edge; see deploy/cdn/origin.json `compression.brotli`.',
+      );
     }
     // `^~` on /assets/. nginx evaluates a regex location ahead of a plain prefix
     // one, so without `^~` the `\.(js|css|…)$` block wins for

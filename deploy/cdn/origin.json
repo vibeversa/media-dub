@@ -26,6 +26,29 @@
     "note": "The unprivileged nginx image listens on 8080, not 80: it cannot bind below 1024, and the image is built so that nothing needs root. The CDN reaches it over the provider's private link; the public entry point is the CDN, not this host."
   },
 
+  "edge": {
+    "$comment": "The hops in front of the origin, in order. Recorded as data because the security argument for the arrangement is entirely about which hop is reachable, and 'one public route' is a claim about topology that a diagram in a README does not check. deploy/k8s/frontend/ingress.yaml is the manifest; deploy/k8s/frontend/service.yaml (ClusterIP) and the `static-allow` NetworkPolicy are what make the claim true; deploy/verify.sh and deploy/frontend/hosting-config.test.mjs assert both.",
+    "hops": [
+      { "name": "cdn", "public": true, "responsibility": "caches per Accept-Encoding, holds the certificate for the PUBLIC hostname, sets HSTS, adds the response security headers, redirects plain HTTP" },
+      { "name": "ingress-nginx", "public": false, "responsibility": "terminates TLS for the ORIGIN hostname, redirects plain HTTP, HSTS as an origin-side hedge" },
+      { "name": "static", "public": false, "responsibility": "serves the build with the cache and header policy in deploy/nginx/default.conf" },
+      { "name": "api", "public": true, "responsibility": "a different host with its own ingress; the frontend reaches it only through VITE_API_BASE_URL, which scripts/check-frontend-topology.mjs enforces" }
+    ],
+    "singlePublicRouteToTheDocument": {
+      "value": true,
+      "enforcedBy": [
+        "deploy/k8s/frontend/service.yaml declares type: ClusterIP, so the pods have no address outside the cluster",
+        "deploy/k8s/networkpolicies.yaml `static-allow` admits the cdn-edge and ingress-nginx namespaces and nothing else",
+        "deploy/k8s/frontend/ingress.yaml binds the ORIGIN hostname, not the public one, so it is not a way around the CDN"
+      ],
+      "whyItMatters": "A second public route to the document serves the identical bytes over plain HTTP with no edge policy: no HTTPS redirect, no HSTS, no security headers. That is the failure a second route exists to enable, and it is invisible until somebody uses it."
+    },
+    "headersAreNotDeclaredOnTheIngress": {
+      "value": true,
+      "why": "ingress-nginx has no first-class annotation for an arbitrary response header. The two ways to add one - the `configuration-snippet` annotation and the global `more-headers` ConfigMap - are BOTH disabled by default since ingress-nginx 1.9 (`allow-snippet-annotations: false`). A manifest that depends on a disabled feature is a manifest that silently stops applying its security policy on a controller upgrade. The single copy of the header set is deploy/nginx/security-headers.conf, which the origin includes in every block that declares an add_header, and the CDN's viewer-request function adds the same set for the public hostname."
+    }
+  },
+
   "tls": {
     "required": true,
     "redirectPlainHttpToHttps": true,
@@ -64,6 +87,14 @@
       "cacheControl": "no-cache, no-store, must-revalidate",
       "spaFallback": true,
       "why": "A cached document references asset filenames the next deploy has already replaced. The result is a white screen on every hard refresh after a release."
+    },
+    {
+      "id": "healthz",
+      "description": "The origin's health endpoint. A static 200 served by `return` from the nginx config, with no filesystem access and no dependency on the build output.",
+      "match": { "exactPaths": ["/healthz"] },
+      "cacheControl": "no-store",
+      "spaFallback": false,
+      "why": "The deployment's liveness and readiness probes, and the image HEALTHCHECK, all use it. It must never be cached: a cached health response is a 200 that outlives the thing it reported, which is the worst possible answer from the one endpoint a monitor trusts absolutely. spaFallback: false because a probe handed the HTML document is a probe that cannot tell a working origin from a broken one. Added in Task 043A."
     },
     {
       "id": "source-map",
@@ -139,6 +170,21 @@
   "compression": {
     "enabled": true,
     "minLength": 1024,
+    "precompressedSiblings": {
+      "enabled": true,
+      "producedBy": "Dockerfile.frontend, `dist` stage, node:zlib",
+      "gzipSuffix": ".gz",
+      "brotliSuffix": ".br",
+      "minBytes": 4096,
+      "types": [".js", ".css", ".svg", ".woff", ".woff2"],
+      "servedByOrigin": "gzip only, via `gzip_static on;`",
+      "why": "The origin image (nginxinc/nginx-unprivileged:1.27-alpine) is built `--with-http_gzip_static_module` and is NOT built `--with-http_brotli_module`; `nginx -V` against the image is where that was established. So the origin can serve a `.gz` it was given and cannot compress to brotli itself, and a `brotli on;` line in deploy/nginx/default.conf would stop the container from starting with `unknown directive brotli`. The build still emits `.br` siblings so the edge can serve brotli without compressing anything per request. Only assets are precompressed: a `.gz` of index.html would sit at the top level where `location /` matches it, and `location /` declares no Cache-Control at all."
+    },
+    "brotli": {
+      "atOrigin": false,
+      "atEdge": true,
+      "note": "Brotli is negotiated at the edge, which is the right place for it independently of the module: the edge caches one representation per Accept-Encoding and revalidates against the origin far less often than a browser does. An edge configured for automatic compression will ignore the `.br` siblings and compress once, which is also correct - the siblings exist so that an edge configured for Brotli serves real files rather than compressing on the miss path."
+    },
     "types": [
       "text/plain",
       "text/css",

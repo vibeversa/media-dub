@@ -29,7 +29,7 @@ breaks a gate rather than a review comment.
           ┌─────────────────────────────┐   ┌──────────────────────────┐
           │      STATIC ORIGIN         │   │      API INGRESS         │
           │  nginx, Dockerfile.frontend│   │  ingress-nginx, TLS      │
-          │  ClusterIP only, NO Ingress│   └────────────┬─────────────┘
+          │  ClusterIP; fronted by an ingress for the ORIGIN hostname (043A)│   └────────────┬─────────────┘
           │  2 replicas, no egress     │                │
           └─────────────────────────────┘                ▼
                                             ┌──────────────────────────┐
@@ -61,13 +61,17 @@ breaks a gate rather than a review comment.
 
 The browser has exactly two routes out, and neither reaches a data store:
 
-- **To the static origin**, through the CDN. The static origin has
-  `policyTypes: [Ingress, Egress]` in `static-allow`
-  (`deploy/k8s/networkpolicies.yaml`) and its *only* ingress peer is the
-  `cdn-edge` namespace. It has no egress at all — a file server has nothing to
-  call. It is a `ClusterIP` Service and is deliberately **not** behind an
-  Ingress, because a second public route to the document would bypass the CDN's
-  HTTPS redirect and headers.
+- **To the static origin**, through the CDN and then the TLS ingress. The static
+  origin has `policyTypes: [Ingress, Egress]` in `static-allow`
+  (`deploy/k8s/networkpolicies.yaml`) and its only ingress peers are the
+  `cdn-edge` and `ingress-nginx` namespaces. It has no egress at all — a file
+  server has nothing to call. It is a `ClusterIP` Service, and the only Ingress
+  selecting it (`deploy/k8s/frontend/ingress.yaml`, added in Task 043A) binds the
+  **origin** hostname rather than the public one — so the CDN stays the only
+  browser-reachable name, and the ingress is a hop *behind* it rather than a way
+  around it. A second public route to the document would bypass the CDN's HTTPS
+  redirect, its HSTS and its security headers, which is the failure the
+  `ClusterIP` type and the two-namespace peer list exist to prevent.
 - **To the API**, through the ingress. `api-allow` grants ingress only from the
   `ingress-nginx` and `cdn-edge` namespaces, and the topology analyser rejects
   any API ingress peer that is not a `namespaceSelector` — a bare `podSelector`

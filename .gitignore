@@ -91,3 +91,11 @@ playwright-report/
 # The per-environment file `deploy/config-inject.sh` GENERATES. Stays ignored, and
 # the negation above is deliberately narrow: this is the one file that must not
 # be committed, because it is whatever origin someone was last building against.
+
+# The version document `deploy/config-inject.sh` GENERATES, and the Dockerfile
+# copies into `frontend/dist/`. Ignored for the same reason and with the same
+# consequence: it records a commit sha and an origin from one developer's machine,
+# and a committed one would be served to every user who loads the app. Staged as
+# a sibling of `.env.production` rather than inside `dist/` because `vite build`
+# empties `outDir` - see the header of deploy/config-inject.sh.
+frontend/version.json

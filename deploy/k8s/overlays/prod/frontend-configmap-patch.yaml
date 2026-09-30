@@ -1,0 +1,33 @@
+# Production build inputs for the frontend image (Task 043A).
+#
+# A ConfigMap, but NOT a runtime one - see the header in
+# deploy/k8s/frontend/configmap.yaml. The pipeline reads this BEFORE the image is
+# built and `deploy/config-inject.sh` renders it into `frontend/.env.production`.
+#
+# Every flag is off. That is a decision, not a default: a flag is off in
+# production until somebody has decided it is on AND has decided where the data
+# goes. The analytics flag in particular is not "a boolean" - turning it on
+# without a destination sends nothing, and turning it on with one sends user
+# behaviour to a third party, which is a decision for a person to make on the
+# record rather than for a manifest default to make.
+#
+# VITE_SENTRY_DSN is the one value that is CHANGE_ME rather than off, because
+# error reporting in production is not optional. `sentry-disabled` is the inert
+# sentinel; replacing it here with a real DSN is safe, because a Sentry DSN is a
+# public write-only client key and carries no read authority over anything.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-build-config
+data:
+  VITE_API_BASE_URL: https://api.dubbing.example.com
+  VITE_ENVIRONMENT: prod
+  VITE_APP_VERSION: CHANGE_ME
+  VITE_ENABLE_ANALYTICS: "false"
+  # The admin diagnostics UI ships as a flag rather than as a removed route, so it
+  # can be turned on for an operator without a release. It gates PRESENTATION
+  # only: the API's authorization is the access control, and no client-side flag
+  # is one.
+  VITE_ENABLE_DIAGNOSTICS: "false"
+  VITE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+  VITE_SENTRY_DSN: CHANGE_ME

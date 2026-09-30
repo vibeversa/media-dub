@@ -280,6 +280,28 @@ a comment saying "keep in step" is not a check.
 
 `ENV_FILE_UNREADABLE` and `NO_BUNDLE` may **never** be bypassed (§5).
 
+### `scripts/check-frontend-topology.mjs` (the frontend topology gate, Task 043A)
+
+```
+FRONTEND_TOPOLOGY_RESULT reason=<REASON> status=<PASS|FAIL> files=<n> findings=<n>
+```
+
+| Reason | Exit | Meaning |
+| --- | --- | --- |
+| `OK` | 0 | Nothing in `frontend/src` references a datastore, broker, cache, object store or worker, and no absolute URL names a host outside loopback and the IANA-reserved ranges |
+| `FRONTEND_TOPOLOGY_VIOLATION` | 1 | A file references infrastructure the browser must not reach. Each finding is printed as `::error::<file>:<line>: …` and names the rule that produced it |
+| `FRONTEND_TOPOLOGY_INPUT_MISSING` | 2 | `frontend/src` could not be walked. **A failure, not a skip** — a check that read no files has cleared nothing |
+
+The rules are deliberately narrow, and `deploy/frontend/topology.test.mjs`
+asserts that narrowness as well as the rules themselves: an endpoint rule
+requires a host after `://` (so `features/exports/types.ts`'s defensive
+`lowered.includes('s3://')` is not a finding), the port rule requires a colon
+before the digits (so `90000` is not a port), and a `//` preceded by `:` is
+read as a URL rather than a comment. A gate that fires on the defensive use of a
+string gets disabled, and then it checks nothing.
+
+`FRONTEND_TOPOLOGY_INPUT_MISSING` may **never** be bypassed (§5).
+
 ### `deploy/config-inject.sh` (per-environment config injection, Task 043)
 
 ```

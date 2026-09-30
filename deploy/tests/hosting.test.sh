@@ -109,6 +109,13 @@ readonly HEADER_MATRIX=(
   '/projects/prj_01HZYABCDEFG/workspace|200|Cache-Control|no-cache'
   # `/api/` is a different origin's job.
   '/api/v1/projects|404|Cache-Control|no-store'
+  # Task 043A. The health endpoint the liveness probe, the readiness probe and the
+  # image HEALTHCHECK all request. `no-store` because a cached health response is a
+  # 200 that outlives the thing it reported. Without an exact-match block this is
+  # answered by the SPA fallback with the document and a 200 - so this row is the
+  # difference between "the probes measure something" and "the probes always pass".
+  '/healthz|200|Cache-Control|no-store'
+  '/healthz|200|X-Content-Type-Options|nosniff'
 )
 
 # Asserted on EVERY response, whatever the path. A header that is only present on
@@ -162,13 +169,27 @@ status_of() { # file
 PROBE_STATUS=''
 PROBE_VALUE=''
 PROBE_PREFIX=''
-probe() { # base path header
-  curl --silent --max-time 10 \
-    --output "$PROBE_BODY_FILE" --dump-header "$PROBE_HEADERS_FILE" \
-    "$1$2" >/dev/null 2>&1 || true
+probe() { # base path header [want-body]
+  # `want-body` defaults to yes. Pass `no` for a response whose BODY is binary or
+  # huge: reading a precompressed `.gz` into a shell variable drops its null bytes
+  # and bash prints `warning: command substitution: ignored null byte in input`
+  # mid-gate, which is noise in the one output an operator reads during an
+  # incident. It is also silently wrong - PROBE_PREFIX ends up a mangled prefix,
+  # so the `<!doctype html` guard would be reading something other than what was
+  # served. Not fetching the body is also a third less traffic.
+  local want_body="${4:-yes}"
+  if [ "$want_body" = "no" ]; then
+    curl --silent --max-time 10 --output /dev/null --dump-header "$PROBE_HEADERS_FILE" \
+      "$1$2" >/dev/null 2>&1 || true
+    PROBE_PREFIX=''
+  else
+    curl --silent --max-time 10 \
+      --output "$PROBE_BODY_FILE" --dump-header "$PROBE_HEADERS_FILE" \
+      "$1$2" >/dev/null 2>&1 || true
+    PROBE_PREFIX="$(head -c 80 "$PROBE_BODY_FILE" 2>/dev/null | tr '\n' ' ')"
+  fi
   PROBE_STATUS="$(status_of "$PROBE_HEADERS_FILE")"
   PROBE_VALUE="$(header_value "$PROBE_HEADERS_FILE" "$3")"
-  PROBE_PREFIX="$(head -c 80 "$PROBE_BODY_FILE" 2>/dev/null | tr '\n' ' ')"
 }
 
 # Fetch with an explicit Accept-Encoding and report the Content-Encoding the
@@ -509,6 +530,41 @@ run_docker_tier() {
       bad "a hashed asset is not gzip-encoded (Content-Encoding: '${asset_encoding:-none}') despite Accept-Encoding: gzip"
       tier_failures=$((tier_failures + 1))
     fi
+
+    # --- the precompressed siblings actually exist (Task 043A) -----------------
+    # `gzip_static on;` is a no-op unless the build wrote a `.gz` next to the
+    # original, and a `.gz` in the image with no `gzip_static` is dead weight. So
+    # the pair is checked together, from the RUNNING CONTAINER, which is the only
+    # authority on what it contains.
+    #
+    # `.br` is asserted for the edge rather than over HTTP: the origin image has no
+    # brotli module, so nothing here can ever serve it. Its presence is still
+    # load-bearing - a CDN configured for Brotli serves these instead of
+    # compressing on the miss path - and an image missing them is an edge
+    # silently re-compressing every asset.
+    for suffix in gz br; do
+      if docker exec "$CONTAINER_NAME" sh -c "test -f '/usr/share/nginx/html/assets/$hashed_asset.$suffix'" 2>/dev/null; then
+        ok "the image ships a precompressed .$suffix sibling for $hashed_asset"
+      else
+        bad "the image ships no .$suffix sibling for $hashed_asset."
+        bad "  Dockerfile.frontend precompresses every asset over 4 KiB in the dist stage. Without the"
+        bad "  siblings, gzip_static on; does nothing and a Brotli-configured edge re-compresses on every"
+        bad "  miss instead of serving a file that already exists."
+        tier_failures=$((tier_failures + 1))
+      fi
+    done
+
+    # And the sibling carries the immutable class, not the `location /` one. It
+    # lives under /assets/, so `^~ /assets/` matches it and the assertion is that
+    # the prefix modifier is doing its job for a file the class never named.
+    probe "$base" "/assets/$hashed_asset.gz" "Cache-Control" "no"
+    if printf '%s' "$PROBE_VALUE" | grep -qF -- 'immutable'; then
+      ok "a precompressed sibling inherits the immutable class, not the catch-all's"
+    else
+      bad "a precompressed sibling has Cache-Control '$PROBE_VALUE'; a mutable header on a precompressed"
+      bad "  asset means every edge revalidates bytes that cannot change."
+      tier_failures=$((tier_failures + 1))
+    fi
   else
     bad "the running container serves no JavaScript under /usr/share/nginx/html/assets. A Vite build"
     bad "  always emits the entry chunk there, so an empty directory means the build output is not what"
@@ -517,11 +573,13 @@ run_docker_tier() {
   fi
 
   # --- the runtime version document -------------------------------------------
-  # `/version.json` is written into the build output by deploy/config-inject.sh,
-  # so its presence depends on whether the image was built with an injection. A
-  # missing one is reported, not failed: the local build path legitimately has
-  # none, and the release build's assertion is `config-inject.sh` failing rather
-  # than this.
+  # `deploy/config-inject.sh` stages it at `frontend/version.json` and
+  # `Dockerfile.frontend` copies it into `dist/` AFTER `npm run build` - the
+  # ordering is load-bearing, because `vite build` empties `outDir` and a document
+  # written into `dist/` before the build is deleted by it. So an image built with
+  # the injector HAS one and an image built without it does not, and a bare `404`
+  # is the right answer for the second case: a build that predates the injector
+  # must not be answered with HTML the client will try to parse as JSON.
   probe "$base" "/version.json" "Cache-Control"
   if [ "$PROBE_STATUS" = "200" ]; then
     if printf '%s' "$PROBE_VALUE" | grep -qF -- 'no-cache'; then
@@ -530,10 +588,32 @@ run_docker_tier() {
       bad "/version.json has Cache-Control '$PROBE_VALUE'; a cached version document answers yesterday's question"
       tier_failures=$((tier_failures + 1))
     fi
+    # The hosting contract names {version, commit, builtAt}. A document missing
+    # them is one this client cannot parse - it reports UNKNOWN and shows no
+    # banner, which is the correct direction, but it means the skew check is not
+    # working and nobody would be told.
+    #
+    # The WHOLE body is fetched, not the 80-byte prefix `probe` captures: the
+    # document puts `version` and `commit` near the top and `builtAt` at the
+    # bottom, and a prefix assertion would report a field the document actually
+    # has as missing. It is JSON, so it is safe to read into a variable - unlike a
+    # precompressed asset, which is why that one uses `want-body=no`.
+    local version_body
+    version_body="$(curl --silent --max-time 10 "$base/version.json" 2>/dev/null | tr -d '\r\n' || true)"
+    local missing_fields=0
+    for field in version commit builtAt; do
+      if ! printf '%s' "$version_body" | grep -qF -- "\"$field\""; then
+        bad "/version.json has no \"$field\" field; the client's parseRuntimeVersion requires it, so the"
+        bad "  version-skew check silently degrades to UNKNOWN on every deploy."
+        missing_fields=$((missing_fields + 1))
+      fi
+    done
+    if [ "$missing_fields" -eq 0 ]; then
+      ok "/version.json carries the {version, commit, builtAt} names the hosting contract declares"
+    else
+      tier_failures=$((tier_failures + missing_fields))
+    fi
   elif [ "$PROBE_STATUS" = "404" ]; then
-    # A 404 and not the HTML document is the correct refusal: a build that
-    # predates config-inject.sh must not be answered with HTML the client will
-    # try to parse as JSON.
     if printf '%s' "$PROBE_PREFIX" | grep -qi '<!doctype html'; then
       bad "/version.json is a 404 but served the HTML document. The client parses it as JSON and the"
       bad "  resulting SyntaxError names the frontend rather than the CDN."

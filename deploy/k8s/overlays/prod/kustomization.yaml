@@ -22,8 +22,14 @@ resources:
   - ../../pdb.yaml
   - ../../migration-job.yaml
   - ../../keda-scalers.yaml
+  # Task 043A: the static origin, its TLS edge and its BUILD INPUTS.
+  - ../../frontend/deployment.yaml
+  - ../../frontend/service.yaml
+  - ../../frontend/ingress.yaml
+  - ../../frontend/configmap.yaml
 images:
   - {name: ghcr.io/CHANGE_ME/dubbing-api, newTag: v1.0.0}
+  - {name: ghcr.io/CHANGE_ME/dubbing-frontend, newTag: v1.0.0}
   - {name: ghcr.io/CHANGE_ME/dubbing-worker-control, newTag: v1.0.0}
   - {name: ghcr.io/CHANGE_ME/dubbing-worker-media-preparation, newTag: v1.0.0}
   - {name: ghcr.io/CHANGE_ME/dubbing-worker-media-render, newTag: v1.0.0}
@@ -39,5 +45,7 @@ replicas:
   - {name: worker-ai, count: 3}
   - {name: worker-export, count: 2}
   - {name: worker-maintenance, count: 1}
+  - {name: frontend, count: 2}
 patches:
   - path: configmap-patch.yaml
+  - path: frontend-configmap-patch.yaml

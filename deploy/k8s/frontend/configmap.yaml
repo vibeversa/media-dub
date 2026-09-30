@@ -1,0 +1,89 @@
+# The frontend's build configuration, as data (Task 043A, instruction 2).
+#
+# WHAT THIS IS, PRECISELY
+# -----------------------
+# The per-environment build INPUTS for `Dockerfile.frontend`, recorded in one
+# reviewable place. It is read by the release pipeline BEFORE the image is built,
+# and it is rendered into `frontend/.env.production` by
+# `deploy/config-inject.sh` - which is the file Vite actually consumes.
+#
+# WHAT THIS IS NOT
+# ----------------
+# It is NOT mounted into the frontend pods, and `deployment.yaml` says so
+# explicitly. `VITE_*` values are inlined into the JavaScript by Vite at BUILD
+# time, so a ConfigMap applied after the build cannot change one byte of the
+# bundle a browser downloads. A ConfigMap presented as runtime configuration is
+# the most expensive kind of no-op: an operator changes it, observes no effect,
+# and concludes the deployment is broken.
+#
+# THE BUILD-ARG vs RUNTIME-CONFIG DECISION (Task 043A asks for it recorded)
+# ------------------------------------------------------------------------
+# Decision: BUILD-TIME (build-arg), and it is forced, not preferred.
+#
+#   * Vite inlines `import.meta.env.VITE_*` into the bundle at build time. There
+#     is no runtime indirection to exploit, so a "runtime config" for these keys
+#     can only be implemented by fetching a JSON document at boot - which makes
+#     the first paint depend on a second origin, and which is a different
+#     architecture (and a different CSP) rather than a configuration option.
+#   * The consequence is accepted deliberately: one image per environment. That
+#     is why the image is versioned and signed like the backend ones (R5). An
+#     `index.html` baked with staging's API base URL is a different product, not
+#     a different build of the same one.
+#   * The alternative this repository does NOT take is baking ONE image and
+#     letting the CDN rewrite a placeholder in index.html. It is popular and it
+#     is a cache-invalidation problem invented on purpose: the rewritten document
+#     is a different body under the same URL, which every cache in the path
+#     stores by URL.
+#
+# NO SECRETS, AND WHY THAT IS ENFORCED RATHER THAN PROMISED
+# ---------------------------------------------------------
+# Every value in this ConfigMap is inlined into a PUBLIC bundle. A Sentry DSN is
+# included deliberately: it is a client key with write-only scope and is designed
+# to be readable by anyone who can load the page, which is different in kind from
+# a signing key or a connection string. Anything that grants authority to read or
+# write server-side data belongs in `deploy/k8s/secrets.yaml` (an ExternalSecret),
+# never here.
+#
+# Enforced, not promised: `deploy/frontend/hosting-config.test.mjs` asserts that
+# every key in this file is on `DEPLOY_CONFIG_ALLOWLIST`, that no value matches any
+# secret shape, and that no value is left at a CHANGE_ME placeholder that looks
+# like a credential. `scripts/vite-env-audit.sh` re-checks the rendered
+# `frontend/.env.production` after this file has been turned into it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-build-config
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: static
+  annotations:
+    task-043a: "build-time inputs for Dockerfile.frontend; not mounted into the pods"
+data:
+  # Where the browser sends its API requests. The ONLY origin the frontend talks
+  # to - `scripts/check-frontend-topology.mjs` fails on any other one.
+  VITE_API_BASE_URL: https://CHANGE_ME-api.dubbing.example.com
+  # Which deployment this bundle is for. Recorded so an operator reading the
+  # ConfigMap off the cluster can tell the environments apart without diffing
+  # two index.html files.
+  VITE_ENVIRONMENT: CHANGE_ME-prod
+  # The semantic version shown in the footer, derived from the release tag by
+  # deploy/config-inject.sh so the footer and the release cannot disagree.
+  VITE_APP_VERSION: CHANGE_ME
+  # Product analytics. Off unless somebody has decided it is on AND has a
+  # destination to send it to; a flag with no collector is a flag nobody reads.
+  VITE_ENABLE_ANALYTICS: "false"
+  # The admin diagnostics UI. It is a real feature, so it ships as a flag rather
+  # than as a route removal - but the flag gates PRESENTATION only. The API's own
+  # authorization is what protects the endpoints, and no client-side flag is ever
+  # an access control.
+  VITE_ENABLE_DIAGNOSTICS: "false"
+  # Unfinished surfaces. See docs/rollout.md for the "flag off = feature absent"
+  # contract that makes a flag the right shape for these.
+  VITE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+  # A Sentry DSN: a public, write-only client key. `sentry-disabled` is the
+  # documented inert value - a non-empty, non-URL string that
+  # `frontend/src/config/env.ts` recognises and that no SDK will initialise
+  # against. It is not empty, because an empty injected value passes an
+  # "is it configured?" check and then initialises nothing at runtime.
+  VITE_SENTRY_DSN: sentry-disabled

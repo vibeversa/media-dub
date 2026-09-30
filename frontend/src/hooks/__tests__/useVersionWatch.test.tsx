@@ -18,11 +18,19 @@ import '../../i18n/i18n.js';
 // matchers, so this file does the same rather than introducing the dependency
 // for two assertions.
 
+// The `/version.json` document as the CDN serves it. `version` and `builtAt` are
+// the aliases Task 043A's hosting contract names ({version, commit, builtAt}); they
+// are present here because `parseRuntimeVersion` REQUIRES them, and a fixture
+// without them is a document the running client would report as unreadable -
+// which is UNKNOWN, and every assertion below would then be asserting a banner
+// that is correctly not shown.
 const SERVED = {
   release: 'v1.4.2',
+  version: '1.4.2',
   commit: '9e107d9d372bb6826bd81d3542a419d6',
   openapiVersion: 'v1',
   builtAtUtc: '2026-09-30T10:00:00Z',
+  builtAt: '2026-09-30T10:00:00Z',
 };
 
 type FetchStub = typeof fetch & { mock: { calls: [string | URL | Request, RequestInit | undefined][] } };

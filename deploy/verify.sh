@@ -190,9 +190,12 @@ required = {
     "pdb.yaml": ["PodDisruptionBudget"],
     "migration-job.yaml": ["Job"],
     "keda-scalers.yaml": ["TriggerAuthentication", "ScaledObject"],
-    # Task 043: the static origin behind the CDN. Deployment + ClusterIP
-    # Service, and deliberately NOT behind an Ingress.
-    "static-deployment.yaml": ["Deployment", "Service"],
+    # Task 043A: the static origin, moved out of the flat layout into its own
+    # directory alongside the TLS ingress and the build-config ConfigMap.
+    "frontend/deployment.yaml": ["Deployment"],
+    "frontend/service.yaml": ["Service"],
+    "frontend/ingress.yaml": ["Ingress"],
+    "frontend/configmap.yaml": ["ConfigMap"],
 }
 failures = []
 for fname, kinds in required.items():
@@ -291,30 +294,179 @@ if "try_files" not in nginx_text:
     sys.exit(1)
 print("frontend delivery contract OK: Dockerfile.frontend present, index.html uncached, SPA fallback present")
 
-# Task 043 (R4): the static origin must not be reachable except through the CDN.
-# A second public route to the document bypasses every header the CDN's
-# viewer-request function adds, including the HTTPS redirect - and the origin
-# cannot perform that redirect for a hostname it does not terminate.
-static = list(yaml.safe_load_all(open(os.path.join(base, "static-deployment.yaml"), encoding="utf-8")))
+# Task 043 (R4) / Task 043A: the static origin must not be reachable except through
+# the edge. A second public route to the document serves the identical bytes over
+# plain HTTP with no edge policy - no HTTPS redirect, no HSTS, no security headers -
+# and that is the failure the Service type exists to prevent.
+#
+# Task 043A changed the arrangement, so the assertion changed with it. There was no
+# Ingress at all; there is now a TLS-terminating one, and the property that matters
+# is no longer "there is no Ingress" but "the Service is ClusterIP and the only
+# Ingress selecting it is the one in frontend/ingress.yaml, which binds the ORIGIN
+# hostname rather than the public one". Asserting the old wording would have made
+# the gate pass on a manifest that had been opened to the world.
+frontend_dir = os.path.join(base, "frontend")
+static = list(yaml.safe_load_all(open(os.path.join(frontend_dir, "deployment.yaml"), encoding="utf-8")))
 sdep = next(d for d in static if d.get("kind") == "Deployment")
-ssvc = next(d for d in static if d.get("kind") == "Service")
+ssvc = list(yaml.safe_load_all(open(os.path.join(frontend_dir, "service.yaml"), encoding="utf-8")))
+ssvc = next(d for d in ssvc if d.get("kind") == "Service")
 assert ssvc["spec"]["type"] == "ClusterIP", (
     f"the static Service is {ssvc['spec']['type']}; a NodePort or LoadBalancer is a second public route "
-    "to the document that bypasses the CDN")
+    "to the document that bypasses the CDN and the TLS edge")
 assert ssvc["spec"]["ports"][0]["targetPort"] == 8080, ssvc["spec"]["ports"]
 assert sdep["spec"]["template"]["spec"]["containers"][0]["ports"][0]["containerPort"] == 8080, (
     "the static origin must serve on 8080; the unprivileged nginx image cannot bind 80")
-print("static origin contract OK: ClusterIP, no Ingress, port 8080")
+assert sdep["spec"]["replicas"] >= 2, sdep["spec"]["replicas"]
+sc = sdep["spec"]["template"]["spec"]["containers"][0]
+assert sc["livenessProbe"]["httpGet"]["path"] == "/healthz", sc["livenessProbe"]
+assert sc["readinessProbe"]["httpGet"]["path"] == "/healthz", sc["readinessProbe"]
+# The ConfigMap is a BUILD INPUT record. A pod that reads it is a pod that believes
+# VITE_* values are runtime, which they are not - and an operator who changes it
+# would see nothing happen and conclude the deployment is broken.
+assert "env" not in sc, "the static container must not declare runtime env vars"
+assert "envFrom" not in sc, "the static container must not declare envFrom"
+
+ingresses = []
+for root, _dirs, files in os.walk(base):
+    # Overlay files are excluded, and deliberately: an overlay's
+    # `frontend-ingress-patch.yaml` is a TRANSFORMATION of the same Ingress, not a
+    # second object, and counting it as one would make the correct per-environment
+    # host/issuer look like a second public route. Only base manifests are objects
+    # in their own right.
+    if os.sep + "overlays" + os.sep in os.path.join(root, "") + os.sep:
+        continue
+    for fname in sorted(files):
+        if not fname.endswith((".yaml", ".yml")):
+            continue
+        for doc in yaml.safe_load_all(open(os.path.join(root, fname), encoding="utf-8")):
+            if isinstance(doc, dict) and doc.get("kind") == "Ingress":
+                ingresses.append((os.path.relpath(os.path.join(root, fname), base), doc))
+selecting_frontend = [
+    name for name, doc in ingresses
+    for rule in (doc.get("spec", {}).get("rules") or [])
+    for path in ((rule.get("http") or {}).get("paths") or [])
+    if ((path.get("backend") or {}).get("service") or {}).get("name") == "frontend"
+]
+assert selecting_frontend == ["frontend" + os.sep + "ingress.yaml"], (
+    f"these base Ingress rules route to the frontend Service: {selecting_frontend}. Exactly one may exist "
+    "(frontend/ingress.yaml); a second is a second public route to the document.")
+fe_ing = next(d for name, d in ingresses if name.endswith("ingress.yaml") and "frontend" in name)
+assert fe_ing["spec"].get("tls"), "the frontend ingress terminates no TLS, so plain HTTP is served"
+ann = fe_ing["metadata"].get("annotations") or {}
+assert ann.get("nginx.ingress.kubernetes.io/force-ssl-redirect") == "true", (
+    "the frontend ingress does not force an HTTPS redirect; a user on http:// receives a cleartext "
+    "response body before being redirected, and that response was already observable")
+for banned in ("configuration-snippet", "server-snippet"):
+    assert not any(banned in key for key in ann), (
+        f"the frontend ingress uses a {banned} annotation, which ingress-nginx disables by default "
+        "(allow-snippet-annotations: false since 1.9) - the header set would silently stop applying")
+print("static origin contract OK: ClusterIP, one TLS ingress, 8080, /healthz probes, no runtime env")
+
+# Task 043A: overlay integrity. `kustomize build` cannot be relied on to tell us
+# this, for two reasons that are both pre-existing and both silent:
+#
+#   * the `..` resources entries need `--load-restrictor=LoadRestrictionsNone`,
+#     and the default restrictor rejects them before reading anything;
+#   * the overlay patches do not match their targets, because the base manifests
+#     hard-code `namespace: dubbing-prod` while the kustomizations set the
+#     environment namespace and the patches declare none.
+#
+# So the check that CAN be made is the one that does not need kustomize: every
+# path a kustomization references exists, every `images:` name is built by a
+# Dockerfile in this repository, and every `replicas:` entry names a Deployment
+# that exists. A `resources:` entry pointing at a file nobody added is an overlay
+# that silently deploys less than it appears to, and it is invisible in a build
+# that already fails for another reason.
+import re as _re
+
+# The image references that actually exist, read from the base manifests rather
+# than from the Dockerfiles: no Dockerfile in this repository declares an
+# `image:` line (CI stamps the tag), so the manifests are the authority on what
+# reference a kustomize `images:` transformer can match.
+#
+# That matters because a kustomize `images:` entry that matches NOTHING is a
+# silent no-op: the overlay still applies, the promotion still reports success, and
+# the cluster pulls whatever the manifest said - `ghcr.io/CHANGE_ME/...:latest`.
+base_image_refs = set()
+for root, _dirs, files in os.walk(base):
+    for fname in files:
+        if not fname.endswith((".yaml", ".yml")):
+            continue
+        for doc in yaml.safe_load_all(open(os.path.join(root, fname), encoding="utf-8")):
+            if not isinstance(doc, dict) or doc.get("kind") not in ("Deployment", "StatefulSet", "Job"):
+                continue
+            for container in (((doc.get("spec") or {}).get("template") or {}).get("spec") or {}).get("containers") or []:
+                if container.get("image"):
+                    base_image_refs.add(container["image"])
+assert base_image_refs, "no base manifest declares a container image, so the image check below would be vacuous"
+
+def _image_name(ref):
+    # kustomize's `images:` transformer matches on the NAME (registry + repository)
+    # and sets the tag separately, so `ghcr.io/x/y` in the kustomization and
+    # `ghcr.io/x/y:latest` in the manifest are the same entry. Strip the tag, and
+    # only when the colon is after the last slash so a registry with a port
+    # (`registry.internal:5000/x/y`) is not cut in half.
+    slash = ref.rfind("/")
+    colon = ref.rfind(":")
+    return ref[:colon] if colon > slash else ref
+
+base_image_names = {_image_name(ref) for ref in base_image_refs}
+base_names = set()
+for root, _dirs, files in os.walk(base):
+    for fname in files:
+        if not fname.endswith((".yaml", ".yml")):
+            continue
+        for doc in yaml.safe_load_all(open(os.path.join(root, fname), encoding="utf-8")):
+            if isinstance(doc, dict) and doc.get("kind") in ("Deployment", "StatefulSet"):
+                base_names.add((doc.get("metadata") or {}).get("name"))
+
+for overlay in ("staging", "prod"):
+    kpath = os.path.join(base, "overlays", overlay, "kustomization.yaml")
+    if not os.path.isfile(kpath):
+        raise AssertionError("deploy/k8s/overlays/" + overlay + "/kustomization.yaml is missing")
+    kdoc = yaml.safe_load(open(kpath, encoding="utf-8"))
+    here = os.path.join(base, "overlays", overlay)
+    for entry in kdoc.get("resources") or []:
+        target = os.path.normpath(os.path.join(here, entry))
+        assert os.path.isfile(target), (
+            "overlays/" + overlay + " lists a resource that does not exist: " + entry +
+            ". An overlay that references a missing resource deploys less than it appears to, and a "
+            "kustomize build that already fails for another reason will not tell you about this one.")
+    for patch in kdoc.get("patches") or []:
+        target = os.path.normpath(os.path.join(here, patch.get("path", "")))
+        assert os.path.isfile(target), (
+            "overlays/" + overlay + " lists a patch that does not exist: " + str(patch.get("path")))
+    for entry in kdoc.get("images") or []:
+        name = entry.get("name", "")
+        assert name in base_image_names, (
+            "overlays/" + overlay + " pins the image '" + name + "', which no base manifest declares. A "
+            "kustomize `images:` entry that matches nothing is a silent no-op: the overlay still applies, the "
+            "promotion still reports success, and the cluster pulls whatever the manifest said - "
+            + ", ".join(sorted(base_image_names)) + ".")
+    for entry in kdoc.get("replicas") or []:
+        assert entry.get("name") in base_names, (
+            "overlays/" + overlay + " sets replicas for '" + str(entry.get("name")) + "', which is not a "
+            "Deployment in deploy/k8s. The transformer is a no-op and the intended count is never applied.")
+print("overlay contract OK: 2 overlays, every resource/patch path exists, every pinned image and replica "
+      "target resolves to a base manifest")
 
 # Task 043 (R4): the network topology. The default-deny is what makes every
 # allow meaningful, and its absence is the single change that would open the
 # data stores to the whole namespace. Asserted here as well as in
 # deploy/tests/hosting.test.sh because this is the release gate and that one is
 # the hosting gate; a manifest that fails one should fail the other.
+#
+# `os.walk`, not `os.listdir` (Task 043A). 043 recorded the flat listing as a
+# gotcha to pass on; there is now a subdirectory under deploy/k8s, so the
+# assumption is not a caveat any more - it is a live way for a policy placed
+# beside its workload to be silently skipped by the checker that exists to read
+# it. The same change is made in deploy/tests/hosting-topology.py.
 policies = []
-for name in sorted(os.listdir(base)):
-    if name.endswith((".yaml", ".yml")):
-        for doc in yaml.safe_load_all(open(os.path.join(base, name), encoding="utf-8")):
+for root, _dirs, files in os.walk(base):
+    for name in sorted(files):
+        if not name.endswith((".yaml", ".yml")):
+            continue
+        for doc in yaml.safe_load_all(open(os.path.join(root, name), encoding="utf-8")):
             if isinstance(doc, dict) and doc.get("kind") == "NetworkPolicy":
                 policies.append((name, doc))
 assert policies, "no NetworkPolicy in deploy/k8s at all"
@@ -392,6 +544,24 @@ PY
 
   echo ""
   echo "== kustomize overlays =="
+  # `--load-restrictor=LoadRestrictionsNone` (Task 043A). kustomize's default
+  # `LoadRestrictionsRootOnly` refuses a `resources:` entry that leaves the
+  # kustomization's own directory with `..`, and EVERY entry in these overlays is
+  # exactly that - so the overlays have never been buildable as written, on any
+  # platform. The restriction is a supply-chain control: it stops a base from
+  # reaching outside its own tree. It is disabled here because the base IS the
+  # parent directory by design, and the structural tier now asserts the
+  # parent-relative integrity the restriction would otherwise have provided: every
+  # referenced path must exist, and every `images:` name must be built by a
+  # Dockerfile in this repository.
+  #
+  # The remaining failure on this tier is PRE-EXISTING and is not this flag: the
+  # overlay patches do not match their targets, because deploy/k8s/*.yaml hard-codes
+  # `namespace: dubbing-prod` while each kustomization sets `namespace:` to the
+  # environment and each patch declares none - so the target id is
+  # `dubbing-config.[noNs]` and the resource is `dubbing-config.dubbing-prod` at the
+  # point patches are applied. See the 043A report, "Open items inherited".
+  KUSTOMIZE_ARGS="--load-restrictor=LoadRestrictionsNone"
   # kustomize resolves overlay `resources:` relative to the overlay directory and
   # refuses a parent path once the host normalises separators - which is every
   # Windows host. The overlays are built in CI on ubuntu; a developer on Windows
@@ -400,16 +570,18 @@ PY
   if [ "$(platform)" = "windows" ]; then
     skip "kustomize build staging + prod" "kustomize overlay builds are not supported on a Windows host; built in CI on ubuntu-latest"
   elif have kubectl; then
-    if kubectl kustomize "$K8S/overlays/staging" >/dev/null 2>&1 && kubectl kustomize "$K8S/overlays/prod" >/dev/null 2>&1; then
+    if kubectl kustomize $KUSTOMIZE_ARGS "$K8S/overlays/staging" >/dev/null 2>&1 \
+      && kubectl kustomize $KUSTOMIZE_ARGS "$K8S/overlays/prod" >/dev/null 2>&1; then
       ok "kustomize build staging + prod"
     else
-      bad "kustomize build"
+      bad "kustomize build staging + prod (see the load-restrictor and patch-target notes above)"
     fi
   elif have kustomize; then
-    if kustomize build "$K8S/overlays/staging" >/dev/null 2>&1 && kustomize build "$K8S/overlays/prod" >/dev/null 2>&1; then
+    if kustomize build $KUSTOMIZE_ARGS "$K8S/overlays/staging" >/dev/null 2>&1 \
+      && kustomize build $KUSTOMIZE_ARGS "$K8S/overlays/prod" >/dev/null 2>&1; then
       ok "kustomize build staging + prod"
     else
-      bad "kustomize build"
+      bad "kustomize build staging + prod (see the load-restrictor and patch-target notes above)"
     fi
   else
     skip "kustomize build" "neither kubectl nor kustomize installed"

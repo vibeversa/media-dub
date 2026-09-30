@@ -1,0 +1,26 @@
+# Staging build inputs for the frontend image (Task 043A).
+#
+# A ConfigMap, but NOT a runtime one. `VITE_*` values are inlined into the bundle
+# by Vite at BUILD time, so this file is read by the release pipeline BEFORE the
+# image is built and rendered into `frontend/.env.production` by
+# `deploy/config-inject.sh`. It is deliberately not mounted into the pods - see
+# the header in deploy/k8s/frontend/configmap.yaml for why, and for the
+# build-arg-vs-runtime decision this records.
+#
+# Staging points at the MOCK providers, which is the whole point of the
+# environment: a staging build must never be able to reach a production API,
+# because a build that CAN is a build whose base URL somebody will get wrong.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-build-config
+data:
+  VITE_API_BASE_URL: https://api.staging.dubbing.example.com
+  VITE_ENVIRONMENT: staging
+  VITE_APP_VERSION: CHANGE_ME-staging
+  VITE_ENABLE_ANALYTICS: "false"
+  VITE_ENABLE_DIAGNOSTICS: "false"
+  VITE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+  # The inert sentinel, not an empty string: an empty injected value passes an
+  # "is it configured?" check and then initialises nothing at runtime.
+  VITE_SENTRY_DSN: sentry-disabled

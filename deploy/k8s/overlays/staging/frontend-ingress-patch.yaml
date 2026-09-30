@@ -1,0 +1,29 @@
+# Staging frontend edge: staging host + the Let's Encrypt STAGING issuer.
+#
+# `letsencrypt-staging` issues certificates from an untrusted root and hits hard
+# rate limits. That is deliberate for staging and it is the reason the base
+# manifest names neither host nor issuer: a staging environment that silently
+# obtained a real certificate would burn the production rate limit on a preview
+# deploy, and the failure would show up as a production outage hours later.
+#
+# As in the base manifest, the host here is the ORIGIN hostname the CDN fetches -
+# the public hostname belongs to the CDN.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/upstream-vhost: CHANGE_ME-frontend-origin.staging.dubbing.example.com
+spec:
+  tls:
+    - hosts: [CHANGE_ME-frontend-origin.staging.dubbing.example.com]
+      secretName: CHANGE_ME-frontend-tls-staging
+  rules:
+    - host: CHANGE_ME-frontend-origin.staging.dubbing.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: frontend, port: {number: 80}}

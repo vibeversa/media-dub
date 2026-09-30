@@ -184,7 +184,14 @@ value_problem() { # value -> prints a label, or nothing
   if printf '%s' "$value" | grep -Eq '^eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$'; then
     echo "a JWT"; return
   fi
-  if printf '%s' "$value" | grep -Eqi '(Host|Server|Data Source)[[:space:]]*=[^;]+;.*(Password|Pwd)[[:space:]]*='; then
+  # `[^"'\'']*` rather than `[^;]*` (Task 043A): a real connection string has more
+  # than two `;`-separated pairs, so the narrower middle class required the
+  # password to be the SECOND pair and the rule matched only a shape nobody
+  # writes. It went unnoticed because `inline-credential` below also matches
+  # `;Password=`, and every assertion was on the REASON rather than on which rule
+  # produced it. All three copies of this list are changed together, and
+  # `frontend/src/config/__tests__/env.test.ts` now asserts the rule ID per shape.
+  if printf '%s' "$value" | grep -Eqi '(Host|Server|Data Source)[[:space:]]*=[^;[:space:]"'"'"']+;[^"'"'"']*(Password|Pwd)[[:space:]]*='; then
     echo "a connection string with a password"; return
   fi
   if printf '%s' "$value" | grep -Eq 'amqps?://[^/:@]+:[^/@]+@'; then

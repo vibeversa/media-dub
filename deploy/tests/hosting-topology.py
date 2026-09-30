@@ -45,18 +45,26 @@ if not os.path.isdir(base):
 
 problems = []
 policies = []
-for name in sorted(os.listdir(base)):
-    if not name.endswith(".yaml") and not name.endswith(".yml"):
-        continue
-    with open(os.path.join(base, name), encoding="utf-8") as handle:
-        try:
-            documents = list(yaml.safe_load_all(handle))
-        except yaml.YAMLError as exc:
-            sys.stderr.write(name + " is not valid YAML: " + str(exc) + "\n")
-            sys.exit(2)
-        for doc in documents:
-            if isinstance(doc, dict) and doc.get("kind") == "NetworkPolicy":
-                policies.append((name, doc))
+# `os.walk`, not `os.listdir` (Task 043A). Task 043 recorded the flat listing as a
+# gotcha to hand on; there is now a `deploy/k8s/frontend/` subdirectory, so the
+# assumption is no longer a caveat but a live way for a policy placed beside its
+# workload to be skipped by the checker that exists to read it. Silently. The
+# verdict is in the printed lines, and a policy that was never read produces no
+# line at all.
+for root, _dirs, files in os.walk(base):
+    for name in sorted(files):
+        if not name.endswith(".yaml") and not name.endswith(".yml"):
+            continue
+        path = os.path.join(root, name)
+        with open(path, encoding="utf-8") as handle:
+            try:
+                documents = list(yaml.safe_load_all(handle))
+            except yaml.YAMLError as exc:
+                sys.stderr.write(path + " is not valid YAML: " + str(exc) + "\n")
+                sys.exit(2)
+            for doc in documents:
+                if isinstance(doc, dict) and doc.get("kind") == "NetworkPolicy":
+                    policies.append((os.path.relpath(path, base).replace(os.sep, "/"), doc))
 
 if not policies:
     print("FAIL: no NetworkPolicy in deploy/k8s at all")
@@ -201,19 +209,30 @@ else:
                 "the database it is migrating; a rule that opens 5432 to something else is not that."
             )
 
-# 5. The static origin is reachable only from the CDN, and the CDN only.
+# 5. The static origin is reachable only through the edge, and only by a peer that
+#    names itself. Task 043 allowed exactly one namespace (the CDN's origin-facing
+#    proxy). Task 043A added the TLS-terminating ingress, so there are two hops -
+#    and the property that matters is that BOTH are named and NEITHER is a bare
+#    selector, rather than "there is no ingress at all".
 static_policies = [(n, d) for n, d in policies if selects(d, "app.kubernetes.io/component", "static")]
 if not static_policies:
     problems.append(
-        "no NetworkPolicy selects the static component. The static origin is behind a CDN, so without a "
-        "policy it accepts traffic from every pod in the namespace."
+        "no NetworkPolicy selects the static component. The static origin is behind a CDN and a TLS "
+        "ingress, so without a policy it accepts traffic from every pod in the namespace."
     )
+ALLOWED_STATIC_PEERS = {"cdn-edge", "ingress-nginx"}
 for name, doc in static_policies:
     spec = doc.get("spec") or {}
-    for rule in spec.get("ingress") or []:
+    ingress_rules = spec.get("ingress") or []
+    if not ingress_rules:
+        problems.append(
+            name + ": the static origin's policy declares no ingress rule at all. The default-deny is "
+            "what protects it, and the default-deny is the absence of rules, not a rule."
+        )
+    for rule in ingress_rules:
         if not rule.get("from"):
             problems.append(
-                f"{name}: a static ingress rule has no `from`, which admits every source. The static "
+                name + ": a static ingress rule has no `from`, which admits every source. The static "
                 "origin is the document everyone loads; an open rule is a direct route to it that "
                 "bypasses the CDN's HTTPS redirect and security headers."
             )
@@ -222,19 +241,39 @@ for name, doc in static_policies:
             # `{}`, a bare `podSelector: {}`, or a podSelector with no labels all
             # match every pod in the namespace, which for the static origin means
             # every workload deployed alongside it.
+            namespace = ((peer.get("namespaceSelector") or {}).get("matchLabels") or {}).get("name")
+            pod_labels = (peer.get("podSelector") or {}).get("matchLabels")
             has_namespace = bool((peer.get("namespaceSelector") or {}).get("matchLabels"))
-            has_pod = bool(((peer.get("podSelector") or {}).get("matchLabels")))
+            has_pod = bool(pod_labels)
             if not has_namespace and not has_pod:
                 problems.append(
-                    f"{name}: a static ingress peer is unconstrained: {peer}. It must name a "
-                    "namespaceSelector (the CDN edge) so the origin accepts only CDN fetches."
+                    name + ": a static ingress peer is unconstrained: " + str(peer) + ". It must name a "
+                    "namespaceSelector (the CDN edge or the TLS ingress) so the origin accepts only "
+                    "edge fetches."
                 )
-    # And the CDN must be reachable on the port the manifest actually serves.
+            if has_pod and not has_namespace:
+                problems.append(
+                    name + ": a static ingress peer uses a bare podSelector (" + str(pod_labels) + "). A "
+                    "podSelector with no namespaceSelector matches pods in THIS namespace, so the origin "
+                    "would accept traffic from the API, the workers, and anything an attacker can schedule."
+                )
+            if namespace is not None and namespace not in ALLOWED_STATIC_PEERS:
+                problems.append(
+                    name + ": the static origin accepts traffic from the '" + str(namespace) + "' namespace. "
+                    "Only " + ", ".join(sorted(ALLOWED_STATIC_PEERS)) + " are hops in front of the document; "
+                    "any other peer is a route to it that carries no edge policy."
+                )
+            if "ipBlock" in peer:
+                problems.append(
+                    name + ": a static ingress peer is an ipBlock: " + str(peer["ipBlock"]) + ". An address "
+                    "is not a peer: it admits traffic from outside the cluster with nothing naming who it is."
+                )
+    # And the edge must be reachable on the port the manifest actually serves.
     ports = sorted({p.get("port") for rule in (spec.get("ingress") or []) for p in (rule.get("ports") or [])})
     if ports and 8080 not in ports:
         problems.append(
-            f"{name}: the static origin's ingress permits ports {ports}; the image serves on 8080 "
-            "(deploy/k8s/static-deployment.yaml, the unprivileged nginx image cannot bind 80)."
+            name + ": the static origin's ingress permits ports " + str(ports) + "; the image serves on 8080 "
+            "(deploy/k8s/frontend/deployment.yaml, the unprivileged nginx image cannot bind 80)."
         )
 
 # 6. Workers accept no ingress at all.

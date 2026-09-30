@@ -163,15 +163,28 @@ spec:
       ports:
         - {protocol: TCP, port: 5432}
 ---
-# The static origin (Task 043, R4).
+# The static origin (Task 043, R4; ingress peer added in Task 043A).
 #
-# Browser -> CDN -> static. The ONLY peer is the CDN's origin-facing proxy
-# namespace. There is deliberately no ingress rule from `ingress-nginx`: the CDN
-# reaches the origin over the provider's private path, and an ingress-nginx peer
-# would be a second public route to the document, bypassing every header the CDN
-# function adds. If the CDN's proxy is not in the `cdn-edge` namespace, this
-# policy denies everything and the symptom is a 503 at the edge - which is the
-# correct direction to fail in.
+# Browser -> CDN -> ingress-nginx (the TLS edge, deploy/k8s/frontend/ingress.yaml)
+#            -> static -> API.
+#
+# The peers are the two hops that are actually in front of the document, and both
+# are `namespaceSelector`s. A bare `podSelector` would match pods in THIS
+# namespace, so a peer written that way admits the API, the workers and anything
+# an attacker can schedule - which for the origin means every workload in the
+# deployment.
+#
+# Task 043 had no `ingress-nginx` peer and reached the origin over the provider's
+# private link. Task 043A requires a TLS-terminating ingress for the frontend
+# host, and the way to satisfy that without opening a second public route is to
+# make the ingress the ORIGIN-side hop rather than an additional one: the Service
+# is still ClusterIP, the ingress answers the CDN's origin hostname rather than
+# the public one, and the CDN remains the only browser-reachable name. Two peers
+# here, not one more public route.
+#
+# If the CDN's proxy is not in the `cdn-edge` namespace and the controller is not
+# in `ingress-nginx`, this policy denies everything and the symptom is a 503 at
+# the edge - which is the correct direction to fail in.
 #
 # Egress: none. A static file server that serves a build has nothing to call.
 apiVersion: networking.k8s.io/v1
@@ -182,7 +195,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: dubbing-platform
   annotations:
-    task-043: "CDN -> static origin only; no egress, no direct-ingress peer"
+    task-043: "CDN -> static origin only; no egress"
+    task-043a: "ingress-nginx added as the TLS-terminating origin-side hop"
 spec:
   podSelector:
     matchLabels: {app.kubernetes.io/component: static}
@@ -190,5 +204,6 @@ spec:
   ingress:
     - from:
         - namespaceSelector: {matchLabels: {name: cdn-edge}}
+        - namespaceSelector: {matchLabels: {name: ingress-nginx}}
       ports:
         - {protocol: TCP, port: 8080}

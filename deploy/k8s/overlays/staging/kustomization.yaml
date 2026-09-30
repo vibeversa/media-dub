@@ -21,9 +21,18 @@ resources:
   - ../../pdb.yaml
   - ../../migration-job.yaml
   - ../../keda-scalers.yaml
+  # Task 043A: the static origin, its TLS edge and its BUILD INPUTS. The
+  # ConfigMap is here rather than only in the base manifest because these are the
+  # values a build is made from, and a build that gets them wrong is a different
+  # product - not a different build of the same one.
+  - ../../frontend/deployment.yaml
+  - ../../frontend/service.yaml
+  - ../../frontend/ingress.yaml
+  - ../../frontend/configmap.yaml
 # CI rewrites tags per build (kustomize edit set image); staging tracks main.
 images:
   - {name: ghcr.io/CHANGE_ME/dubbing-api, newTag: main}
+  - {name: ghcr.io/CHANGE_ME/dubbing-frontend, newTag: main}
   - {name: ghcr.io/CHANGE_ME/dubbing-worker-control, newTag: main}
   - {name: ghcr.io/CHANGE_ME/dubbing-worker-media-preparation, newTag: main}
   - {name: ghcr.io/CHANGE_ME/dubbing-worker-media-render, newTag: main}
@@ -39,7 +48,13 @@ replicas:
   - {name: worker-ai, count: 1}
   - {name: worker-export, count: 1}
   - {name: worker-maintenance, count: 1}
+  # The origin is a file server: two is the smallest number that survives a node
+  # drain without a CDN 5xx, and a third would be capacity for a workload that
+  # cannot be slow.
+  - {name: frontend, count: 2}
 patches:
   - path: configmap-patch.yaml
   - path: ingress-patch.yaml
   - path: pvc-patch.yaml
+  - path: frontend-configmap-patch.yaml
+  - path: frontend-ingress-patch.yaml

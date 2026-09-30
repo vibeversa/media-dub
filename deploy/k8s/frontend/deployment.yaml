@@ -1,4 +1,6 @@
-# Task 043, instruction 1/4: the static origin behind the CDN.
+# The static frontend origin (Task 043A, instruction 2; moved here from
+# deploy/k8s/static-deployment.yaml, which Task 043A supersedes, and split into
+# the four manifests this directory holds).
 #
 # WHY A DEPLOYMENT AND NOT "THE CDN SERVES index.html"
 # -----------------------------------------------------
@@ -7,19 +9,17 @@
 # serves `frontend/dist` through nginx with the cache and header policy in
 # `deploy/nginx/default.conf`.
 #
-# It is NOT exposed through an Ingress, and that is the security property rather
-# than an omission. The only path to these pods is the CDN's origin-facing proxy
-# in the `cdn-edge` namespace (`static-allow` in networkpolicies.yaml). An
-# Ingress would add a second public route to the document, bypassing every header
-# the CDN's viewer-request function adds - including the HTTPS redirect, which
-# the origin cannot perform for a hostname it does not terminate.
+# THE REQUEST PATH
+# ----------------
+#   Browser -> CDN (caches, terminates the public hostname) -> ingress-nginx
+#   (terminates TLS for the origin hostname) -> these pods -> API (separate host)
 #
 # `CHANGE_ME` in the image tag is replaced by the kustomize overlays (see
 # deploy/k8s/overlays/*/kustomization.yaml `images:`), exactly as for the API.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: static
+  name: frontend
   namespace: dubbing-prod
   labels:
     app.kubernetes.io/part-of: dubbing-platform
@@ -34,6 +34,9 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
+      # 0, not 1. The two replicas serve identical bytes from the same image, so
+      # there is no reason to ever have fewer than two - and a rollout that dips
+      # to one is a rollout with a single point of failure inside it.
       maxUnavailable: 0
   selector:
     matchLabels:
@@ -52,26 +55,28 @@ spec:
         runAsUser: 101
         seccompProfile: {type: RuntimeDefault}
       containers:
-        - name: static
+        - name: frontend
           image: ghcr.io/CHANGE_ME/dubbing-frontend:latest
           imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080
-          # The same readiness gate the API uses, and the same reason it is
-          # `live` only: an origin pod that cannot serve a file should be taken
-          # out of the Service, and a probe that depends on a datastore would
-          # restart every origin pod when a database blips. The static origin
-          # has no datastore, so the liveness probe is the whole story.
+          # /healthz, NOT /index.html. The probe's job is "can this process serve
+          # an HTTP response", and asking for the document conflates that with
+          # "does the build output contain an index.html" - so a build that
+          # produced no document is a failing readiness probe that reads as a
+          # broken pod rather than as a broken build. /healthz is a static 200
+          # from the origin config and has no such dependency. The distinction
+          # matters on exactly the morning somebody changes the build.
           livenessProbe:
-            httpGet: {path: /index.html, port: 8080}
+            httpGet: {path: /healthz, port: http}
             periodSeconds: 10
           readinessProbe:
-            httpGet: {path: /index.html, port: 8080}
+            httpGet: {path: /healthz, port: http}
             periodSeconds: 5
             failureThreshold: 3
           resources:
-            # Small on purpose: nginx serving pre-compressed-ish static files is
+            # Small on purpose: nginx serving pre-compressed static files is
             # IO-bound, and the CPU request exists to place the pod on a node
             # that will not be evicted first. 32Mi is the floor the unprivileged
             # image needs for its own buffers.
@@ -83,6 +88,19 @@ spec:
             runAsNonRoot: true
             runAsUser: 101
             capabilities: {drop: [ALL]}
+          # NO envFrom, NO env, NO volume from frontend-build-config.
+          #
+          # `VITE_*` values are inlined into the bundle by Vite at BUILD time, so
+          # setting one in a ConfigMap at runtime cannot change a single byte of
+          # the JavaScript the browser downloads. Mounting it into the pod would
+          # be worse than useless: it would be a ConfigMap that reads like
+          # configuration, is not read by anything, and is changed by operators
+          # who then observe no effect. The ConfigMap
+          # (deploy/k8s/frontend/configmap.yaml) is therefore the *build input*
+          # record consumed by the release pipeline before the image is built -
+          # see deploy/frontend/README.md, "Env injection: build-arg, not
+          # runtime". The only runtime configuration this container has is nginx
+          # reading its own conf.d, and the only file it writes is /tmp.
           volumeMounts:
             # nginx-unprivileged writes its pid, temp files and the access/error
             # log targets under /tmp. With a read-only root that directory must
@@ -92,23 +110,3 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: static
-  namespace: dubbing-prod
-  labels:
-    app.kubernetes.io/part-of: dubbing-platform
-    app.kubernetes.io/component: static
-spec:
-  # ClusterIP, never NodePort or LoadBalancer. This Service is the CDN's origin
-  # and nothing else; a second public address for it would be the route the
-  # network policy above exists to prevent.
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/component: static
-  ports:
-    - name: http
-      port: 80
-      targetPort: 8080

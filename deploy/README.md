@@ -75,10 +75,15 @@ Apply in this order; each step gates the next:
    stays process-only.
 6. Workers: `kubectl apply -f deploy/k8s/workers-*.yaml`, then
    `kubectl -n dubbing-prod rollout status` per deployment.
-7. Static origin: `kubectl apply -f deploy/k8s/static-deployment.yaml`. **Not**
-   behind an Ingress — the CDN is the only path to it, and an Ingress would be a
-   second public route that bypasses the CDN's HTTPS redirect and headers. Point
-   the CDN's origin at the `static` Service.
+7. Frontend origin: `kubectl apply -f deploy/k8s/frontend/`. The `frontend`
+   Service is `ClusterIP` and the only Ingress selecting it is
+   `frontend/ingress.yaml`, which terminates TLS for the **origin** hostname — so
+   the CDN stays the only browser-reachable name and there is no second public
+   route that bypasses its HTTPS redirect and headers. Point the CDN's origin at
+   the ingress. `frontend/configmap.yaml` is a **build input**, not runtime
+   configuration: `VITE_*` values are inlined at build time, so it is rendered
+   into `frontend/.env.production` by `deploy/config-inject.sh` before the image
+   is built and is deliberately not mounted. See `deploy/frontend/README.md`.
 8. Ingress + policies + PDBs:
    `kubectl apply -f deploy/k8s/ingress.yaml -f deploy/k8s/networkpolicies.yaml -f deploy/k8s/pdb.yaml`.
 9. KEDA: `kubectl apply -f deploy/k8s/keda-scalers.yaml`, then

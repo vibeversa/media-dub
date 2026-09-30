@@ -36,10 +36,39 @@ import { getEnv } from '../lib/env.js';
 //   VITE_APP_VERSION     the semantic version shown in the footer.
 //   VITE_SSE_ENABLED     a boolean switch, already required by `lib/env.ts`.
 //   VITE_TELEMETRY_ENABLED ditto.
+//   VITE_ENVIRONMENT     which deployment this bundle is for. A label, so an
+//                        operator reading the bundle off the CDN can tell the
+//                        environments apart without diffing two index.html files.
+//   VITE_ENABLE_ANALYTICS / _DIAGNOSTICS / _EXPERIMENTAL_FEATURES
+//                        boolean presentation flags. They gate what is SHOWN and
+//                        never what is PERMITTED: the API's authorization is the
+//                        access control, and no client-side flag is one. The
+//                        feature-flag consumer itself is Task 048; what is
+//                        declared here is the allowlisted name and the validated
+//                        value, which is the part this module owns.
+//   VITE_SENTRY_DSN      a Sentry DSN: a public, write-only client key, designed
+//                        to be readable by anyone who can load the page. That is
+//                        different in kind from a signing key, and the difference
+//                        is why this one is allowlisted and a token is not.
+//                        `SENTRY_DISABLED` is the documented inert value.
 //
 // The committed `frontend/.env.example` is generated FROM this list, so the
 // example file and the allowlist cannot drift into disagreeing about what a
-// safe variable is.
+// safe variable is. `deploy/k8s/frontend/configmap.yaml` is asserted against it
+// too, and `deploy/config-inject.sh` carries a second copy for builds that run
+// before a node layer exists — `scripts/vite-env-audit.sh --allowlist-sync`
+// fails when the two copies diverge.
+
+/**
+ * The inert value for `VITE_SENTRY_DSN`, and the default when it is unset.
+ *
+ * Not the empty string, and that is the whole point. An empty injected value
+ * passes an "is it configured?" check and then initialises nothing at runtime,
+ * which is the failure mode `auditDeployConfig`'s `EMPTY_VALUE` rejection exists
+ * for. A non-empty, non-URL sentinel is recognised by `isSentryDsnConfigured()`
+ * and is obviously not a DSN to anybody reading the rendered ConfigMap.
+ */
+export const SENTRY_DISABLED = 'sentry-disabled';
 
 /**
  * The complete set of build-time variables allowed into the public bundle.
@@ -53,6 +82,11 @@ export const DEPLOY_CONFIG_ALLOWLIST = [
   'VITE_APP_VERSION',
   'VITE_SSE_ENABLED',
   'VITE_TELEMETRY_ENABLED',
+  'VITE_ENVIRONMENT',
+  'VITE_ENABLE_ANALYTICS',
+  'VITE_ENABLE_DIAGNOSTICS',
+  'VITE_ENABLE_EXPERIMENTAL_FEATURES',
+  'VITE_SENTRY_DSN',
 ] as const;
 
 export type DeployConfigKey = (typeof DEPLOY_CONFIG_ALLOWLIST)[number];
@@ -122,7 +156,15 @@ export const SECRET_VALUE_PATTERNS: readonly { id: string; re: RegExp; label: st
   // A PostgreSQL/Npgsql/RabbitMQ connection string. The password may be absent
   // and the string still leaks the topology, which `docs/topology.md` treats as
   // sensitive.
-  { id: 'connection-string', re: /\b(?:Host|Server|Data Source)\s*=\s*[^;\s]+;[^;]*\b(?:Password|Pwd)\s*=/i, label: 'a connection string with a password' },
+  //
+  // The middle segment is `[^"']*` and NOT `[^;]*` (Task 043A). A real connection
+  // string has more than two pairs - `Host=db;Database=dubbing;Username=app;
+  // Password=x` - so with `[^;]*` the rule stopped at the first `;` and required
+  // the password to be the SECOND pair, matching only a two-pair shape. Its own
+  // test passed regardless, because the `inline-credential` rule below also
+  // matches `;Password=` and the assertion was on the REASON, not the rule id. A
+  // rule that only ever fires as a side effect of another rule is not tested.
+  { id: 'connection-string', re: /\b(?:Host|Server|Data Source)\s*=\s*[^;\s"']+;[^"']*\b(?:Password|Pwd)\s*=/i, label: 'a connection string with a password' },
   { id: 'rabbit-uri', re: /\bamqps?:\/\/[^\s:@/]+:[^\s:@/]+@/, label: 'a broker URI with inline credentials' },
   { id: 's3-uri', re: /\bs3(?:a)?:\/\/[^\s:@/]+:[^\s:@/]+@/, label: 'an object-storage URI with inline credentials' },
   // `password=hunter2` in any query string or form body, which is how a secret
@@ -276,21 +318,40 @@ export function renderEnvExample(values: Readonly<Record<string, string>>): stri
 
 /** The `/version.json` document the CDN serves. */
 export interface RuntimeVersion {
-  /** The build tag, e.g. `v1.4.2`. Must equal `/version`'s `release`. */
+  /**
+   * The release tag, e.g. `v1.4.2`. Must equal `/version`'s `release`.
+   */
   readonly release: string;
+  /**
+   * The semantic application version, e.g. `1.4.2` - `release` without its
+   * leading `v`.
+   *
+   * Present because the hosting contract (Task 043A) names the document
+   * `{version, commit, builtAt}` and an operator reading it off the CDN asks for
+   * those three names first. It is a *rename-free addition*: an older client
+   * strips the fields it does not know, so a bundle that predates it keeps
+   * working, and a client that requires them reports `UNKNOWN` rather than
+   * pretending a document that lacks them is current. Adding a field is
+   * backward-compatible in a way that renaming or removing one is not.
+   */
+  readonly version: string;
   /** Full commit sha. Must equal `/version`'s `commit`. */
   readonly commit: string;
   /** The API's OpenAPI `info.version`. Must equal `/version`'s `openapiVersion`. */
   readonly openapiVersion: string;
-  /** ISO-8601 UTC build timestamp. Informational. */
+  /** ISO-8601 UTC build timestamp. Informational. Same value as `builtAt`. */
   readonly builtAtUtc: string;
+  /** ISO-8601 UTC build timestamp. Informational. Same value as `builtAtUtc`. */
+  readonly builtAt: string;
 }
 
 const runtimeVersionSchema = z.object({
   release: z.string().min(1),
+  version: z.string().min(1),
   commit: z.string().min(1),
   openapiVersion: z.string().min(1),
   builtAtUtc: z.string().min(1),
+  builtAt: z.string().min(1),
 });
 
 /**
@@ -342,6 +403,60 @@ export interface DeployConfig {
   readonly appVersion: string;
   readonly sseEnabled: boolean;
   readonly telemetryEnabled: boolean;
+  /** Which deployment this bundle was built for. `local` when unset. */
+  readonly environment: string;
+  /**
+   * Presentation flags. They gate what the UI SHOWS and never what a user is
+   * PERMITTED to do — the API's authorization is the access control. A flag
+   * being readable by every browser is not a weakness in them; it is what they
+   * are.
+   */
+  readonly analyticsEnabled: boolean;
+  readonly diagnosticsEnabled: boolean;
+  readonly experimentalFeaturesEnabled: boolean;
+  /**
+   * The Sentry DSN, or `null` when error reporting is off. Resolved rather than
+   * passed through so a consumer cannot accidentally initialise an SDK against
+   * the inert sentinel.
+   */
+  readonly sentryDsn: string | null;
+}
+
+/**
+ * Reads a boolean build-time flag. Pure, and used only here.
+ *
+ * `VITE_*` flags are inlined as strings, and the only two values accepted are
+ * `true` and `false`. Anything else — `1`, `yes`, `TRUE`, an empty string, a
+ * typo — is read as `false` rather than as truthy, because a typo in a
+ * deployment manifest that turned a disabled feature ON is a worse outcome than
+ * a typo that leaves it off. The gate that refuses the value outright lives in
+ * `deploy/config-inject.sh` and `scripts/vite-env-audit.sh`, where a human is
+ * looking at the output.
+ */
+export function readBooleanFlag(raw: string | undefined): boolean {
+  return (raw ?? '').trim() === 'true';
+}
+
+/**
+ * Whether a `VITE_SENTRY_DSN` value names a real DSN. Pure.
+ *
+ * The inert sentinel and the empty string both mean "off", and both mean it
+ * WITHOUT throwing: a bundle built on a developer laptop and a bundle built by
+ * the release pipeline for an environment that does not collect errors are both
+ * valid, and neither should crash the app because one variable is absent.
+ * `scripts/vite-env-audit.sh` is where an empty value is refused, because that is
+ * a committed-input problem and the gate is the right place for it.
+ */
+export function isSentryDsnConfigured(dsn: string | null | undefined): dsn is string {
+  const value = (dsn ?? '').trim();
+  if (value.length === 0 || value === SENTRY_DISABLED) {
+    return false;
+  }
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 let cachedConfig: DeployConfig | undefined;
@@ -358,14 +473,23 @@ let cachedConfig: DeployConfig | undefined;
 export function getDeployConfig(): DeployConfig {
   if (cachedConfig === undefined) {
     const env = getEnv();
-    // The two hosting variables are read here rather than through `getEnv()`.
+    // The hosting variables are read here rather than through `getEnv()`.
     // `lib/env.ts` is the validation boundary for the variables the application
-    // makes requests with; resolving "unset means fall back to the API origin"
-    // is this module's job, and duplicating the schema would create two places
-    // to change when a variable is added.
+    // makes requests with; resolving "unset means fall back to the API origin" is
+    // this module's job, and duplicating the schema would create two places to
+    // change when a variable is added.
     const raw = import.meta.env as unknown as Record<string, string | undefined>;
     const cdnOrigin = (raw['VITE_CDN_ORIGIN'] ?? '').trim() || env.apiBaseUrl;
     const versionTag = (raw['VITE_VERSION_TAG'] ?? '').trim() || env.appVersion;
+    // Every one of these is resolved to a default rather than validated as
+    // required, for the reason the helpers above give: an absent optional
+    // variable must degrade to a documented value, not crash the app. They are
+    // still READ here, and that is the point — Vite inlines a `VITE_*` variable
+    // into the bundle only where the code references it, so a flag that nothing
+    // reads is not shipped, and `scripts/vite-env-audit.sh` then reports the
+    // value it audited as "missing from the artefact".
+    const environment = (raw['VITE_ENVIRONMENT'] ?? '').trim() || 'local';
+    const sentryDsn = (raw['VITE_SENTRY_DSN'] ?? '').trim();
 
     const result = auditDeployConfig([
       ['VITE_API_BASE_URL', env.apiBaseUrl],
@@ -374,6 +498,11 @@ export function getDeployConfig(): DeployConfig {
       ['VITE_APP_VERSION', env.appVersion],
       ['VITE_SSE_ENABLED', String(env.sseEnabled)],
       ['VITE_TELEMETRY_ENABLED', String(env.telemetryEnabled)],
+      ['VITE_ENVIRONMENT', environment],
+      ['VITE_ENABLE_ANALYTICS', String(readBooleanFlag(raw['VITE_ENABLE_ANALYTICS']))],
+      ['VITE_ENABLE_DIAGNOSTICS', String(readBooleanFlag(raw['VITE_ENABLE_DIAGNOSTICS']))],
+      ['VITE_ENABLE_EXPERIMENTAL_FEATURES', String(readBooleanFlag(raw['VITE_ENABLE_EXPERIMENTAL_FEATURES']))],
+      ['VITE_SENTRY_DSN', sentryDsn || SENTRY_DISABLED],
     ]);
     if (!result.ok) {
       throw new Error(
@@ -388,6 +517,11 @@ export function getDeployConfig(): DeployConfig {
       appVersion: env.appVersion,
       sseEnabled: env.sseEnabled,
       telemetryEnabled: env.telemetryEnabled,
+      environment,
+      analyticsEnabled: readBooleanFlag(raw['VITE_ENABLE_ANALYTICS']),
+      diagnosticsEnabled: readBooleanFlag(raw['VITE_ENABLE_DIAGNOSTICS']),
+      experimentalFeaturesEnabled: readBooleanFlag(raw['VITE_ENABLE_EXPERIMENTAL_FEATURES']),
+      sentryDsn: isSentryDsnConfigured(sentryDsn) ? sentryDsn : null,
     };
   }
   return cachedConfig;

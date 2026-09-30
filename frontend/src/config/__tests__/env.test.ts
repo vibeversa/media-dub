@@ -4,12 +4,15 @@ import { join } from 'node:path';
 import {
   DEPLOY_CONFIG_ALLOWLIST,
   API_VERSION_PATH,
+  SENTRY_DISABLED,
   VERSION_JSON_PATH,
   auditDeployConfig,
   compareVersions,
   isSafeUrlValue,
   isSecretShapedName,
+  isSentryDsnConfigured,
   parseRuntimeVersion,
+  readBooleanFlag,
   renderEnvExample,
   secretValueReason,
 } from '../env.js';
@@ -22,6 +25,11 @@ const ALLOWLIST_VALUES: Readonly<Record<DeployConfigKey, string>> = {
   VITE_APP_VERSION: '1.4.2',
   VITE_SSE_ENABLED: 'true',
   VITE_TELEMETRY_ENABLED: 'false',
+  VITE_ENVIRONMENT: 'prod',
+  VITE_ENABLE_ANALYTICS: 'false',
+  VITE_ENABLE_DIAGNOSTICS: 'false',
+  VITE_ENABLE_EXPERIMENTAL_FEATURES: 'false',
+  VITE_SENTRY_DSN: 'https://CHANGE_ME@o0.ingest.sentry.io/0',
 };
 
 const allEntries = (): [string, string][] =>
@@ -120,6 +128,40 @@ describe('the deploy-config allowlist', () => {
     expect(result.rejections[0]!.reason).toBe('SECRET_SHAPED_VALUE');
   });
 
+  it('names the rule that caught each shape, not just "some secret"', () => {
+    // The defect this exists for: `connection-string` required the password to be
+    // the SECOND `;`-separated pair, so it never matched a realistic four-pair
+    // connection string - and the test above still passed, because
+    // `inline-credential` also matches `;Password=` and the assertion was on the
+    // reason, never on which rule produced it. A rule that only ever fires as a
+    // side effect of another rule is untested, and the day the other rule is
+    // changed it is gone.
+    const cases: [string, string][] = [
+      ['connection-string', 'Host=db.internal;Database=dubbing;Username=app;Password=hunter2'],
+      ['connection-string', 'Host=db.internal;Password=hunter2'],
+      ['connection-string', 'Data Source=db.internal;Initial Catalog=dubbing;Password=hunter2'],
+      ['inline-credential', 'https://api.example.com/x?password=hunter2'],
+      ['jwt', 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk'],
+      ['rabbit-uri', 'amqps://dubbing:s3cr3t@broker.internal:5671/dubbing'],
+      ['s3-uri', 's3://AKIAIOSFODNN7EXAMPLE:secret@bucket/dubbing'],
+      ['aws-access-key', 'AKIAIOSFODNN7EXAMPLE'],
+      ['bearer-credential', 'Bearer abcdefghijklmnopqrstuvwxyz0123456789'],
+      ['pem-block', '-----BEGIN RSA PRIVATE KEY-----\nMIIEow==\n-----END RSA PRIVATE KEY-----'],
+    ];
+    for (const [id, value] of cases) {
+      expect(secretValueReason(value)?.id, value).toBe(id);
+    }
+  });
+
+  it('a two-pair connection string with no password is still not a secret', () => {
+    // The rule is about the PASSWORD. A topology-only string leaks the shape of
+    // the deployment, which `docs/topology.md` already treats as sensitive and
+    // which no browser bundle has any reason to carry - but refusing it here
+    // would make the rule fire on every connection string ever written and it
+    // would then be loosened to something that fires on nothing.
+    expect(secretValueReason('Host=db.internal;Database=dubbing')).toBeNull();
+  });
+
   it('does not mistake a high-entropy asset name for a secret', () => {
     // Entropy is deliberately not a rule: every hashed bundle filename trips an
     // entropy check, and a check that fires on the build output fires on
@@ -158,6 +200,52 @@ describe('secret-shaped name detection', () => {
     for (const key of DEPLOY_CONFIG_ALLOWLIST) {
       expect(isSecretShapedName(key)).toBe(false);
     }
+  });
+});
+
+describe('the optional build-time flags (Task 043A)', () => {
+  it('reads only the literal string "true" as on', () => {
+    expect(readBooleanFlag('true')).toBe(true);
+    // Surrounding whitespace is trimmed rather than rejected: a trailing space is
+    // the normal result of a YAML block scalar or a hand-edited ConfigMap, and
+    // refusing it would mean a flag that is genuinely on reads as off.
+    expect(readBooleanFlag(' true ')).toBe(true);
+    // A typo in a manifest that turned a disabled feature ON is a worse outcome
+    // than a typo that left it off, so nothing truthy-but-not-`true` counts.
+    for (const value of ['1', 'yes', 'TRUE', 'True', 'on', 'enabled', '', undefined]) {
+      // The label goes on `expect`, not on `toBe`: `toBe` takes one argument, so a
+      // second one is a compile error rather than a message - and a loop with no
+      // label says which of seven values failed only by counting failures.
+      expect(readBooleanFlag(value), `readBooleanFlag(${String(value)})`).toBe(false);
+    }
+  });
+
+  it('treats the inert sentinel and the empty string as "reporting is off"', () => {
+    expect(SENTRY_DISABLED).toBe('sentry-disabled');
+    expect(isSentryDsnConfigured(SENTRY_DISABLED)).toBe(false);
+    expect(isSentryDsnConfigured('')).toBe(false);
+    expect(isSentryDsnConfigured('   ')).toBe(false);
+    expect(isSentryDsnConfigured(null)).toBe(false);
+    expect(isSentryDsnConfigured(undefined)).toBe(false);
+  });
+
+  it('accepts a real DSN and refuses a non-https or unparseable one', () => {
+    expect(isSentryDsnConfigured('https://abc@o0.ingest.sentry.io/1')).toBe(true);
+    // A DSN is public by design, but a non-https one is a page that posts error
+    // reports in the clear, and `javascript:` would be a code path that never
+    // needs one.
+    expect(isSentryDsnConfigured('http://abc@o0.ingest.sentry.io/1')).toBe(false);
+    expect(isSentryDsnConfigured('javascript:alert(1)')).toBe(false);
+    expect(isSentryDsnConfigured('not a url')).toBe(false);
+  });
+
+  it('never puts a credential in the flag set', () => {
+    // The Sentry DSN is allowlisted BECAUSE it is a public write-only client key.
+    // That reasoning only holds if the value it actually carries is one, which is
+    // the thing worth asserting: a DSN-shaped value that is actually a token is
+    // the failure this allowlist entry could cause.
+    expect(isSentryDsnConfigured('https://key@o0.ingest.sentry.io/1')).toBe(true);
+    expect(secretValueReason('https://key@o0.ingest.sentry.io/1')).toBeNull();
   });
 });
 
@@ -207,20 +295,57 @@ describe('the runtime version document', () => {
   it('parses a well-formed document', () => {
     const parsed = parseRuntimeVersion({
       release: 'v1.4.2',
+      version: '1.4.2',
       commit: '9e107d9d372bb6826bd81d3542a419d6',
       openapiVersion: 'v1',
       builtAtUtc: '2026-09-30T10:00:00Z',
+      builtAt: '2026-09-30T10:00:00Z',
     });
 
     expect(parsed.release).toBe('v1.4.2');
     expect(parsed.commit).toBe('9e107d9d372bb6826bd81d3542a419d6');
   });
 
+  it('carries the {version, commit, builtAt} names the hosting contract declares', () => {
+    // Task 043A names those three in the document's contract. They are aliases of
+    // fields that already existed, added rather than renamed: an older client
+    // strips fields it does not know, so a bundle predating them still parses.
+    const parsed = parseRuntimeVersion({
+      release: 'v1.4.2',
+      version: '1.4.2',
+      commit: '9e107d9d372bb6826bd81d3542a419d6',
+      openapiVersion: 'v1',
+      builtAtUtc: '2026-09-30T10:00:00Z',
+      builtAt: '2026-09-30T10:00:00Z',
+    });
+
+    expect(parsed.version).toBe('1.4.2');
+    expect(parsed.builtAt).toBe('2026-09-30T10:00:00Z');
+    // The aliases must agree with what they alias, or two readers of the same
+    // document get two different answers and neither is wrong on its own.
+    expect(parsed.version).toBe(parsed.release.replace(/^v/, ''));
+    expect(parsed.builtAt).toBe(parsed.builtAtUtc);
+  });
+
+  it('refuses a document missing version or builtAt, rather than defaulting them', () => {
+    // A document that predates the aliases is a CDN serving something other than
+    // what the user is running - which is the entire thing the comparison exists
+    // to notice. Defaulting would turn a detectable skew into a silent one.
+    expect(() =>
+      parseRuntimeVersion({ release: 'v1', commit: 'a', openapiVersion: 'v1', builtAtUtc: 't' }),
+    ).toThrow(/version\.json/);
+    expect(() =>
+      parseRuntimeVersion({ release: 'v1', version: '1', commit: 'a', openapiVersion: 'v1', builtAtUtc: 't' }),
+    ).toThrow(/version\.json/);
+  });
+
   it('throws on a malformed document rather than defaulting', () => {
     // Defaulting would turn a detectable skew into a silent one, which is the
     // opposite of what the comparison is for.
     expect(() => parseRuntimeVersion({ release: 'v1' })).toThrow(/version\.json/);
-    expect(() => parseRuntimeVersion({ release: '', commit: 'a', openapiVersion: 'v1', builtAtUtc: 't' })).toThrow();
+    expect(() =>
+      parseRuntimeVersion({ release: '', commit: 'a', openapiVersion: 'v1', builtAtUtc: 't', version: '1', builtAt: 't' }),
+    ).toThrow();
     expect(() => parseRuntimeVersion(null)).toThrow();
     expect(() => parseRuntimeVersion('v1.4.2')).toThrow();
   });
@@ -229,9 +354,11 @@ describe('the runtime version document', () => {
 describe('version comparison', () => {
   const served = parseRuntimeVersion({
     release: 'v1.4.2',
+    version: '1.4.2',
     commit: 'abc',
     openapiVersion: 'v1',
     builtAtUtc: 't',
+    builtAt: 't',
   });
 
   it('reports MATCH for the same release', () => {

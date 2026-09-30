@@ -243,6 +243,29 @@ jobs:
       - name: Unit and component tests
         run: npm run test --prefix frontend
 
+      # Task 043A, R4: the browser may reach exactly one origin, and
+      # `VITE_API_BASE_URL` is it. This is a source-level check - no build, no
+      # Docker, about a second - so it belongs in the early gate rather than
+      # waiting for the full pipeline. It fails on a direct reference to
+      # PostgreSQL, RabbitMQ, Redis, object storage, a worker host, or to any
+      # absolute URL that is neither loopback nor IANA-reserved.
+      #
+      # It is here and not only in `deploy/verify.sh` because it needs nothing but
+      # node, and because a rule that lives in one place is a rule somebody has to
+      # go looking for before they break it.
+      - name: Frontend topology (no direct datastore, broker, cache, storage or worker references)
+        run: node scripts/check-frontend-topology.mjs
+
+      # The config half of the hosting contract: cache classes, header presence,
+      # the SPA fallback, the TLS ingress annotations, and the env allowlist as
+      # the ConfigMap declares it. Seconds, and it reads the committed artefacts
+      # rather than a built image - which is the division `deploy/frontend/
+      # hosting-config.test.mjs` states in its own header. The live half is
+      # `deploy/tests/hosting.test.sh`, which needs a Docker daemon and is
+      # therefore a release-pipeline gate rather than an early one.
+      - name: Hosting config tests
+        run: node --test deploy/frontend/*.test.mjs
+
       # `prebuild` runs `check-drift`, so a bundle edited without regenerating
       # the client stops here rather than after a bundler failure.
       #

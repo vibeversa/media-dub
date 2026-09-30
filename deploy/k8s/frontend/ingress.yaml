@@ -1,0 +1,116 @@
+# The TLS edge for the frontend host (Task 043A, instruction 2).
+#
+# WHERE THIS SITS
+# ---------------
+#   Browser -> CDN (public hostname, caches, sets HSTS) -> THIS INGRESS (origin
+#   hostname, terminates TLS) -> frontend pods -> API (separate host)
+#
+# The CDN caches; something has to terminate TLS for the hostname the CDN
+# fetches. That is this Ingress. Task 043 had no Ingress at all and reached the
+# origin over the provider's private link; Task 043A requires a TLS-terminating
+# ingress for the frontend host, and the requirement is met by making this the
+# ORIGIN-side edge rather than by adding a second public route to the document.
+# See "WHY THIS IS NOT A SECOND PUBLIC ROUTE" below, and the `static-allow`
+# NetworkPolicy in deploy/k8s/networkpolicies.yaml, which is what makes it true.
+#
+# WHY THIS IS NOT A SECOND PUBLIC ROUTE
+# -------------------------------------
+# The security problem with an Ingress in front of the CDN is that it is a way
+# around the CDN: same bytes, no edge policy, no HTTPS redirect. Three things
+# prevent that here, and all three are asserted rather than assumed:
+#
+#   1. The Service is ClusterIP (deploy/k8s/frontend/service.yaml), so these pods
+#      have no address outside the cluster.
+#   2. `static-allow` admits the ingress-nginx namespace and nothing else, so the
+#      only in-cluster caller of the document is the controller.
+#   3. The controller answers the CDN's origin hostname. The public hostname is
+#      the CDN's, so a browser cannot reach this host by name unless the CDN's
+#      origin configuration already points at it.
+#
+# WHICH HEADERS COME FROM WHERE
+# -----------------------------
+# This Ingress sets what only a TLS terminator can: the HTTP->HTTPS redirect and
+# HSTS. The response security headers (CSP, Referrer-Policy, nosniff,
+# X-Frame-Options) are NOT declared here, and that is deliberate:
+#
+#   * ingress-nginx has no first-class annotation for an arbitrary response
+#     header. The two ways to add one are the `configuration-snippet`
+#     annotation and the global `more-headers` ConfigMap, and BOTH are disabled
+#     by default since ingress-nginx 1.9 (`allow-snippet-annotations:
+#     false`). A manifest that depends on a disabled feature is a manifest that
+#     silently stops applying its security policy on a controller upgrade.
+#   * The origin already sends the exact set, byte-for-byte equal to the API's
+#     `SecurityHeadersMiddleware` (Task 037), and the CDN's viewer-request
+#     function adds them again for the public hostname. The origin config is the
+#     single copy: deploy/nginx/security-headers.conf.
+#
+# So: this Ingress must NOT be given a header set. If the CDN is ever removed and
+# this Ingress becomes the public edge directly, the set has to be added to the
+# `more-headers` ConfigMap instead - and `deploy/frontend/hosting-config.test.mjs`
+# asserts the annotations below are the ones that do work without snippets.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: static
+  annotations:
+    # Provisioned by cert-manager from the annotated ClusterIssuer, the same as
+    # deploy/k8s/ingress.yaml. The Secret holds the private key and therefore
+    # never appears in this file, in git, or in a ConfigMap.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Plain HTTP is redirected, not served. A user on http:// must never receive
+    # a response body over cleartext and be redirected afterwards: that response
+    # was already observable, and it is where a session cookie leaks.
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # HSTS here, and only here. It is a per-origin, browser-cached, irreversible-
+    # for-max-age commitment, so it belongs to the hop that HOLDS the
+    # certificate for the public hostname - which is the CDN. This one is the
+    # origin-side hedge for a deployment whose CDN does not set it; it is
+    # asserted nowhere at runtime, which is a real gap recorded in the report.
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    # `false`, deliberately. Preload is effectively irreversible for a domain and
+    # is a decision for whoever owns the registration, not a default.
+    nginx.ingress.kubernetes.io/hsts-preload: "false"
+    # No CORS on the document. The SPA is same-origin with the CDN; the API is a
+    # different host with its own CORS allowlist (Task 037). Emitting
+    # Access-Control-Allow-Origin here would grant a cross-origin read of every
+    # static asset to any site that asks.
+    nginx.ingress.kubernetes.io/enable-cors: "false"
+    # The origin sets `server_tokens off`; repeating it here keeps the controller
+    # from appending its own version to a response it proxies from a server that
+    # was careful about this.
+    nginx.ingress.kubernetes.io/server-tokens: "false"
+    # A document is a few hundred kilobytes. Anything larger on this host is
+    # either a misconfiguration or an attempt to make the edge a file store.
+    nginx.ingress.kubernetes.io/proxy-body-size: 2m
+    # `CHANGE_ME`: the origin hostname the CDN fetches. NOT the public hostname -
+    # the public hostname belongs to the CDN, and binding it here would publish
+    # the origin as a second public route, which is the thing the paragraph
+    # above exists to prevent.
+    nginx.ingress.kubernetes.io/upstream-vhost: CHANGE_ME-frontend-origin.dubbing.example.com
+spec:
+  ingressClassName: nginx
+  tls:
+    # hosts and secretName are both CHANGE_ME placeholders. `secretName` names a
+    # Secret that cert-manager creates; the certificate and key are never
+    # committed, and a manifest that carried one would put a private key in git.
+    - hosts:
+        - CHANGE_ME-frontend-origin.dubbing.example.com
+      secretName: CHANGE_ME-frontend-tls
+  rules:
+    - host: CHANGE_ME-frontend-origin.dubbing.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
