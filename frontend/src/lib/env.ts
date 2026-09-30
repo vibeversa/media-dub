@@ -8,6 +8,11 @@ const envSchema = z.object({
   VITE_APP_VERSION: z.string().min(1).default('0.0.0-dev'),
   VITE_SSE_ENABLED: z.enum(['true', 'false']).default('true'),
   VITE_TELEMETRY_ENABLED: z.enum(['true', 'false']).default('false'),
+  // Task 043. Both are `.default('')` rather than required: an empty value means
+  // "unset", which `config/env.ts` resolves, and requiring them would make
+  // every local workflow carry a fabricated CDN origin and release tag.
+  VITE_CDN_ORIGIN: z.string().default(''),
+  VITE_VERSION_TAG: z.string().default(''),
 });
 
 export interface AppEnv {
@@ -15,6 +20,19 @@ export interface AppEnv {
   readonly appVersion: string;
   readonly sseEnabled: boolean;
   readonly telemetryEnabled: boolean;
+  /**
+   * The CDN origin the client may load from (Task 043). Optional, and empty
+   * when unset: a local `vite dev` server and the cross-layer rig have no CDN,
+   * and a required variable would make the local workflow carry a fake origin.
+   * `config/env.ts` falls back to `apiBaseUrl` when it is empty.
+   */
+  readonly cdnOrigin: string;
+  /**
+   * The build tag baked into this bundle (Task 043). Compared against the
+   * `/version.json` the CDN serves, which is how "the CDN is serving stale HTML
+   * after a deploy" becomes detectable instead of a white screen.
+   */
+  readonly versionTag: string;
 }
 
 export interface EnvError {
@@ -29,6 +47,8 @@ function parse(raw: Record<string, string | undefined>): AppEnv {
     VITE_APP_VERSION: raw['VITE_APP_VERSION'],
     VITE_SSE_ENABLED: raw['VITE_SSE_ENABLED'],
     VITE_TELEMETRY_ENABLED: raw['VITE_TELEMETRY_ENABLED'],
+    VITE_CDN_ORIGIN: raw['VITE_CDN_ORIGIN'],
+    VITE_VERSION_TAG: raw['VITE_VERSION_TAG'],
   });
   if (!parsed.success) {
     const issues = parsed.error.issues.map((issue) => {
@@ -42,6 +62,8 @@ function parse(raw: Record<string, string | undefined>): AppEnv {
     appVersion: parsed.data.VITE_APP_VERSION,
     sseEnabled: parsed.data.VITE_SSE_ENABLED === 'true',
     telemetryEnabled: parsed.data.VITE_TELEMETRY_ENABLED === 'true',
+    cdnOrigin: parsed.data.VITE_CDN_ORIGIN,
+    versionTag: parsed.data.VITE_VERSION_TAG,
   };
 }
 

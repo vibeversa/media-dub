@@ -1,4 +1,5 @@
 using DubbingPlatform.Api.Auth;
+using DubbingPlatform.Api.Endpoints;
 using DubbingPlatform.Api.Errors;
 using DubbingPlatform.Api.Filters;
 using DubbingPlatform.Api.Middleware;
@@ -476,6 +477,9 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 {
     Predicate = registration => registration.Tags.Contains("ready", StringComparer.Ordinal),
 });
+// Task 043: the combined report and the build/version report. Mapped after the
+// two probes so the more specific routes above keep winning any path overlap.
+app.MapHostingEndpoints();
 app.MapPrometheusScrapingEndpoint("/metrics");
 
 app.Run();

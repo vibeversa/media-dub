@@ -1,4 +1,4 @@
-# Deploy Guide (Tasks 40 and 042)
+# Deploy Guide (Tasks 40, 042 and 043)
 
 CI builds, scans, signs, and publishes all 9 images
 (`.github/workflows/backend.yml` for the eight backend images,
@@ -7,6 +7,20 @@ cluster rollout with the raw K8s manifests (primary) or the thin Helm wrapper.
 
 `deploy/verify.sh` is the release gate and is documented in its own header and in
 `docs/ci-branch-protection.md` §2; see "Verifying a deployment" below.
+
+Task 043 owns the frontend's delivery and the rollout. Start at
+[`docs/topology.md`](../docs/topology.md) for what may talk to what, and
+[`docs/rollout.md`](../docs/rollout.md) for the release procedure.
+
+| | |
+| --- | --- |
+| The frontend is a **static SPA behind a CDN**, not a set of routes on the API | [`docs/topology.md`](../docs/topology.md) |
+| `deploy/cdn/` + `deploy/nginx/` + `Dockerfile.frontend` | the CDN edge config and the static origin |
+| `deploy/config-inject.sh` | writes `frontend/.env.production` and `dist/version.json` per environment |
+| `scripts/vite-env-audit.sh` | fails the build on a secret-shaped `VITE_*` key or value |
+| `deploy/tests/hosting.test.sh` | **the hosting gate** — builds the image and asserts the real headers |
+| `docs/runbooks/index.md` | every runbook, by symptom |
+| `docs/rollout.md` | migration-first, backward-compatible, flag-gated, verify, then contract |
 
 ## Prerequisites
 
@@ -47,15 +61,27 @@ Apply in this order; each step gates the next:
    A failed migration BLOCKS the rollout: do not proceed until the Job is
    Complete. (ArgoCD runs this automatically as a PreSync hook; Helm as a
    pre-upgrade hook — annotations are on the Job.)
+   **The `wait` is the gate; the `apply` is not.** A Job that is merely applied
+   may be Running, may have failed, may be retrying. Task 043's ordering test
+   proved the refusal case end to end on an ephemeral cluster: a refusing bundle
+   makes the wait time out AND leaves the API pods in `Init:CrashLoopBackOff`
+   with `ready: false` in their EndpointSlice, so nothing routes to them.
 5. API: `kubectl apply -f deploy/k8s/api-deployment.yaml`. Pods run the
    `wait-for-migrations` initContainer (same bundle) and never start on a
    broken schema. Wait for readiness:
    `kubectl -n dubbing-prod rollout status deploy/api`.
+   Readiness now also asserts **migration currency** (`MigrationCurrencyCheck`),
+   so a pod whose build is ahead of the schema never takes traffic. Liveness
+   stays process-only.
 6. Workers: `kubectl apply -f deploy/k8s/workers-*.yaml`, then
    `kubectl -n dubbing-prod rollout status` per deployment.
-7. Ingress + policies + PDBs:
+7. Static origin: `kubectl apply -f deploy/k8s/static-deployment.yaml`. **Not**
+   behind an Ingress — the CDN is the only path to it, and an Ingress would be a
+   second public route that bypasses the CDN's HTTPS redirect and headers. Point
+   the CDN's origin at the `static` Service.
+8. Ingress + policies + PDBs:
    `kubectl apply -f deploy/k8s/ingress.yaml -f deploy/k8s/networkpolicies.yaml -f deploy/k8s/pdb.yaml`.
-8. KEDA: `kubectl apply -f deploy/k8s/keda-scalers.yaml`, then
+9. KEDA: `kubectl apply -f deploy/k8s/keda-scalers.yaml`, then
    `kubectl -n dubbing-prod get scaledobjects`.
 
 Shortcut for environments (applies the same objects via kustomize):
@@ -131,18 +157,28 @@ a verification.
 ## Rollback
 
 `deploy/verify.sh --post-deploy` triggers the first two of these automatically
-when a post-deploy check fails, and records the triggering reason. The runbook
-below is for a rollback that was not triggered by the gate.
+when a post-deploy check fails, and records the triggering reason.
 
-- Workloads: `kubectl -n <ns> rollout undo deploy/<name>` (or `rollout undo
-  ... --to-revision=N`). The API and control PDBs (`minAvailable: 1`) keep
-  serving during the rollback.
+**The full runbook is [`docs/runbooks/rollback.md`](../docs/runbooks/rollback.md)**,
+and it opens with the decision table, because the database question comes first
+and it has an answer that is not "roll it back". Summary:
+
+- API: `kubectl -n <ns> rollout undo deployment/api`. The API and control PDBs
+  (`minAvailable: 1`) keep serving during the rollback, so it is a pointer change
+  rather than a restart. Confirm with `/version`, not with the rollout status:
+  `rollout undo` moving the Deployment does not prove the pods are the previous
+  build.
+- **Frontend: a CDN version pin**, not a redeploy. The previous release's assets
+  are still on the origin under exactly the names the previous document
+  referenced, because `/assets/*` filenames carry a content hash. Restoring a
+  pointer restores a working application with no rebuild and no window in which
+  the assets are missing.
+- Database: **never**. Migrations are additive only; a rollback never reverses a
+  migration that applied anywhere shared. Forward-fix. The one case where a
+  rollback is *refused* is a build behind a contracted schema — see the decision
+  table.
 - KEDA/Ingress/Policies: re-apply the previous overlay revision
   (`kubectl apply -k deploy/k8s/overlays/<env>` from the prior commit).
-- Database expand/contract rule (frozen): migrations are ADDITIVE ONLY. Old
-  code tolerates new nullable columns for one release window, so rolling back
-  application code never requires rolling back the schema. Never roll back a
-  migration that already applied anywhere shared; forward-fix instead.
 
 ## Launch gates (staging -> prod promotion)
 
@@ -154,8 +190,20 @@ not satisfy the gate). Evidence lives in the linked logs.
    frontend`: build -> unit -> integration -> contract -> migration-compat ->
    container-build -> Trivy -> SBOM -> cosign -> publish, plus lint ->
    typecheck -> coverage -> build -> codegen-verify -> E2E -> visual -> a11y ->
-   audit) passes on the promotion commit, and staging runs the candidate image
-   set (kustomize `overlays/staging`) with no open L1/L2 alerts.
+   audit) passes on the promotion commit, **plus the two Task 043 gates**:
+
+   ```bash
+   bash deploy/tests/hosting.test.sh          # HOSTING_GATE_RESULT reason=OK
+   bash scripts/vite-env-audit.sh --allowlist-sync --bundle frontend/dist
+   ```
+
+   The hosting gate is **not** optional and its `status=SKIP`
+   (`HOSTING_IMAGE_UNVERIFIED`) does not satisfy this gate: a skip means the
+   header matrix was not verified, and a promotion decided on an unverified
+   matrix is decided on nothing. CI runs this with Docker present.
+
+   Staging then runs the candidate image set (kustomize `overlays/staging`) with
+   no open L1/L2 alerts.
 2. **Post-deploy gate green** — `bash deploy/verify.sh --post-deploy
    --require-post-deploy --url <staging> --tag <promoted tag>` passes: health,
    the served `info.version` matching the release, and `@smoke`
@@ -163,6 +211,10 @@ not satisfy the gate). Evidence lives in the linked logs.
 3. **Restore drill pass** — `docs/dr/drill-log.md` has a passing entry
    within RTO 1 h / RPO 5 min (`BackupRestoreTests` green plus the
    quiesce -> PITR -> verify procedure in `docs/dr/backup-restore.md`).
+   The coverage table and the drill checklist are in
+   [`docs/runbooks/backup-restore.md`](../docs/runbooks/backup-restore.md); a
+   drill that finds a gap is a **release blocker** until the coverage table says
+   what is and is not recoverable.
 4. **Chaos pass** — `docs/operations/chaos-log.md` has a passing entry:
    `RecoveryTests` green, no lost runs, leases recovered, fencing
    verified (live-kill tier executed in staging).
@@ -178,7 +230,31 @@ not satisfy the gate). Evidence lives in the linked logs.
 Also required: compat window verified
 (`docs/operations/migration-compat.md`, `MigrationCompatTests` green)
 and bomb protection verified (`docs/operations/load-log.md`,
-`MediaBombTests` + `QuotaTests` green).
+`MediaBombTests` + `QuotaTests` green). A **contract-phase** migration (dropping
+a deprecated column or endpoint) additionally requires two green releases first —
+see [`docs/rollout.md`](../docs/rollout.md) §5, and the decision table in
+[`docs/runbooks/rollback.md`](../docs/runbooks/rollback.md#decision-table) for
+why a rollback is *refused* once one has run.
+
+## Verifying the hosting configuration
+
+```bash
+bash deploy/tests/hosting.test.sh
+```
+
+Two tiers. The **static** tier runs anywhere and is mandatory: it reads
+`deploy/cdn/origin.json`, `deploy/nginx/default.conf`,
+`deploy/nginx/security-headers.conf` and the NetworkPolicies, and fails on a
+missing file rather than skipping. The **docker** tier builds
+`Dockerfile.frontend`, runs it, and asserts the actual response headers — the
+document's cache class, a hashed asset's `immutable`, a missing asset's 404, the
+security headers, compression, and that `/api/` is not this origin's business.
+
+The headers are read from a live server rather than from the config on purpose:
+`add_header` inheritance and `try_files` fallback depend on which `location`
+block matched, so a config that reads correctly can serve the wrong thing, and
+only a response proves it. Two real defects in this repository were found exactly
+that way — see the 043 report.
 
 ## Scaling notes
 

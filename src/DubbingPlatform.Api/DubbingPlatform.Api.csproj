@@ -6,6 +6,37 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Task 043: the build stamp `GET /version` reports.
+       Every value is stamped by the same compile that produced the code, so
+       "which build is answering?" cannot drift from the artefact. All four are
+       optional and default to the literal `CHANGE_ME`, which BuildInformation
+       normalises to `unknown` - a visible sentinel rather than a plausible wrong
+       value. CI passes them explicitly:
+
+         dotnet publish -p:BuildCommit=$GITHUB_SHA \
+                        -p:BuildRelease=$GITHUB_REF_NAME \
+                        -p:BuildOpenApiVersion=<openapi info.version> \
+                        -p:BuildTimestampUtc=<ISO-8601>
+
+       The OpenAPI version is deliberately a build ARGUMENT rather than something
+       read at runtime. The document the server emits is generated from
+       OpenApiConfiguration; reading the committed bundle at runtime would let the
+       server report a version its own document does not carry, which is the one
+       disagreement `/version` exists to make impossible. -->
+  <PropertyGroup>
+    <BuildCommit Condition="'$(BuildCommit)' == ''">CHANGE_ME</BuildCommit>
+    <BuildRelease Condition="'$(BuildRelease)' == ''">CHANGE_ME</BuildRelease>
+    <BuildOpenApiVersion Condition="'$(BuildOpenApiVersion)' == ''">CHANGE_ME</BuildOpenApiVersion>
+    <BuildTimestampUtc Condition="'$(BuildTimestampUtc)' == ''">CHANGE_ME</BuildTimestampUtc>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="BuildCommit" Value="$(BuildCommit)" />
+    <AssemblyMetadata Include="BuildRelease" Value="$(BuildRelease)" />
+    <AssemblyMetadata Include="BuildOpenApiVersion" Value="$(BuildOpenApiVersion)" />
+    <AssemblyMetadata Include="BuildTimestampUtc" Value="$(BuildTimestampUtc)" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />

@@ -1,0 +1,114 @@
+# Task 043, instruction 1/4: the static origin behind the CDN.
+#
+# WHY A DEPLOYMENT AND NOT "THE CDN SERVES index.html"
+# -----------------------------------------------------
+# A CDN caches, it does not originate. Something has to hold the bytes, and that
+# something is an origin. This is it: the `Dockerfile.frontend` image, which
+# serves `frontend/dist` through nginx with the cache and header policy in
+# `deploy/nginx/default.conf`.
+#
+# It is NOT exposed through an Ingress, and that is the security property rather
+# than an omission. The only path to these pods is the CDN's origin-facing proxy
+# in the `cdn-edge` namespace (`static-allow` in networkpolicies.yaml). An
+# Ingress would add a second public route to the document, bypassing every header
+# the CDN's viewer-request function adds - including the HTTPS redirect, which
+# the origin cannot perform for a hostname it does not terminate.
+#
+# `CHANGE_ME` in the image tag is replaced by the kustomize overlays (see
+# deploy/k8s/overlays/*/kustomization.yaml `images:`), exactly as for the API.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: static
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: static
+spec:
+  # Two, not three. The origin is a file server: it has no database, no broker
+  # and no in-flight work, so a pod being slow is a node problem, and a third
+  # replica is capacity for a workload that cannot be slow. Two is the smallest
+  # number that survives a node drain without a CDN 5xx.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: static
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: dubbing-platform
+        app.kubernetes.io/component: static
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # 101 is the nginx-unprivileged image's own uid. The image declares
+        # `USER nginx` and cannot bind below 1024, so the pod must not try to
+        # grant it capabilities the image was built to avoid needing.
+        runAsUser: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: static
+          image: ghcr.io/CHANGE_ME/dubbing-frontend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          # The same readiness gate the API uses, and the same reason it is
+          # `live` only: an origin pod that cannot serve a file should be taken
+          # out of the Service, and a probe that depends on a datastore would
+          # restart every origin pod when a database blips. The static origin
+          # has no datastore, so the liveness probe is the whole story.
+          livenessProbe:
+            httpGet: {path: /index.html, port: 8080}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /index.html, port: 8080}
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            # Small on purpose: nginx serving pre-compressed-ish static files is
+            # IO-bound, and the CPU request exists to place the pod on a node
+            # that will not be evicted first. 32Mi is the floor the unprivileged
+            # image needs for its own buffers.
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            # nginx-unprivileged writes its pid, temp files and the access/error
+            # log targets under /tmp. With a read-only root that directory must
+            # be writable, or the container fails to start with a message that
+            # names the pid file rather than the policy.
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: static
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: static
+spec:
+  # ClusterIP, never NodePort or LoadBalancer. This Service is the CDN's origin
+  # and nothing else; a second public address for it would be the route the
+  # network policy above exists to prevent.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: static
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

@@ -226,6 +226,71 @@ The two the task calls out explicitly:
 | `STACK_UNAVAILABLE` | The cross-layer rig did not become healthy. The container logs are attached |
 | *(lint / typecheck / coverage / codegen-drift / Playwright)* | The named gate failed |
 
+### `deploy/tests/hosting.test.sh` (the hosting gate, Task 043)
+
+```
+HOSTING_GATE_RESULT reason=<REASON> status=<PASS|FAIL|SKIP> exit=<n> static=<v> docker=<v>
+```
+
+| Reason | Exit | Meaning |
+| --- | --- | --- |
+| `OK` | 0 | Every tier that ran, passed |
+| `CONFIG_MISSING` | 1 | A required policy file is absent. The static tier is not optional: a repository with no hosting policy would otherwise report a green hosting gate |
+| `CONFIG_INVALID` | 1 | A file exists and violates the policy. Two sources of the same truth disagree, or a required rule is missing |
+| `HEADER_ASSERTION_FAILED` | 1 | A response from the running image did not match `deploy/cdn/origin.json`. **Asserted over HTTP, not by reading the config** — `add_header` inheritance depends on which `location` block matched |
+| `TOPOLOGY_VIOLATION` | 1 | A `NetworkPolicy` permits a path the topology forbids. The specific finding is in the printed line |
+| `IMAGE_BUILD_FAILED` | 1 | `docker build -f Dockerfile.frontend .` failed. **Nothing was deployed**, so the previous release is still serving |
+| `HOSTING_INPUT_MISSING` | 1 | A file the gate reads could not be read. An audit that did not read a file has not cleared it |
+| `HOSTING_TOOL_UNAVAILABLE` | 1 | `node`, `python3` or the topology analyser is missing. The static tier fails rather than skipping |
+| `HOSTING_IMAGE_UNVERIFIED` | 0 | Docker is absent, so the header matrix was **not** verified. `status=SKIP`, and the reason is on the result line |
+
+The last row is the only SKIP, and it is the one place this gate does not fail
+closed. The reason is a tool-availability decision (a developer without Docker
+Desktop running) rather than a check-availability one — the same distinction
+`deploy/verify.sh` draws for `kubectl`. It is a SKIP with a named reason and
+`status=SKIP`, never a `PASS`; CI has Docker, so the header matrix must be
+verified there before a release.
+
+`tools/hosting-policy.mjs` is the decision layer (pure, 61 unit tests in
+`tools/hosting-policy.test.mjs`); this script is the I/O that reads the real
+files and starts the real image. The topology analysis is a separate Python
+module (`deploy/tests/hosting-topology.py`) rather than a heredoc, because a
+Python `SyntaxError` inside a `$( )` produces a traceback the caller then counts
+as zero violations — a pass that checked nothing.
+
+### `scripts/vite-env-audit.sh` (the public-config gate, Task 043)
+
+```
+VITE_ENV_AUDIT_RESULT reason=<REASON> status=<PASS|FAIL> files=<n> keys=<n>
+```
+
+| Reason | Exit | Meaning |
+| --- | --- | --- |
+| `OK` | 0 | Every `VITE_*` key is allowlisted, no key is secret-shaped, no value is credential material, and (with `--bundle`) the audited values are in the built artefact |
+| `SECRET_IN_VITE_ENV` | 1 | A `VITE_*` key or value is credential material: a PEM block, a JWT, a connection string with a password, a broker/storage URI with inline credentials, an AWS key id, a bearer credential, or an allowlisted name that matches `SECRET\|KEY\|TOKEN\|PASSWORD` |
+| `VITE_KEY_NOT_ALLOWLISTED` | 1 | A `VITE_*` key is not in `DEPLOY_CONFIG_ALLOWLIST`. Vite inlines it into the public bundle, so it is published |
+| `ENV_FILE_UNREADABLE` | 2 | A scanned file could not be read, or has a line that is neither a comment nor `KEY=VALUE`. **A failure, not a skip** |
+| `BUNDLE_MISMATCH` | 1 | A value cleared by the env-file rules is not in the built bundle. The build did not consume the file that was audited |
+| `NO_BUNDLE` | 1 | `--bundle` was given and the directory has no JavaScript, or the build env file could not be identified |
+
+The allowlist is `DEPLOY_CONFIG_ALLOWLIST` in `frontend/src/config/env.ts`,
+duplicated in bash inside `deploy/config-inject.sh` so the injector can run
+before a node layer exists. `--allowlist-sync` **fails** when the two diverge;
+a comment saying "keep in step" is not a check.
+
+`ENV_FILE_UNREADABLE` and `NO_BUNDLE` may **never** be bypassed (§5).
+
+### `deploy/config-inject.sh` (per-environment config injection, Task 043)
+
+```
+CONFIG_INJECT_RESULT reason=OK|INVALID status=PASS|FAIL env=<n> release=<tag> openapi=<v>
+```
+
+`INVALID` means nothing was written: a secret-shaped allowlisted name, a
+non-absolute or non-http(s) origin, an empty required value, a missing release
+tag, or an unreadable OpenAPI bundle. `--check` evaluates and writes nothing,
+which is the pre-flight form.
+
 ### `deploy/verify.sh` (the release gate, run after a rollout)
 
 ```
@@ -288,6 +353,9 @@ The mapping, in prose, so branch protection can be set without reading YAML:
 | `tests/cross-layer/`, `playwright.config.ts` | frontend-platform + backend |
 | `.github/workflows/backend.yml`, `frontend.yml`, `ci.yml`, `scripts/require-docker.sh`, `scripts/workflow-lint.sh` | platform |
 | `deploy/k8s/`, `deploy/helm/` | platform + backend |
+| `deploy/cdn/`, `deploy/nginx/`, `Dockerfile.frontend` | platform + frontend — a change to the cache classes or the CSP is a change to what a browser enforces, so neither team alone should approve one |
+| `deploy/tests/`, `deploy/config-inject.sh`, `scripts/vite-env-audit.sh`, `tools/hosting-policy.mjs` | platform |
+| `docs/runbooks/`, `docs/topology.md`, `docs/rollout.md` | platform + backend — a runbook that is wrong about a backend behaviour is a responder acting on it |
 | `deploy/observability/`, `deploy/verify.sh`, `deploy/README.md`, `docs/ci-branch-protection.md` | platform |
 | `scripts/coverage-gap.mjs`, `scripts/presence-gate.mjs`, `docs/coverage.md` | quality |
 
@@ -422,6 +490,17 @@ What may **never** be bypassed, by anyone, for any reason:
 - `BASELINE_NEEDED`. A baseline is approved by a human, in a PR, with the PNGs
   in the diff.
 - A missing SBOM or an unverified cosign signature.
+- `ENV_FILE_UNREADABLE` / `NO_BUNDLE` from `scripts/vite-env-audit.sh`. A gate
+  that did not read the file it was auditing has not cleared it, and
+  "no bundle found" means the build output is not what was verified.
+- `CONFIG_MISSING` / `HOSTING_INPUT_MISSING` from
+  `deploy/tests/hosting.test.sh`. A hosting gate that skipped its own policy
+  files reports success having read nothing.
+
+`HOSTING_IMAGE_UNVERIFIED` is the one bypassable result, and only in the sense
+that a **CI** run cannot produce it: Docker is present on `ubuntu-latest`, so
+the header matrix is verified there. A developer's local `SKIP` is not a release
+signal and must not be quoted as one.
 
 ---
 
@@ -586,6 +665,15 @@ gate whose failure modes include the token's.
 # The always-on early gate (Task 042A). docs/ci.md §3 has the full, exact set.
 node tools/unit-tier-containers.mjs       # or: npm run check:unit-containers
 npm run test:tools                        # 28 unit tests over the container rule
+
+# Hosting (Task 043): the policy, and then the real image.
+npm run test:tools                            # hosting-policy + runbooks-index among the rest
+bash deploy/tests/hosting.test.sh              # static tier + header matrix against a running image
+
+# The public configuration (Task 043).
+VITE_API_BASE_URL=https://api.example.com VITE_CDN_ORIGIN=https://cdn.example.com \
+  bash deploy/config-inject.sh --env staging --release v1.0.0 --check
+bash scripts/vite-env-audit.sh --allowlist-sync --bundle frontend/dist
 
 # Contract: the gate's own rules, hermetically.
 bash scripts/openapi-diff.sh --self-test

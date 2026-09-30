@@ -1,6 +1,16 @@
 # Task 40: API deployment (prod: 3 replicas) + ClusterIP Service.
 # Image org/tag are pinned per environment by the kustomize overlays
 # (deploy/k8s/overlays/*/kustomization.yaml `images:`); replace CHANGE_ME.
+# Task 043 (R3): readiness asserts MIGRATION CURRENCY as well as database
+# reachability, via `MigrationCurrencyCheck` in HealthRegistration. A pod whose
+# build knows migrations the schema does not have is not ready, so it never
+# receives traffic. That is what turns a botched rollout from "a 500 on the first
+# request that touches a new column" into "the pod is not in the Service".
+#
+# Liveness stays `/health/live` and stays process-only. A liveness probe that
+# depended on PostgreSQL would restart every pod during a database blip, turning
+# a degradation into an outage — the exact failure the live/ready split exists to
+# prevent.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

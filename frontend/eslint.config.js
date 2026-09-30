@@ -66,7 +66,14 @@ export default tseslint.config(
     },
   },
   {
-    files: ['src/lib/env.ts'],
+    // Task 043: `config/env.ts` composes `lib/env.ts` and needs to read the two
+    // hosting variables (`VITE_CDN_ORIGIN`, `VITE_VERSION_TAG`) that the typed
+    // reader deliberately leaves raw, because resolving them is this module's
+    // job. The exemption is for this one file and the same reason as
+    // `lib/env.ts`: these are the only two places allowed to see
+    // `import.meta.env`, so the allowlist audit and the typed reader cannot
+    // disagree about what exists.
+    files: ['src/lib/env.ts', 'src/config/env.ts'],
     rules: {
       'no-restricted-syntax': 'off',
     },

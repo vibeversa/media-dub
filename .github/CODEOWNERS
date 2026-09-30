@@ -115,6 +115,34 @@ deploy/README.md                         @CHANGE_ME/platform
 docs/ci-branch-protection.md             @CHANGE_ME/platform
 docs/ci.md                               @CHANGE_ME/platform
 
+# --- Hosting, rollout and operations (Task 043) ---------------------------------
+# The cache classes, the CSP and the static origin are shared with FRONTEND
+# deliberately: a change to what a browser enforces should not be reviewable by
+# one team alone, and a change to a header the frontend's own dev server sends
+# is a frontend concern.
+deploy/cdn/                              @CHANGE_ME/platform  @CHANGE_ME/frontend
+deploy/nginx/                            @CHANGE_ME/platform  @CHANGE_ME/frontend
+Dockerfile.frontend                      @CHANGE_ME/platform  @CHANGE_ME/frontend
+deploy/config-inject.sh                  @CHANGE_ME/platform
+deploy/tests/                            @CHANGE_ME/platform
+scripts/vite-env-audit.sh                @CHANGE_ME/platform
+tools/hosting-policy.mjs                 @CHANGE_ME/platform
+tools/hosting-policy.test.mjs            @CHANGE_ME/platform
+tools/runbooks-index.test.mjs            @CHANGE_ME/platform
+# The allowlist of variables that may be inlined into the PUBLIC bundle. Adding a
+# key here publishes it, so it is an API-and-frontend decision, not a platform one.
+frontend/.env.example                    @CHANGE_ME/frontend  @CHANGE_ME/api
+frontend/src/config/env.ts               @CHANGE_ME/frontend  @CHANGE_ME/api
+frontend/src/hooks/useVersionWatch.ts    @CHANGE_ME/frontend
+frontend/src/components/VersionMismatchBanner.tsx @CHANGE_ME/frontend
+# The health/version surface. A change here changes what the release gate and
+# every probe in the cluster can observe.
+src/DubbingPlatform.Api/Endpoints/        @CHANGE_ME/backend
+src/DubbingPlatform.Infrastructure/Health/ @CHANGE_ME/backend
+docs/topology.md                         @CHANGE_ME/platform  @CHANGE_ME/backend
+docs/rollout.md                          @CHANGE_ME/platform  @CHANGE_ME/backend
+docs/runbooks/                           @CHANGE_ME/platform  @CHANGE_ME/backend
+
 # --- Coverage and quality gates ----------------------------------------------
 docs/coverage.md                         @CHANGE_ME/quality
 docs/api-contract.md                     @CHANGE_ME/api

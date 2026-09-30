@@ -3,17 +3,19 @@ using DubbingPlatform.Infrastructure.Processes;
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace DubbingPlatform.Infrastructure.Health;
 
 /// <summary>
 /// Health-check registration. Liveness (<c>live</c> tag) is process-local only
 /// and never depends on PostgreSQL, RabbitMQ, Redis, storage, providers, or
-/// FFmpeg. Readiness (<c>ready</c> tag) reflects dependencies: PostgreSQL and
-/// storage always; RabbitMQ/Redis only when
-/// <c>Transport:Provider=RabbitMq</c> (full profile, skipped for fast/InMemory);
-/// FFmpeg only for media worker roles; provider config only for AI roles;
-/// local-inference warmup only for the GPU role (Healthy when
+/// FFmpeg. Readiness (<c>ready</c> tag) reflects dependencies: PostgreSQL,
+/// storage, and <b>migration currency</b> always (Task 043, R3); RabbitMQ/Redis
+/// only when <c>Transport:Provider=RabbitMq</c> (full profile, skipped for
+/// fast/InMemory); FFmpeg only for media worker roles; provider config only for
+/// AI roles; local-inference warmup only for the GPU role (Healthy when
 /// <c>Features:LocalInferenceEnabled=false</c>, the default).
 /// </summary>
 public static class HealthRegistration
@@ -34,6 +36,12 @@ public static class HealthRegistration
         var connectionString = configuration.GetConnectionString("Default") ?? string.Empty;
         builder.AddCheck(NpgSqlHealthCheck.Name, new NpgSqlHealthCheck(connectionString), tags: ["ready"]);
         builder.AddCheck<S3HealthCheck>(S3HealthCheck.Name, tags: ["ready"]);
+        // Task 043, R3: readiness also asserts the schema matches THIS binary. A
+        // reachable database says nothing about that, and the mismatch only
+        // shows up as a 500 on the first request that touches a new column.
+        // Registered for workers as well as the API - a worker reading a column
+        // the schema does not have fails the same way, and the fix is the same.
+        AddMigrationCurrency(builder, services);
 
         if (IsFullProfile(configuration))
         {
@@ -61,6 +69,12 @@ public static class HealthRegistration
         var connectionString = configuration.GetConnectionString("Default") ?? string.Empty;
         builder.AddCheck(NpgSqlHealthCheck.Name, new NpgSqlHealthCheck(connectionString), tags: ["ready"]);
         builder.AddCheck<S3HealthCheck>(S3HealthCheck.Name, tags: ["ready"]);
+        // Task 043, R3: readiness also asserts the schema matches THIS binary. A
+        // reachable database says nothing about that, and the mismatch only
+        // shows up as a 500 on the first request that touches a new column.
+        // Registered for workers as well as the API - a worker reading a column
+        // the schema does not have fails the same way, and the fix is the same.
+        AddMigrationCurrency(builder, services);
 
         if (IsFullProfile(configuration))
         {
@@ -110,6 +124,19 @@ public static class HealthRegistration
     public static bool IsGpuRole(string role)
     {
         return string.Equals(role, "gpu", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Registers the migration-currency readiness check when the host has a
+    /// database context factory to read the history table through. Hosted APIs
+    /// and workers both have one. It is skipped (rather than added and left to
+    /// fail) where it cannot be wired at all, because a check registered with no
+    /// factory behind it is a readiness failure that no configuration fixes.
+    /// </summary>
+    private static void AddMigrationCurrency(IHealthChecksBuilder builder, IServiceCollection services)
+    {
+        services.TryAddSingleton<IMigrationStateReader, EfCoreMigrationStateReader>();
+        builder.AddCheck<MigrationCurrencyCheck>(MigrationCurrencyCheck.Name, tags: ["ready"]);
     }
 
     private static (string Host, int Port) RabbitEndpoint(IConfiguration configuration)

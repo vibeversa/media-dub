@@ -1,0 +1,160 @@
+{
+  "$comment": [
+    "The static origin's serving rules as DATA (Task 043, instruction 1).",
+    "",
+    "This is not a second copy of deploy/nginx/default.conf to keep in step by",
+    "hand: tools/hosting-policy.mjs is the single implementation of the rules, it",
+    "reads this file, and deploy/tests/hosting.test.sh asserts that the nginx",
+    "config implements every class declared here. A file that merely described",
+    "the config would be a drift risk with nothing detecting it.",
+    "",
+    "Every class names a set of paths, the Cache-Control to serve them with, and",
+    "whether the SPA document is the correct answer for a miss. That last field",
+    "is the one that is easy to get wrong and expensive when it is: serving",
+    "index.html for a missing hashed asset turns a 404 into HTML, which the",
+    "browser then tries to execute as JavaScript.",
+    "",
+    "CHANGE_ME values are placeholders and MUST be substituted before a deploy.",
+    "deploy/verify.sh and deploy/tests/hosting.test.sh both fail on a CHANGE_ME",
+    "reaching a deployed artefact."
+  ],
+
+  "origin": {
+    "host": "CHANGE_ME-static-origin.internal",
+    "protocol": "https",
+    "port": 8080,
+    "note": "The unprivileged nginx image listens on 8080, not 80: it cannot bind below 1024, and the image is built so that nothing needs root. The CDN reaches it over the provider's private link; the public entry point is the CDN, not this host."
+  },
+
+  "tls": {
+    "required": true,
+    "redirectPlainHttpToHttps": true,
+    "redirectStatus": 301,
+    "minimumProtocol": "TLSv1.2",
+    "note": "The redirect is at the EDGE, not only at the origin. A user on http:// must never receive a response body over cleartext first and be redirected afterwards, and a redirect performed by the origin after the request already crossed the network is a response that was already observable."
+  },
+
+  "$classOrder": [
+    "EVALUATION IS FIRST-MATCH-WINS, AND THE ORDER BELOW IS LOAD-BEARING.",
+    "",
+    "nginx resolves locations in a different order from a first-match scan: an",
+    "`=` exact match beats a plain prefix, and a regex beats a plain prefix too.",
+    "This array therefore mirrors nginx's resolution, not a first-match scan's:",
+    "",
+    "  - `document` is an `=` match, so it precedes everything.",
+    "  - `source-map` is a REGEX (`\\.map$`). In nginx a regex beats a plain",
+    "    prefix, so it is evaluated before `hashed-asset` — otherwise",
+    "    /assets/index-Ab12.js.map would be served as an immutable asset, which is",
+    "    exactly the leak the class exists to prevent.",
+    "  - every remaining `=` match precedes the extension class, because the",
+    "    extension class also matches `json` and `js`.",
+    "  - `hashed-asset` is a plain prefix and precedes the catchAll.",
+    "  - `spa-route` is the catchAll and must be last.",
+    "",
+    "tools/hosting-policy.mjs asserts the catchAll is last, and",
+    "deploy/tests/hosting.test.sh asserts the running image agrees with whatever",
+    "the resulting classification says."
+  ],
+
+  "cacheClasses": [
+    {
+      "id": "document",
+      "description": "The SPA document. Names the current hashed asset filenames, so it must be revalidated on every request.",
+      "match": { "exactPaths": ["/index.html"] },
+      "cacheControl": "no-cache, no-store, must-revalidate",
+      "spaFallback": true,
+      "why": "A cached document references asset filenames the next deploy has already replaced. The result is a white screen on every hard refresh after a release."
+    },
+    {
+      "id": "source-map",
+      "description": "Source maps. Not shipped, and refused rather than merely absent.",
+      "match": { "extensions": ["map"] },
+      "status": 404,
+      "spaFallback": false,
+      "why": "A source map published by accident is a published copy of the application source. `sourcemap: false` in vite.config.ts is the primary control; the 404 is the second line of defence so that a future build flag change cannot leak it. Declared before hashed-asset because nginx evaluates a regex location ahead of a plain prefix one."
+    },
+    {
+      "id": "hashed-asset",
+      "description": "Vite build output under /assets/, whose filenames carry a content hash.",
+      "match": { "pathPrefixes": ["/assets/"] },
+      "cacheControl": "public, max-age=31536000, immutable",
+      "spaFallback": false,
+      "why": "The bytes behind a hashed name never change, so the entry can never be stale. immutable additionally stops the browser revalidating on reload, which is the point of hashing. A MISS here is a 404, never the document: 200 text/html where the browser expected JavaScript produces an error that names the frontend rather than the CDN."
+    },
+    {
+      "id": "runtime-version",
+      "description": "The /version.json document the client compares against its own baked tag.",
+      "match": { "exactPaths": ["/version.json"] },
+      "cacheControl": "no-cache, no-store, must-revalidate",
+      "spaFallback": false,
+      "why": "This file's entire job is to report what the CDN is CURRENTLY serving. Caching it makes the skew detection report the answer to yesterday's question, so a stale bundle is never noticed. It is declared BEFORE unhashed-asset because that class also matches the `json` extension, and first-match-wins: the order is load-bearing, not cosmetic."
+    },
+    {
+      "id": "service-worker",
+      "description": "The service worker, if one is ever added.",
+      "match": { "exactPaths": ["/service-worker.js"] },
+      "cacheControl": "no-cache, no-store, must-revalidate",
+      "spaFallback": false,
+      "why": "A cached service worker pins a client to an old asset manifest indefinitely - the same failure as a cached document, one layer deeper and much harder to diagnose. Also declared before unhashed-asset, which matches `js`."
+    },
+    {
+      "id": "api",
+      "description": "Anything under the API prefix. Not this origin's business at all.",
+      "match": { "pathPrefixes": ["/api/"] },
+      "status": 404,
+      "spaFallback": false,
+      "why": "The API is a separate host behind a separate ingress. If the static origin answers /api/... with the SPA document, a client gets 200 text/html where it expected JSON, and the resulting parse error names the frontend rather than the API. Declared before the extension class because a path like /api/v1/report.json would otherwise be served as a static asset."
+    },
+    {
+      "id": "unhashed-asset",
+      "description": "Vite's non-hashed outputs (favicon, manifest, web manifest, icons).",
+      "match": {
+        "extensions": ["js", "css", "woff", "woff2", "ttf", "eot", "svg", "png", "jpg", "jpeg", "gif", "webp", "avif", "ico", "json", "txt", "webmanifest"]
+      },
+      "cacheControl": "public, max-age=300",
+      "spaFallback": false,
+      "why": "Cached briefly rather than never, so a release that changes one of these reaches browsers without a hard refresh. These names do NOT change with content, so a year would be wrong. It matches `json` and `js`, so every exact-path class above it must come first."
+    },
+    {
+      "id": "spa-route",
+      "description": "Every other path: client-router routes the server has never heard of.",
+      "match": { "catchAll": true },
+      "status": 200,
+      "servesDocument": true,
+      "spaFallback": true,
+      "why": "A deep link such as /projects/01HZY.../workspace is handled by the client router. Without a fallback to index.html it is a 404 the user sees, and no amount of client-side routing fixes it."
+    }
+  ],
+
+  "securityHeaders": {
+    "$comment": "Matches Task 037's SecurityHeadersMiddleware exactly. The API and the static origin must send the same policy: a stricter static origin and a looser API is not 'the API is internal', it is the weaker of the two that a browser enforces.",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "$note": "Strict-Transport-Security is listed here but NOT set by the API. It is a per-origin, browser-cached, irreversible-for-max-age commitment, and setting it on the API origin is a decision about the API's hostname that belongs to whoever owns the certificate, not to a shared header set. The static origin sets it because the CDN terminates its TLS and the commitment is part of the CDN's configuration."
+  },
+
+  "compression": {
+    "enabled": true,
+    "minLength": 1024,
+    "types": [
+      "text/plain",
+      "text/css",
+      "text/javascript",
+      "application/javascript",
+      "application/json",
+      "application/manifest+json",
+      "image/svg+xml"
+    ],
+    "note": "minLength 1024 rather than 0: gzipping a 300-byte file makes it larger and costs CPU on the hot path. Bundlers emit the same text repeatedly, so the win is entirely in the large files."
+  },
+
+  "cdnVersionPinning": {
+    "$comment": "R6: the frontend rollback is a CDN version pin, not a redeploy.",
+    "currentVersionPath": "/versions/CHANGE_ME-frontend-release.json",
+    "previousVersionPath": null,
+    "procedure": "docs/runbooks/rollback.md, 'Rolling back the frontend'. A pin is a pointer change, which takes effect at the next document revalidation; it does not rebuild or re-upload anything, and it is reversible in seconds."
+  }
+}

@@ -35,6 +35,18 @@ spec:
         - {protocol: TCP, port: 53}
 ---
 # api: served by ingress-nginx, scraped by monitoring, talks to backends.
+#
+# R4 (Task 043): the API's ingress is the ONLY path from outside the cluster to
+# anything in it. Two rules here are load-bearing and both fail silently when
+# broken:
+#
+#   * every ingress peer MUST be a namespaceSelector. A bare `podSelector`
+#     matches pods in THIS namespace, so a peer written that way admits every
+#     workload deployed alongside the API - which is "the static origin, the
+#     workers, and anything an attacker can schedule".
+#   * no `ipBlock` on ingress. An ipBlock admits traffic from outside the
+#     cluster by address, which is the same reach the ingress-nginx namespace
+#     already grants, without the ability to name it.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -47,8 +59,11 @@ spec:
     matchLabels: {app.kubernetes.io/component: api}
   policyTypes: [Ingress, Egress]
   ingress:
+    # The CDN egress/edge proxies and the ingress controller. Both are
+    # namespaceSelector because both are namespaced workloads.
     - from:
         - namespaceSelector: {matchLabels: {name: ingress-nginx}}
+        - namespaceSelector: {matchLabels: {name: cdn-edge}}
       ports:
         - {protocol: TCP, port: 8080}
     - from:
@@ -77,6 +92,12 @@ spec:
 ---
 # Workers: no ingress (default-deny ingress stays); same backend egress as
 # the API. Selector excludes the api component (covered by api-allow above).
+#
+# It also EXCLUDES `migration` and `static`, and each exclusion has its own
+# policy below. That is the whole point: `NotIn [api]` alone swept the migration
+# Job in with the workers, handing a database migration job broker and Redis
+# access it has no reason to have. A migration that can publish to the queue is
+# a migration that can enqueue work during a deploy.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -88,7 +109,7 @@ spec:
   podSelector:
     matchExpressions:
       - {key: app.kubernetes.io/part-of, operator: In, values: [dubbing-platform]}
-      - {key: app.kubernetes.io/component, operator: NotIn, values: [api]}
+      - {key: app.kubernetes.io/component, operator: NotIn, values: [api, migration, static]}
   policyTypes: [Egress]
   egress:
     - to:
@@ -109,3 +130,65 @@ spec:
         - ipBlock: {cidr: 0.0.0.0/0}
       ports:
         - {protocol: TCP, port: 443} # provider allowlist; see note above
+---
+# The migration Job (Task 043, R4 + least privilege).
+#
+# It runs `/app/efbundle` against PostgreSQL and does nothing else. Before
+# Task 043 it inherited `workers-allow`'s egress, which also granted it the
+# broker (5672), Redis (6379) and object storage (9000). A migration with broker
+# access can publish, and a migration that publishes during a deploy is a
+# message delivered against a schema mid-change.
+#
+# PostgreSQL only, plus DNS (already allowed by `allow-dns-egress`). No ingress:
+# nothing connects to a Job that is applying a migration.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: migration-allow
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+  annotations:
+    task-043: "least-privilege DB role and egress for the migration Job"
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/component: migration}
+  policyTypes: [Egress]
+  egress:
+    # Self-hosted staging PostgreSQL. In prod the endpoint is the managed CIDR
+    # (CHANGE_ME below); both are listed so the Job works in either topology.
+    - to:
+        - podSelector: {matchLabels: {app: postgres}}
+        - ipBlock: {cidr: 198.51.100.0/24} # CHANGE_ME: managed PG CIDR
+      ports:
+        - {protocol: TCP, port: 5432}
+---
+# The static origin (Task 043, R4).
+#
+# Browser -> CDN -> static. The ONLY peer is the CDN's origin-facing proxy
+# namespace. There is deliberately no ingress rule from `ingress-nginx`: the CDN
+# reaches the origin over the provider's private path, and an ingress-nginx peer
+# would be a second public route to the document, bypassing every header the CDN
+# function adds. If the CDN's proxy is not in the `cdn-edge` namespace, this
+# policy denies everything and the symptom is a 503 at the edge - which is the
+# correct direction to fail in.
+#
+# Egress: none. A static file server that serves a build has nothing to call.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: static-allow
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+  annotations:
+    task-043: "CDN -> static origin only; no egress, no direct-ingress peer"
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/component: static}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {name: cdn-edge}}
+      ports:
+        - {protocol: TCP, port: 8080}

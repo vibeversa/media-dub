@@ -11,6 +11,7 @@ import { useAuthStore } from '../../features/auth/authStore.js';
 import { getEnv } from '../../lib/env.js';
 import { useAppStore } from '../../stores/index.js';
 import { NotificationBell as CenterNotificationBell } from '../../features/notifications/NotificationBell.js';
+import { VersionMismatchBanner } from '../../components/VersionMismatchBanner.js';
 import { ChunkErrorBoundary } from '../ChunkErrorBoundary.js';
 import { RouteFallback } from '../RouteFallback.js';
 import { getTopNavItems } from '../navigation/topNav.js';
@@ -166,6 +167,11 @@ export function AppShell({ unreadCount, onSignOut }: AppShellProps): ReactNode {
           <UserMenu onSignOut={onSignOut} />
         </div>
       </header>
+      {/* Task 043: between the header and the content, and outside the error
+          boundary, so a detected skew is still visible when the outlet has
+          already failed. It renders nothing unless the CDN is provably serving a
+          different release. */}
+      <VersionMismatchBanner />
       <div className="dp-container flex gap-6 py-6">
         <aside className="hidden w-48 shrink-0 md:block">
           <nav aria-label={t('nav:secondary')}>

@@ -19,7 +19,13 @@ import { resolveTelemetryCorrelation, sanitizeRoute } from './correlation.js';
  *   fingerprints); only locale tags, app versions, and opaque IDs ship.
  */
 
-export type TelemetryEventType = 'page_view' | 'route_change' | 'api_failure' | 'unknown_status' | 'missing_translation';
+export type TelemetryEventType =
+  | 'page_view'
+  | 'route_change'
+  | 'api_failure'
+  | 'unknown_status'
+  | 'missing_translation'
+  | 'version_mismatch';
 
 export interface PageViewEvent {
   readonly type: 'page_view';
@@ -58,12 +64,28 @@ export interface MissingTranslationEvent {
   readonly correlationId: string;
 }
 
+/**
+ * A detected deploy skew (Task 043). Carries two build TAGS, both of which are
+ * release identifiers and neither of which is a user, a route, or a URL. The
+ * field names are `baked`/`served` rather than `version` because the value is
+ * not the application's semantic version - it is which of two releases the
+ * client and the CDN each think is current, and the ratio of the two is the
+ * signal.
+ */
+export interface VersionMismatchEvent {
+  readonly type: 'version_mismatch';
+  readonly baked: string;
+  readonly served: string;
+  readonly correlationId: string;
+}
+
 export type TelemetryEvent =
   | PageViewEvent
   | RouteChangeEvent
   | ApiFailureEvent
   | UnknownStatusEvent
-  | MissingTranslationEvent;
+  | MissingTranslationEvent
+  | VersionMismatchEvent;
 
 /** Payload keys that must never reach telemetry (checked case-insensitively). */
 const FORBIDDEN_KEYS: ReadonlySet<string> = new Set([
@@ -228,5 +250,24 @@ export function trackMissingTranslation(input: { locale: string; key: string }):
     });
   } catch {
     // Telemetry must never break rendering.
+  }
+}
+
+/**
+ * Records a detected deploy skew (Task 043): the tag baked into the running
+ * bundle against the tag the CDN reports serving. Two release tags and nothing
+ * else, so it is safe to ship - the same reason `appVersion` is allowlisted on
+ * `page_view`.
+ */
+export function trackVersionMismatch(input: { baked: string; served: string }): void {
+  try {
+    emitTelemetryEvent({
+      type: 'version_mismatch',
+      baked: input.baked,
+      served: input.served,
+      correlationId: resolveTelemetryCorrelation(),
+    });
+  } catch {
+    // Telemetry must never break rendering, and never block the reload prompt.
   }
 }

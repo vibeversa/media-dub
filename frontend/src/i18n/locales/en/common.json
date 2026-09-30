@@ -6,6 +6,11 @@
   "footer": {
     "version": "Version {{version}}"
   },
+  "versionMismatch": {
+    "description": "A newer version is available (serving {{served}}). Reload to get it.",
+    "unknownRelease": "a newer version",
+    "reload": "Reload"
+  },
   "forbidden": {
     "title": "Not allowed",
     "description": "You do not have permission to view this page. Contact your tenant admin if you need access.",

@@ -190,6 +190,9 @@ required = {
     "pdb.yaml": ["PodDisruptionBudget"],
     "migration-job.yaml": ["Job"],
     "keda-scalers.yaml": ["TriggerAuthentication", "ScaledObject"],
+    # Task 043: the static origin behind the CDN. Deployment + ClusterIP
+    # Service, and deliberately NOT behind an Ingress.
+    "static-deployment.yaml": ["Deployment", "Service"],
 }
 failures = []
 for fname, kinds in required.items():
@@ -264,8 +267,13 @@ print("media contract OK: concurrency 2, 50Gi scratch PVC, 3 replicas")
 # in the release gate's static tier - a manifest that references an image nothing
 # builds is a deployment that fails at pull time, in a cluster, during a release.
 nginx = os.path.join(os.path.dirname(base), "nginx", "default.conf")
+snippet = os.path.join(os.path.dirname(base), "nginx", "security-headers.conf")
 if not os.path.isfile(nginx):
     print("FAIL: deploy/nginx/default.conf is missing; Dockerfile.frontend COPYs it")
+    sys.exit(1)
+if not os.path.isfile(snippet):
+    print("FAIL: deploy/nginx/security-headers.conf is missing; Dockerfile.frontend COPYs it and every "
+          "location block with its own add_header includes it")
     sys.exit(1)
 if not os.path.isfile(os.path.join(os.path.dirname(base), "..", "Dockerfile.frontend")):
     print("FAIL: Dockerfile.frontend is missing; the frontend pipeline builds it")
@@ -282,6 +290,60 @@ if "try_files" not in nginx_text:
     print("FAIL: deploy/nginx/default.conf has no SPA fallback; deep links will 404")
     sys.exit(1)
 print("frontend delivery contract OK: Dockerfile.frontend present, index.html uncached, SPA fallback present")
+
+# Task 043 (R4): the static origin must not be reachable except through the CDN.
+# A second public route to the document bypasses every header the CDN's
+# viewer-request function adds, including the HTTPS redirect - and the origin
+# cannot perform that redirect for a hostname it does not terminate.
+static = list(yaml.safe_load_all(open(os.path.join(base, "static-deployment.yaml"), encoding="utf-8")))
+sdep = next(d for d in static if d.get("kind") == "Deployment")
+ssvc = next(d for d in static if d.get("kind") == "Service")
+assert ssvc["spec"]["type"] == "ClusterIP", (
+    f"the static Service is {ssvc['spec']['type']}; a NodePort or LoadBalancer is a second public route "
+    "to the document that bypasses the CDN")
+assert ssvc["spec"]["ports"][0]["targetPort"] == 8080, ssvc["spec"]["ports"]
+assert sdep["spec"]["template"]["spec"]["containers"][0]["ports"][0]["containerPort"] == 8080, (
+    "the static origin must serve on 8080; the unprivileged nginx image cannot bind 80")
+print("static origin contract OK: ClusterIP, no Ingress, port 8080")
+
+# Task 043 (R4): the network topology. The default-deny is what makes every
+# allow meaningful, and its absence is the single change that would open the
+# data stores to the whole namespace. Asserted here as well as in
+# deploy/tests/hosting.test.sh because this is the release gate and that one is
+# the hosting gate; a manifest that fails one should fail the other.
+policies = []
+for name in sorted(os.listdir(base)):
+    if name.endswith((".yaml", ".yml")):
+        for doc in yaml.safe_load_all(open(os.path.join(base, name), encoding="utf-8")):
+            if isinstance(doc, dict) and doc.get("kind") == "NetworkPolicy":
+                policies.append((name, doc))
+assert policies, "no NetworkPolicy in deploy/k8s at all"
+default_deny = [
+    name for name, doc in policies
+    if (doc.get("spec") or {}).get("podSelector") == {}
+    and set((doc.get("spec") or {}).get("policyTypes") or []) == {"Ingress", "Egress"}
+]
+assert default_deny, (
+    "no NetworkPolicy has podSelector {} with policyTypes [Ingress, Egress]. Every allow is an addition "
+    "to 'everything is permitted' without one")
+components = {
+    (doc.get("spec") or {}).get("podSelector", {}).get("matchLabels", {}).get("app.kubernetes.io/component")
+    for _, doc in policies
+}
+for required in ("api", "migration", "static"):
+    assert required in components, (
+        f"no NetworkPolicy selects the {required} component; its traffic is unconstrained")
+migration_egress = [
+    port
+    for _, doc in policies
+    if (doc.get("spec") or {}).get("podSelector", {}).get("matchLabels", {}).get("app.kubernetes.io/component") == "migration"
+    for rule in ((doc.get("spec") or {}).get("egress") or [])
+    for port in sorted({p.get("port") for p in (rule.get("ports") or [])})
+]
+assert set(migration_egress) <= {5432}, (
+    f"the migration job's egress permits ports {sorted(set(migration_egress))}; it needs PostgreSQL (5432) "
+    "and DNS only. A migration with broker access can publish.")
+print(f"topology contract OK: default-deny ({default_deny[0]}), api/migration/static policies present")
 PY
     then
       ok "structural + contract checks"

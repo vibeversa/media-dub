@@ -74,3 +74,20 @@ playwright-report/
 # single contract, and a silently untracked file breaks it. Negated because the
 # blanket `.env.*` rule above exists to keep real secrets out of the repo.
 !frontend/.env.cross-layer
+
+# Task 043. The allowlist EXAMPLE, and it was never tracked — the blanket
+# `.env.*` rule swallowed it, so a fresh clone had no `.env.example` and both
+# `docs/ci.md` step 7 (`cp frontend/.env.example frontend/.env`) and
+# `Dockerfile.frontend`'s fallback were copying a file that did not exist. On a
+# developer's machine it was present and untracked, so nothing noticed.
+#
+# The file holds no secret: it is generated from DEPLOY_CONFIG_ALLOWLIST
+# (frontend/src/config/env.ts) and `scripts/vite-env-audit.sh` refuses any key or
+# value on that list which is secret-shaped. That is the point of tracking it —
+# it is the allowlist's documentation, and documentation nobody can read in a
+# clone is not documentation.
+!frontend/.env.example
+
+# The per-environment file `deploy/config-inject.sh` GENERATES. Stays ignored, and
+# the negation above is deliberately narrow: this is the one file that must not
+# be committed, because it is whatever origin someone was last building against.

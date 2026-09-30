@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Frontend image (Task 042).
+# Frontend image (Task 042; layout and build-path fixes in Task 043).
 #
 # This is a STATIC SPA behind nginx. Two decisions in it are load-bearing and
 # both are the kind that produce a bug that only appears in production:
@@ -7,22 +7,56 @@
 #   1. The SPA fallback. Every unknown path must serve index.html, because a deep
 #      link like /projects/01H.../workspace is handled by the client router and the
 #      server has never heard of it. Without `try_files ... /index.html` that URL
-#      is a 404 that a user sees, and no amount of client-side routing fixes it.
+#      is a 404 a user sees, and no amount of client-side routing fixes it.
 #   2. The cache policy. `/assets/*` filenames carry a content hash, so they are
 #      immutable and can be cached for a year. `index.html` MUST NOT be, or a
 #      deploy ships new hashed assets while browsers keep serving the old
-#      document that references the previous hashes - which is a white screen
-#      after every release, and the single most common way a hashed-asset setup
-#      fails in production.
+#      document that references the previous hashes - a white screen after every
+#      release, and the single most common way a hashed-asset setup fails.
+#
+# A third one was added in Task 043: a MISSING hashed asset is a 404, never the
+# document. See `deploy/nginx/default.conf`; the short version is that serving
+# index.html for a missing chunk gives the browser 200 text/html where it
+# expected JavaScript, and the resulting SyntaxError names the frontend rather
+# than the CDN, which is where the investigation then goes.
 #
 # The VITE_* variables are inlined at BUILD time by Vite, so this image is
 # specific to the API it was built against. That is why the image is versioned
-# and signed like the backend ones (R5): an `index.html` baked with the wrong
-# API base URL is a different product, not a different build of the same one.
+# and signed like the backend ones (R5): an `index.html` baked with the wrong API
+# base URL is a different product, not a different build of the same one.
 
 # --- build --------------------------------------------------------------------
 FROM node:24-alpine AS build
-WORKDIR /app
+WORKDIR /src/frontend
+
+# THE LAYOUT HERE IS THE REPOSITORY LAYOUT, AND IT HAS TO BE
+# -----------------------------------------------------------
+# `npm run build` runs a `prebuild` -> `check-drift` -> `node ../tools/
+# check-api-drift.mjs`. That script resolves the repository root as
+# `dirname(script)/..` and then looks for `frontend/src/api/generated/` and
+# `src/DubbingPlatform.Api/OpenApi/openapi.v1.json` beneath it. It is a
+# repository-relative tool, not a frontend-local one.
+#
+# So the build stage works from `/src/frontend` and the other two paths are copied
+# to `/src/tools` and `/src/src/...` - the SAME shape the repository has.
+# Flattening to `/app` and copying `tools/` to `/tools` looks equivalent and is
+# not: the script then resolves the root as `/` and looks for
+# `/frontend/src/api/generated` while the app is at `/app/src/api/generated`. It
+# reports "committed output missing" for a directory that is demonstrably
+# present, which is a very confusing way to say "your path layout is wrong".
+#
+# The previous version of this file had `WORKDIR /app` and copied only
+# `frontend/`, so the build failed with MODULE_NOT_FOUND. Nothing noticed: 042's
+# `deploy/verify.sh` asserted the Dockerfile and the nginx config EXISTED and
+# that the config said the right things, and no pipeline ever ran
+# `docker build` - the gap the 042 report recorded as "the first CI run is the
+# first build". `deploy/tests/hosting.test.sh` now runs it, which is how both of
+# these were found.
+#
+# The drift gate is not optional here. A bundle that has drifted from the
+# generated client produces a frontend that calls endpoints the API does not
+# serve, and that failure is a runtime 404 in a user's browser rather than a
+# build error.
 
 # The lockfile is copied on its own so a source-only change reuses the cached
 # install layer. `npm ci` - never `npm install` - so the image is built from
@@ -31,28 +65,46 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
-# `.env.example` is copied in by the caller before this build; the fallback here
-# keeps `docker build` working on a bare checkout, and the resulting bundle
-# points at the documented local API.
-RUN cp -n .env.example .env || true
+COPY tools/ /src/tools/
+COPY src/DubbingPlatform.Api/OpenApi/ /src/src/DubbingPlatform.Api/OpenApi/
+
+# `.env.production` is written by `deploy/config-inject.sh` per environment and
+# takes precedence over `.env` in Vite's mode resolution. It is copied rather
+# than generated here so the image that ships is the image that was audited: the
+# values in the bundle are exactly the ones `scripts/vite-env-audit.sh` cleared.
+# The fallback keeps `docker build` working on a bare checkout, and the resulting
+# bundle points at the documented local API.
+#
+# The `echo`+`ls` is there so the build log records WHICH env file was used. A
+# build that silently fell back to the example file produces a bundle pointing at
+# localhost, and this line is the only place that shows it happened.
+RUN { [ -f .env.production ] || cp .env.example .env; } \
+ && echo "frontend env file in use:" \
+ && (ls -1 .env.production 2>/dev/null || echo "  .env (fallback: .env.example)")
 RUN npm run build
 
 # The build output is copied into its own stage so the runtime image carries no
 # node_modules, no package.json, and no source. A static file server has no
 # business carrying a package tree, and `npm audit` findings in a dev dependency
-# are one less thing to reason about in a deployed artifact.
+# are one less thing to reason about in a deployed artefact.
 FROM scratch AS dist
-COPY --from=build /app/dist /
+COPY --from=build /src/frontend/dist /
 
 # --- runtime ------------------------------------------------------------------
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 
 # Port 8080, not 80: the unprivileged image cannot bind a port below 1024, and
 # binding 80 anyway would be the kind of privilege the rest of this image is
-# built to avoid. The ingress targets 8080 (deploy/k8s/ingress.yaml).
+# built to avoid. The CDN origin Service targets 8080
+# (deploy/k8s/static-deployment.yaml).
 EXPOSE 8080
 
 COPY deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
+# The security headers are a separate include because nginx's `add_header`
+# REPLACES the inherited set in any block that declares one of its own, so every
+# such block has to re-declare them. One copy, included everywhere, is the only
+# way that does not drift. See deploy/nginx/security-headers.conf.
+COPY deploy/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=dist / /usr/share/nginx/html
 
 # nginx-unprivileged runs as uid 101 with a writable /tmp and a pid file under
