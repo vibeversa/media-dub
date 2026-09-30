@@ -1,4 +1,4 @@
-# CI and Branch Protection (Task 042)
+# CI and Branch Protection (Task 042, with 042A's early gate)
 
 This file is the contract between the pipelines in `.github/workflows/` and the
 repository settings they are supposed to be protected by. It states the exact
@@ -10,19 +10,34 @@ repository is a description of what CI does; branch protection is what makes
 merging depend on it. Until the settings below are applied, every gate in this
 repository is advisory.
 
+**For the early gate specifically** — what runs, how to reproduce it locally,
+the container rule, and why two workflows both subscribe to `pull_request` — see
+[`ci.md`](ci.md). That page is the entry point; this one is the contract.
+
 ---
 
-## 1. The three required checks
+## 1. The required checks
 
-`CI` is the only workflow that subscribes to `pull_request`. It calls the three
-pipelines, which are reusable (`workflow_call`) and also runnable on demand. So a
-pull request produces exactly one run and exactly three required checks:
+There are **five**, produced by two workflows.
+
+`ci.yml` (Task 042B) is the full gate: `CI` is the only one of the two that
+calls the three reusable pipelines, so a pull request produces exactly one run
+of each. `basic-ci.yml` (Task 042A) is the always-on early gate and carries the
+two fast checks.
 
 | Required check name | Workflow | What it decides |
 | --- | --- | --- |
+| `Basic CI / backend-basic` | `basic-ci.yml` | Does the backend build, and do its unit tests actually run |
+| `Basic CI / frontend-basic` | `basic-ci.yml` | Does the frontend typecheck, lint, test and build |
 | `CI / contract` | `contract.yml` | May this change to the API surface merge at all |
 | `CI / backend` | `backend.yml` | Does the backend build, test, scan, attest and sign |
 | `CI / frontend` | `frontend.yml` | Does the frontend lint, typecheck, test, build and ship |
+
+The two `Basic CI` checks are deliberately redundant with parts of the `CI`
+checks. The reasoning, the cost and the condition for retiring them are in
+[`ci.md`](ci.md) §6 — read that before proposing to merge the two workflows,
+because the contract gate needs a pull-request ref and `ci.yml` cannot simply
+lose its `pull_request` trigger.
 
 ### 1.1 Configure it
 
@@ -32,6 +47,8 @@ Settings → Branches → Branch protection rules → `main`:
   a single-author history; the rule is here because the contract gate exists to
   be reviewed, and a rule that cannot be bypassed is what makes it one.
 - **Require status checks to pass before merging** — on. Add exactly:
+  - `Basic CI / backend-basic`
+  - `Basic CI / frontend-basic`
   - `CI / contract`
   - `CI / backend`
   - `CI / frontend`
@@ -42,6 +59,14 @@ Settings → Branches → Branch protection rules → `main`:
 - **Require conversation resolution** — on.
 - **Do not allow bypassing the above settings** — see §5.
 - **Allow force pushes** — off. **Allow deletions** — off.
+
+> **MIGRATION NOTE.** These five names replace the three that were documented
+> here when only `ci.yml` existed. If the five are not added, the two
+> `Basic CI` checks are advisory and the early gate can be ignored — which is
+> precisely the gap Task 042A exists to close. If the three old `CI / …` names
+> are left in place *and* the five are added, every PR waits on a check that no
+> longer runs.
+
 
 #### No path filters, anywhere
 
@@ -77,6 +102,13 @@ Both halves of that fail silently rather than loudly, and both are asserted by
 A reusable workflow's own `push`/`pull_request` triggers are **ignored** when it is
 called; only the caller's triggers apply. That is why the `v*` tag trigger lives on
 `ci.yml` and not on `backend.yml`.
+
+**`basic-ci.yml` is a different case and is not covered by that rule.** It is a
+standalone subscriber, not a pipeline that `ci.yml` calls, so it does not
+double-run anything: its two jobs exist under those names nowhere else. The
+overlap it *does* have is a deliberate, measured one with two of the three
+pipelines — argued in [`ci.md`](ci.md) §6, and not the accidental double-run this
+rule forbids.
 
 ### 1.2 Why the check names are the job names
 
@@ -154,6 +186,24 @@ CI_GATE_RESULT reason=<REASON> status=<PASS|FAIL>
 | `NO_TEST_RESULTS` / `TEST_RESULTS_UNREADABLE` | `tools/trx-assert.mjs` | No TRX, or none parsed. An unverified run is not a passing run |
 | `NO_PREVIOUS_RELEASE` / `PREVIOUS_SCHEMA_FAILED` / `CHAIN_FAILED` / `SCHEMA_NOT_ADDITIVE` | `scripts/migration-compat.sh` | The migration chain does not apply on the previous release's schema, or it is not additive |
 | *(build / Trivy / SBOM / cosign)* | `dotnet build`, Trivy, Syft, cosign | A warning-as-error, a HIGH/CRITICAL finding, a missing or trivially small SBOM, or a signature that does not verify |
+
+### `Basic CI / backend-basic` — `tools/unit-tier-containers.mjs`
+
+This job runs the unit tier with **no container runtime**, which makes the
+container rule a *source* check rather than a runtime one: a container-backed
+test in a containerless tier is skipped, not failed, and `dotnet test` exits 0.
+
+| Reason | Exit | Meaning |
+| --- | --- | --- |
+| `OK` | 0 | No untagged container dependency, and the unit project declares tests |
+| `TESTCONTAINERS_REQUIRED_BUT_UNAVAILABLE` | 1 | A container dependency in `tests/DubbingPlatform.UnitTests` sits outside a `[Trait("Category", "Integration")]` type. **It would be skipped, so the job fails instead** |
+| `UNIT_TIER_EMPTY` | 1 | The unit project declares no `[Fact]`/`[Theory]`. `dotnet test --filter FullyQualifiedName~…` prints "No test matches the given testcase filter" for every project and still exits 0, so an empty tier is indistinguishable from a passing one |
+| `UNIT_TIER_UNREADABLE` | 2 | The project directory does not exist, or holds no readable C#. **A gate that could not read the project has not verified it** |
+
+The runtime half of the same rule is `TEST_SKIPPED` from
+`tools/trx-assert.mjs --forbid-skipped`, which catches a `[SkippableFact]` that
+skipped for a reason the source check cannot see — in this repository, an ffmpeg
+probe. `TEST_SKIPPED` and `NO_TEST_RESULTS` may **never** be bypassed (§5).
 
 The two the task calls out explicitly:
 
@@ -365,6 +415,10 @@ What may **never** be bypassed, by anyone, for any reason:
   not run". Bypassing them is indistinguishable from not having the gate.
 - `TEST_SKIPPED` / `NO_TEST_RESULTS`. A green job that ran no tests is not a
   result.
+- `TESTCONTAINERS_REQUIRED_BUT_UNAVAILABLE` / `UNIT_TIER_EMPTY` /
+  `UNIT_TIER_UNREADABLE`. Bypassing these is indistinguishable from not running
+  the unit tier at all — which is the failure mode the early gate exists to
+  prevent.
 - `BASELINE_NEEDED`. A baseline is approved by a human, in a PR, with the PNGs
   in the diff.
 - A missing SBOM or an unverified cosign signature.
@@ -428,9 +482,10 @@ what the gate *reports*.
 | Tool | Pinned where | Version | Verified how |
 | --- | --- | --- | --- |
 | oasdiff | `scripts/openapi-diff.sh` (`OASDIFF_VERSION` + five `OASDIFF_SHA256_*`) | `v1.11.7` | Archive sha256 checked **before** extraction; `--version` asserted on every run, including for a binary found on `PATH` |
-| .NET SDK | `global.json` | `10.0.100`, `rollForward: latestFeature` | `rollForward` is a deliberate choice: a patch moves, a feature band does not |
-| Node | `frontend/package-lock.json` (`npm ci`) | locked | `npm ci` fails when the manifest and lockfile disagree; `npm install` is never used in CI |
-| Node for tooling | `package-lock.json` | locked | Same |
+| .NET SDK | `global.json` | `10.0.100`, `rollForward: latestFeature` | `rollForward` is a deliberate choice: a patch moves, a feature band does not. `basic-ci.yml` passes `global-json-file: global.json` to `setup-dotnet`, so there is no second copy of this number to drift |
+| Node | `.nvmrc` | `24` | Read by `setup-node` via `node-version-file`. The other workflows declare the same value as `NODE_VERSION: 24`; **a Node bump must change both**, and `.nvmrc` is the file to change first |
+| Node for tooling | `package-lock.json` | locked | `npm ci` fails when the manifest and lockfile disagree; `npm install` is never used in CI |
+| Node for the app | `frontend/package-lock.json` | locked | Same |
 | Playwright | `package.json` | `1.63.0` | Exact, no caret, because the visual baselines are Chromium-version-specific |
 | Trivy | `aquasecurity/trivy-action` | `0.28.0` | Action tag |
 | Syft | `anchore/sbom-action` | `v0` | Action tag |
@@ -528,6 +583,10 @@ gate whose failure modes include the token's.
 ## 9. Running the gates locally
 
 ```bash
+# The always-on early gate (Task 042A). docs/ci.md §3 has the full, exact set.
+node tools/unit-tier-containers.mjs       # or: npm run check:unit-containers
+npm run test:tools                        # 28 unit tests over the container rule
+
 # Contract: the gate's own rules, hermetically.
 bash scripts/openapi-diff.sh --self-test
 

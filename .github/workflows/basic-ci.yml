@@ -1,0 +1,302 @@
+name: Basic CI
+
+# Task 042A - the always-on early gate. Typecheck, lint, unit tests, build.
+#
+# WHY THIS FILE EXISTS ALONGSIDE `ci.yml`
+# --------------------------------------
+# `ci.yml` (Task 042B) is the FULL gate: contract drift, Testcontainers
+# integration, cross-layer E2E, visual/a11y/perf, image scan/SBOM/sign. It is
+# the right gate and it takes about 90 minutes.
+#
+# This one is the subset of it a developer waits for. It needs no Docker, no
+# Testcontainers, no Playwright browsers and no container images, so it reports
+# in a few minutes. The plan intends it to land before feature work, which is
+# why it exists as a separate pipeline rather than as a job inside the full one:
+# a gate that is only reachable after a 90-minute pipeline is not an early gate.
+#
+# THE OVERLAP IS REAL AND DELIBERATE
+# ---------------------------------
+# `CI / backend` runs restore/build/unit and `CI / frontend` runs
+# lint/typecheck/test/build, so this workflow repeats that work. Accepted, and
+# the cost is stated rather than hidden:
+#
+#   * the two run in PARALLEL with the full pipeline, so the early red/green
+#     arrives sooner than it would from the full pipeline, not later. Total
+#     elapsed time is unchanged; runner minutes roughly double for these two
+#     jobs. That is the price of a signal in minutes instead of an hour.
+#   * the two are independent verdicts on different questions, so neither can
+#     mask the other, and the check names are distinct
+#     (`Basic CI / backend-basic` vs `CI / backend`). There is no duplicate
+#     check name and therefore no merge block - which is the failure mode
+#     `docs/ci-branch-protection.md` §1.1 warns about for a workflow that both
+#     subscribes to `pull_request` and is called as a reusable workflow.
+#
+# The sunset condition is in `docs/ci.md` §6. Do not merge this file into
+# `ci.yml` without reading that first: the contract gate needs a pull-request
+# ref, so `ci.yml` cannot simply lose its `pull_request` trigger.
+#
+# TOOLCHAIN - THE PIN, AND WHY IT IS A FILE
+# -----------------------------------------
+#   .NET SDK   `global.json`  -> 10.0.100, rollForward: latestFeature
+#   Node       `.nvmrc`       -> 24 (the major track, same value the other
+#                                  workflows declare, so a Node bump is one
+#                                  reviewed diff)
+#
+# Both are READ FROM A FILE rather than repeated here. A literal version in a
+# workflow is a second source of truth: it drifts from the file, and the drift
+# is invisible until the local `Validation` block and CI disagree about what
+# passed. `setup-dotnet` reads `global.json` and `setup-node` reads `.nvmrc`, so
+# editing the pin is editing the pin.
+#
+# `Directory.Build.props` already sets `TreatWarningsAsErrors` for every
+# project, so the plain `dotnet build` of the `Validation` block fails on a
+# compiler warning. `-warnaserror` is repeated on the command line anyway: it
+# is the same switch twice, and belt-and-braces on a gate is the cheaper side
+# of that trade.
+#
+# R2 IN DETAIL
+# ------------
+# Every gate here fails closed. There is no `continue-on-error` on a gate step
+# and no retry, so a flake is quarantined per `docs/ci-quarantine.md` with an
+# owner and an issue - it is not retried into green.
+#
+# R3 IN DETAIL - NO TESTCONTAINERS IN THIS TIER
+# --------------------------------------------
+# A container-backed test in this tier does not fail, it is SKIPPED, `dotnet
+# test` exits 0, and the job is green having proved nothing. So a test that
+# needs a container must carry `[Trait("Category", "Integration")]`, and the
+# `Category!=Integration` clause below is what excludes it. An UNTAGGED
+# container dependency fails the job with
+# `TESTCONTAINERS_REQUIRED_BUT_UNAVAILABLE` - it is never skipped. The check
+# runs BEFORE the tests, so a mis-tagged test costs seconds rather than a full
+# unit run.
+#
+# The second half is at runtime: `tools/trx-assert.mjs --forbid-skipped` reads
+# the results and fails on any `Skipped`/`NotExecuted`, which is what catches a
+# `[SkippableFact]` that skipped for some other reason (this repository's media
+# tests probe for ffmpeg that way). And `tools/unit-tier-containers.mjs` also
+# fails with `UNIT_TIER_EMPTY` if the project declares no tests at all, because
+# `dotnet test --filter FullyQualifiedName~...` prints "No test matches the
+# given testcase filter" for every project and still exits 0.
+#
+# PERMISSIONS AND SECRETS
+# -----------------------
+# `contents: read`, and nothing else. No job here references `secrets.` at all:
+# the two basic jobs get no secret, so a change to them cannot leak one. This
+# workflow publishes nothing, signs nothing and pushes no image - those live
+# in `ci.yml`'s `image` jobs, which declare their own permissions.
+#
+# NO `paths:` FILTER, EVER
+# ------------------------
+# A filtered required check does not report on a PR it does not match, so
+# branch protection waits for a status that never arrives. Scope decisions go
+# inside the job, where they are visible. See `docs/ci-branch-protection.md` §1.1.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: basic-ci-${{ github.workflow }}-${{ github.ref }}
+  # A new push to a PR cancels the previous run: the answer it produced is
+  # already stale, and leaving it running spends the minutes this workflow
+  # exists to save.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ------------------------------------------------------------- backend ----
+  backend-basic:
+    name: backend-basic
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # The SDK version comes from `global.json`, so the pin is the one the
+      # repository already uses for `dotnet build` and `dotnet test` locally.
+      - name: Setup .NET (from global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # The key includes every project file, `global.json` and the tool
+      # manifest, so a package or SDK change is a cache miss rather than a
+      # stale tree. `restore-keys` narrows to any older NuGet cache on a total
+      # miss; it never restores a partial restore, because `dotnet restore`
+      # below revalidates the whole graph and re-downloads what is missing.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: basic-nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json', '.config/dotnet-tools.json') }}
+          restore-keys: basic-nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore DubbingPlatform.sln
+
+      # `Directory.Build.props` sets TreatWarningsAsErrors; the switch is
+      # repeated so that relaxing the props file cannot quietly relax this gate
+      # without this line changing too.
+      - name: Build (a warning is a failure)
+        run: dotnet build DubbingPlatform.sln --no-restore -warnaserror
+
+      # The container rule, before the tests. Cheap, hermetic, and it turns a
+      # mis-tagged container test from "a green job that skipped" into a red
+      # job in about a second.
+      - name: The unit tier must not need a container runtime
+        run: node tools/unit-tier-containers.mjs
+
+      # ffmpeg is installed explicitly rather than inherited from the runner
+      # image. `MediaValidationTests.Probe_Real_Files_Via_Ffprobe` probes for
+      # ffprobe and reports `Skipped` when it is absent, and the step below
+      # fails on any skip - so relying on the image would make this job's
+      # verdict depend on a runner-image detail nobody reviews.
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      # The `Validation` block's command, with the `Category!=Integration`
+      # clause that is the half of the tag which actually excludes a test from
+      # this tier, and a TRX logger so the result can be read rather than
+      # inferred. Neither changes WHICH tests run; they only narrow the already
+      # untagged set and redirect where the results are written. `docs/ci.md`
+      # §3 carries the exact command to reproduce this locally.
+      - name: Unit tests
+        run: >
+          dotnet test --filter "FullyQualifiedName~UnitTests&Category!=Integration"
+          --logger "trx;LogFileName=basic-ci-unit.trx"
+          --results-directory "$RUNNER_TEMP/trx"
+
+      # The runtime half of the fail-closed rule: a test that reported `Skipped`
+      # instead of running is a missing check, so the job fails. Exit 2 (no
+      # results, or unreadable ones) is a failure too, and is a different
+      # reason a human has to act on.
+      - name: No unit test may be skipped
+        run: node tools/trx-assert.mjs "$RUNNER_TEMP/trx" --forbid-skipped
+
+      # The pipelines are checked by the same repository they check, and
+      # `workflow-lint` is seconds. A malformed workflow is the most basic CI
+      # defect there is, so it belongs in the always-on early gate and not only
+      # in the full pipeline 90 minutes later.
+      - name: Workflow lint
+        run: bash scripts/workflow-lint.sh
+
+      # `if: always()`: the most useful artifact is the one attached to the run
+      # that failed. `scripts/workflow-lint.sh` requires this.
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: basic-ci-backend-trx
+          path: ${{ runner.temp }}/trx
+          retention-days: 14
+
+  # ------------------------------------------------------------ frontend ----
+  frontend-basic:
+    name: frontend-basic
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # `.nvmrc` is the Node pin, for the same reason `global.json` is the SDK
+      # pin. `cache: npm` keys the download cache on the lockfile, so a
+      # lockfile change is a miss; and `npm ci` below deletes `node_modules`
+      # before installing, so the only thing that can be installed is the tree
+      # the lockfile describes. A cache hit cannot produce a partial install.
+      - name: Setup Node (from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci`, never `npm install`: it fails when the manifest and the
+      # lockfile disagree, and installs exactly the locked tree. A gate that
+      # can resolve a different dependency graph than the one under test is not
+      # a gate.
+      - name: Install (locked)
+        run: npm ci --prefix frontend
+
+      # R2 and the task's edge case: `build` alone is not sufficient, because
+      # `build` is a bundler step and the bundler is happy to emit a bundle
+      # that does not typecheck. `typecheck` is its own step so the failure is
+      # attributable, and `build` runs it again internally - a PR that breaks
+      # the typecheck therefore fails twice, in two different steps, rather
+      # than reporting as a bundler fault.
+      - name: Typecheck
+        run: npm run typecheck --prefix frontend
+
+      # `frontend/package.json` pins `eslint . --max-warnings=0`, so a warning
+      # is a failure and this is the whole of the gate. If that flag is ever
+      # dropped the gate silently weakens; `docs/ci.md` §5 says to assert it.
+      - name: Lint
+        run: npm run lint --prefix frontend
+
+      - name: Unit and component tests
+        run: npm run test --prefix frontend
+
+      # `prebuild` runs `check-drift`, so a bundle edited without regenerating
+      # the client stops here rather than after a bundler failure.
+      #
+      # The env file is seeded because `frontend/.env` is gitignored: without
+      # it the build reads an undefined `VITE_API_BASE_URL` and fails inside
+      # the zod schema, which reads as a bundler fault rather than a missing
+      # input. Locally this is the `cp` in `docs/ci.md` §3.
+      - name: Seed the example env
+        run: cp frontend/.env.example frontend/.env
+
+      - name: Build
+        run: npm run build --prefix frontend
+
+      # ADVISORY ONLY. The blocking audit is `CI / frontend` in 042B, and this
+      # step exists to surface a new advisory on a PR without a 90-minute wait.
+      #
+      # The divergence is deliberate and recorded here because it looks wrong
+      # next to the other workflow: this uses `--omit=dev`, 042B's blocking
+      # gate deliberately does NOT, because a dev dependency is still code that
+      # runs in CI with repository access. `react-router-dom` is a runtime
+      # dependency and is covered either way, but `vitest` is not - which is
+      # exactly why the authoritative audit is the one that includes it. This
+      # annotation is a heads-up, not the gate.
+      #
+      # It exits 0 by construction, and that is NOT a suppression: there is no
+      # `continue-on-error`, so `scripts/quarantine-check.sh` does not treat it
+      # as one. The exit code is captured and re-emitted as an annotation, and
+      # "the audit could not run" is reported differently from "the audit ran
+      # and found something" - a gate that cannot distinguish them is a gate
+      # whose silence means nothing.
+      - name: Dependency audit (advisory, non-blocking)
+        run: |
+          set -uo pipefail
+          report="$RUNNER_TEMP/npm-audit-basic.md"
+          npm audit --prefix frontend --omit=dev --audit-level=high > "$report" 2>&1
+          status=$?
+          {
+            echo "### npm audit (\`--omit=dev --audit-level=high\`) - advisory only"
+            echo
+            echo "Blocking audit: \`CI / frontend\` in \`ci.yml\` (Task 042B), which deliberately does"
+            echo "not use \`--omit=dev\`. This annotation exists for early visibility, not as the gate."
+            echo
+            echo '```'
+            cat "$report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -eq 0 ]; then
+            echo "npm audit: no high or critical advisory in production dependencies."
+            exit 0
+          fi
+          if [ "$status" -eq 1 ]; then
+            echo "::warning title=NPM_AUDIT_ADVISORY::found high or critical advisories in production dependencies (exit 1). Advisory only; \`CI / frontend\` is the gate. See the job summary."
+            exit 0
+          fi
+          echo "::warning title=NPM_AUDIT_UNAVAILABLE::npm audit could not be run (exit $status). This is NOT a clean result - the audit produced no verdict, and \`CI / frontend\` is the gate that must be consulted."
+          cat "$report"
+          exit 0
