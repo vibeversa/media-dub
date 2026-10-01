@@ -1,0 +1,172 @@
+{
+  "$comment": [
+    "THE COMPATIBILITY MATRIX (Task 043B, R3).",
+    "",
+    "Three cells, and the reason there are three is that each one catches a",
+    "different release-engineering mistake:",
+    "",
+    "  old-api-new-db   The previous release's IMAGE against the CURRENT schema.",
+    "                    This is the rollback. It is the cell that is easiest to",
+    "                    forget, and the first one that becomes impossible to run:",
+    "                    once the previous image is dequeued from the registry and",
+    "                    the previous schema head is gone, this cell can never be",
+    "                    produced again. A matrix that is refreshed after that",
+    "                    point is a matrix that has quietly lost its hardest test.",
+    "",
+    "  new-api-old-db   The CANDIDATE against the PREVIOUS schema. This is what",
+    "                    catches a new NOT NULL column with no default: the schema",
+    "                    diff calls it additive, the candidate boots fine against its",
+    "                    own schema, and the failure only appears in the window",
+    "                    between the code deploying and the migration running - which",
+    "                    is the window the migration Job exists to close, and the one",
+    "                    nobody rehearses.",
+    "",
+    "  new-api-new-db   The ordinary case. Recorded so that a failure in the two",
+    "                    hard cells can be attributed: if the candidate fails",
+    "                    everywhere, the candidate is broken, not the window.",
+    "",
+    "PROBES - THREE, NOT ONE",
+    "----------------------",
+    "  1. GET /health, and the MIGRATION-CURRENCY CHECK WITHIN IT. Not the",
+    "     aggregate code. /health/ready is 200 or 503 over PostgreSQL, object",
+    "     storage, the broker, Redis and migration currency together, so a matrix",
+    "     keyed on it is keyed on whether a bucket happens to be reachable. /health",
+    "     answers the same aggregate AND names each check, so the verdict this",
+    "     matrix is about can be read on its own. 'absent' is a real answer and is",
+    "     distinct from 'Unhealthy': a build that predates the check is not a build",
+    "     whose check says the schema is wrong.",
+    "  2. POST /api/v1/projects. The WRITE is not optional. A new NOT NULL",
+    "     column with no default breaks the INSERT, and a read of the project the",
+    "     harness just created succeeds happily - so a read-only matrix proves",
+    "     half of what it claims.",
+    "  3. GET /api/v1/projects/{id}/workspace - the task's 'one workspace read'.",
+    "",
+    "Every probe path is checked by scripts/check-rollout-window.mjs against the",
+    "COMMITTED OpenAPI document, so a probe whose route was renamed is a gate",
+    "finding rather than a 404 read as 'no rows'. The document puts the version",
+    "prefix in servers[0].url and the route in paths, and the gate accounts for",
+    "that. The hosting endpoints (/health, /version) are exempt because they are",
+    "registered outside the document on purpose: they are AllowAnonymous, and a",
+    "document that listed them would advertise unauthenticated paths.",
+    "",
+    "`expect` is DATA, and the gate compares the recorded run against it",
+    "------------------------------------------------------------",
+    "Each cell declares the statuses that constitute a pass, and the gate reads",
+    "them from here rather than from the run. A run cannot pass by declaring its",
+    "own expectations, and a cell that quietly acquires a new expectation is a",
+    "reviewed diff.",
+    "",
+    "Note the expectation of new-api-old-db: migration-currency Unhealthy,",
+    "deliberately. See its `readinessNote`.",
+    "",
+    "`unavailable` - A DECLARED, DATED, REASONED EXEMPTION",
+    "---------------------------------------------------",
+    "A cell that cannot be run, named, with the reason, the condition that",
+    "unblocks it, the risk being accepted, and a review date. The gate REQUIRES",
+    "all five and fails when any is missing, when the `reviewBy` has passed, or",
+    "when the entry names a cell that is not in the matrix.",
+    "",
+    "This is not a way to make a red matrix green, and the difference is worth",
+    "stating. A suppression hides a failure. A declaration records that a specific",
+    "check cannot be performed, says exactly why in words a reviewer can check,",
+    "and stops being accepted on a date. The gate also PRINTS every exemption, so",
+    "an exemption can never be invisible in a green run.",
+    "",
+    "HOW TO RUN IT: bash deploy/rollout/compat-smoke.sh",
+    "It writes the run here, preserving this block; the gate decides whether the",
+    "record is acceptable."
+  ],
+
+  "matrix": [
+    {
+      "id": "old-api-new-db",
+      "api": "the previous release's image",
+      "schema": "the current migration head",
+      "expect": { "migrationCurrency": "Healthy", "write": 201, "workspace": 200 },
+      "probes": [
+        "GET /health -> the migration-currency check reports Healthy",
+        "POST /api/v1/projects -> 201",
+        "GET /api/v1/projects/{projectId}/workspace -> 200"
+      ],
+      "proves": "the previous release's code tolerates the expanded schema, which is the precondition for the code-only rollback in docs/runbooks/rollback.md"
+    },
+    {
+      "id": "new-api-old-db",
+      "api": "the candidate image",
+      "schema": "the previous release's migration head",
+      "expect": { "migrationCurrency": "Unhealthy", "write": 201, "workspace": 200 },
+      "readinessNote": "Unhealthy is the CORRECT answer here, and this cell is what proves it. MigrationCurrencyCheck deliberately reports a build that is AHEAD of the schema as not-ready, so a pod never takes traffic before its own migration has run. Expecting Healthy in this cell would have required disabling that check, or producing a permanent failure that everybody learned to ignore. Note that the gate reads the migration-currency check ON ITS OWN rather than the aggregate /health code: the aggregate also covers object storage, and a matrix keyed on it is keyed on whether a bucket happens to be reachable.",
+      "probes": [
+        "GET /health -> the migration-currency check reports Unhealthy because the build is ahead of the schema",
+        "POST /api/v1/projects -> 201",
+        "GET /api/v1/projects/{projectId}/workspace -> 200"
+      ],
+      "proves": "the candidate tolerates the schema it is not shipped with; a new column is nullable or defaulted, so the candidate is not waiting on its own migration to boot"
+    },
+    {
+      "id": "new-api-new-db",
+      "api": "the candidate image",
+      "schema": "the current migration head",
+      "expect": { "migrationCurrency": "Healthy", "write": 201, "workspace": 200 },
+      "probes": [
+        "GET /health -> the migration-currency check reports Healthy",
+        "POST /api/v1/projects -> 201",
+        "GET /api/v1/projects/{projectId}/workspace -> 200"
+      ],
+      "proves": "the candidate works at all, so a failure in the two window cells is attributable to the window rather than to the candidate"
+    }
+  ],
+
+  "unavailable": [
+    {
+      "cell": "old-api-new-db",
+      "recordedOn": "2026-09-30",
+      "reason": "THERE IS NO PREVIOUS RELEASE. This repository has never been released, so there is no previous product to point a previous IMAGE at. Building one from 'the commit before the newest migration' produces something that is not a release: that tree has no WorkspaceController, no /health or /version endpoints and no MigrationCurrencyCheck, and its API answers 404 on /api/v1/me, /api/v1/dashboard, /api/v1/notifications and on the workspace route. A cell that 'passed' against that build would be measuring a different product, and a cell that failed would be blamed on the schema.",
+      "unblockedWhen": "the first tagged release exists. From then on the cell runs for real: build the previous tag's image, apply the current head, probe. This is why the cell is declared rather than quietly dropped - it is the cell the FIRST release after a change will need, and it is the first one that becomes impossible once the previous image is dequeued.",
+      "riskAccepted": "Until the first release there is no previous product to be incompatible with, so a code-only rollback has nothing to roll back TO. The rollback MECHANISM is separately rehearsed on a real cluster by deploy/rollout/rehearse-rollback.sh and recorded in deploy/rollout/rollback-rehearsal.json; that is the part that can be quietly wrong.",
+      "reviewBy": "2026-12-29"
+    }
+  ],
+
+  "runs": [
+    {
+      "date": "2026-09-30",
+      "environment": "ephemeral PostgreSQL postgres:16 container plus the API image dubbing-compat:new built from commit 5bf914a, on one machine; the staging form of this is the same script with --base-url",
+      "result": "PASS",
+      "unavailable": [
+        {
+          "cell": "old-api-new-db",
+          "recordedOn": "2026-09-30",
+          "reason": "THERE IS NO PREVIOUS RELEASE. This repository has never been released, so there is no previous product to point a previous IMAGE at. Building one from 'the commit before the newest migration' produces something that is not a release: that tree has no WorkspaceController, no /health or /version endpoints and no MigrationCurrencyCheck, and its API answers 404 on /api/v1/me, /api/v1/dashboard, /api/v1/notifications and on the workspace route. A cell that 'passed' against that build would be measuring a different product, and a cell that failed would be blamed on the schema.",
+          "unblockedWhen": "the first tagged release exists. From then on the cell runs for real: build the previous tag's image, apply the current head, probe. This is why the cell is declared rather than quietly dropped - it is the cell the FIRST release after a change will need, and it is the first one that becomes impossible once the previous image is dequeued.",
+          "riskAccepted": "Until the first release there is no previous product to be incompatible with, so a code-only rollback has nothing to roll back TO. The rollback MECHANISM is separately rehearsed on a real cluster by deploy/rollout/rehearse-rollback.sh and recorded in deploy/rollout/rollback-rehearsal.json; that is the part that can be quietly wrong.",
+          "reviewBy": "2026-12-29"
+        }
+      ],
+      "results": [
+        {
+          "id": "new-api-new-db",
+          "result": "PASS",
+          "detail": "candidate image against the current head: migration-currency Healthy (schema is current at 20260922082522_AddRefreshSessions), POST /api/v1/projects 201, GET workspace 200",
+          "apiImage": "dubbing-compat:new (commit 5bf914a)",
+          "schemaHead": "20260922082522_AddRefreshSessions",
+          "migrationCurrency": "Healthy",
+          "writeStatus": 201,
+          "workspaceStatus": 200,
+          "healthStatus": 503
+        },
+        {
+          "id": "new-api-old-db",
+          "result": "PASS",
+          "detail": "candidate image against the previous head: migration-currency Unhealthy (1 migration pending; applied head 20260921115016_AddVoicePreviewJobs, this build defines 20260922082522_AddRefreshSessions), POST /api/v1/projects 201, GET workspace 200. The candidate reads AND writes against a schema it is not shipped with, which is what a nullable-or-defaulted new column buys.",
+          "apiImage": "dubbing-compat:new (commit 5bf914a)",
+          "schemaHead": "20260921115016_AddVoicePreviewJobs",
+          "migrationCurrency": "Unhealthy",
+          "writeStatus": 201,
+          "workspaceStatus": 200,
+          "healthStatus": 503
+        }
+      ]
+    }
+  ]
+}

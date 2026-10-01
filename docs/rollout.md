@@ -86,7 +86,7 @@ the next action is a forward-fix, never a rollback. See §5.
 
 ```bash
 kubectl apply -f deploy/k8s/api-deployment.yaml
-kubectl -n dubbing-prod rollout status deploy/api
+kubectl -n dubbing-prod rollout status deploy/dubbing-api
 ```
 
 Two things in this step are load-bearing.
@@ -134,7 +134,7 @@ bash deploy/verify.sh --post-deploy --require-post-deploy \
   --url "https://api.staging.example.com" \
   --tag v1.4.2 \
   --openapi-version "$(jq -r .info.version < src/DubbingPlatform.Api/OpenApi/openapi.v1.json)" \
-  --rollback-command "kubectl -n dubbing-staging rollout undo deploy/api"
+  --rollback-command "kubectl -n dubbing-staging rollout undo deploy/dubbing-api"
 ```
 
 In order, with a rollback triggered on the first failure:

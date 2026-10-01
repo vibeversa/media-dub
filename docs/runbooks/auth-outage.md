@@ -23,11 +23,11 @@ or logged-in users are being logged out.
 curl -fsS https://api.<env>/health | jq '{status, readiness}'
 
 # 2. What is the error distribution, not just the rate?
-kubectl -n <ns> logs deploy/api --since=15m | grep -o '"code":"[A-Z_]*"' | sort | uniq -c | sort -rn | head
+kubectl -n <ns> logs deploy/dubbing-api --since=15m | grep -o '"code":"[A-Z_]*"' | sort | uniq -c | sort -rn | head
 
 # 3. Signing key: is the SAME key in every pod and unchanged?
 kubectl -n <ns> get secret dubbing-secrets -o jsonpath='{.data.auth-signing-key}' | sha256sum
-kubectl -n <ns> rollout history deploy/api
+kubectl -n <ns> rollout history deploy/dubbing-api
 ```
 
 Step 3 is the one that matters and it is the one people skip. A token signed by
@@ -43,8 +43,8 @@ is a deploy problem rather than an auth problem:
 
 ```bash
 # All three at once, so every pod presents the same key.
-kubectl -n <ns> rollout restart deploy/api
-kubectl -n <ns> rollout status deploy/api
+kubectl -n <ns> rollout restart deploy/dubbing-api
+kubectl -n <ns> rollout status deploy/dubbing-api
 ```
 
 That fixes *new* logins. **Existing tokens remain valid** if the old key is still

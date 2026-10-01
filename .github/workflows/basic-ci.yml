@@ -188,6 +188,22 @@ jobs:
       - name: Workflow lint
         run: bash scripts/workflow-lint.sh
 
+      # Task 043B, R2/R3/R4/R5: the expand/contract window. It reads the EF
+      # migration source, the compatibility matrix, the flag register and the
+      # rollback rehearsal record, and it is here rather than only in
+      # `deploy/verify.sh` for the same reason as `workflow-lint`: the cheapest
+      # possible place to refuse a migration that drops a column, and the only
+      # place a PR can be told before it is a release. It needs node and nothing
+      # else - no Docker, no cluster, no database - which is what
+      # `scripts/migration-compat.sh` needs and does not.
+      #
+      # The record checks (matrix, rehearsal) are the other half of why it is
+      # here: a stale matrix or an unrehearsed rollback is a release-engineering
+      # debt that a PR is the natural moment to surface, and neither is visible
+      # to a test.
+      - name: Rollout window (additive migrations, compat matrix, flag register, rehearsal record)
+        run: node scripts/check-rollout-window.mjs
+
       # `if: always()`: the most useful artifact is the one attached to the run
       # that failed. `scripts/workflow-lint.sh` requires this.
       - name: Upload unit test results

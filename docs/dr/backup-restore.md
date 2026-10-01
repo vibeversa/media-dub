@@ -29,7 +29,7 @@ contain prod secrets (keys, connection strings, token material).
 
 ```bash
 # 1. Stop writers: scale API + workers to 0 so no new rows land mid-restore.
-kubectl -n dubbing-prod scale deploy/api worker-control worker-ai \
+kubectl -n dubbing-prod scale deploy/dubbing-api worker-control worker-ai \
   worker-media-prep worker-media-render worker-export worker-gpu --replicas=0
 
 # 2. Point-in-time restore to a fresh instance (managed-service CLI shape;
@@ -49,7 +49,7 @@ kubectl -n dubbing-prod wait --for=condition=complete --timeout=600s job/dubbing
 #    `outbox_message` on boot, so start workers only now (order matters —
 #    replaying against a stale schema double-applies or misroutes).
 kubectl -n dubbing-prod rollout restart deploy/worker-control
-kubectl -n dubbing-prod scale deploy/api worker-ai worker-media-prep \
+kubectl -n dubbing-prod scale deploy/dubbing-api worker-ai worker-media-prep \
   worker-media-render worker-export --replicas=<per topology>
 
 # 6. Verify counts + spot download.

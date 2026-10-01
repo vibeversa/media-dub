@@ -323,6 +323,7 @@ VERIFY_RESULT reason=<REASON> status=<PASS|FAIL> exit=<n>
 | --- | --- |
 | `OK` | Every applicable check passed |
 | `MANIFEST_CHECK_FAILED` | A structural or contract assertion over `deploy/` failed |
+| `MIGRATION_NOT_ADDITIVE` | The rollout-window gate failed: a migration in the compatibility window is not additive, or the compatibility matrix / flag register / rollback rehearsal record is not current. **Called out separately from `MANIFEST_CHECK_FAILED` because the manifests can be perfectly valid and the release still unshippable** — an operator sent to the manifests for a broken expand/contract window is sent to the wrong file |
 | `DEPLOY_URL_REQUIRED` | `--require-post-deploy` (the release wiring) with no `DEPLOY_URL`. A static check is not a deployed check |
 | `HEALTH_FAILED` | `/health/live` or `/health/ready` did not return 200 |
 | `OPENAPI_UNREACHABLE` | The deployed API serves no OpenAPI document, or the document has no readable `info.version` |
@@ -330,7 +331,37 @@ VERIFY_RESULT reason=<REASON> status=<PASS|FAIL> exit=<n>
 | `SMOKE_SPECS_MISSING` | No `@smoke` spec exists, so the release cannot be verified. A release is not verified on the strength of a health check |
 | `SMOKE_RUNNER_UNAVAILABLE` | The verification host cannot run Playwright |
 | `SMOKE_FAILED` | Health and the version both passed and the smoke suite failed: the deployment is up and is the expected build, and the behaviour is wrong |
-| `INPUT_INVALID` | A required interpreter is missing |
+| `INPUT_INVALID` | A required interpreter is missing, or a record the gate reads could not be read |
+
+### `scripts/check-rollout-window.mjs` (the expand/contract window gate, Task 043B)
+
+```
+ROLLOUT_GATE_RESULT reason=<REASON> status=<PASS|FAIL> migrations=<n> findings=<n>
+```
+
+| Reason | Exit | Meaning |
+| --- | --- | --- |
+| `OK` | 0 | Every migration inside the window is additive, the compatibility matrix has a fresh passing run, every flag has a declaration and a review date, and the rollback rehearsal is current and qualified |
+| `MIGRATION_NOT_ADDITIVE` | 1 | A migration at or after the contract ledger's `baseline` contains a contract operation (drop, rename, `AlterColumn`, `UpdateData`, `DeleteData`, or raw SQL that does one), or a new column is `NOT NULL` with no default. Each finding names the migration, the line and the operation |
+| `LEDGER_INVALID` | 1 | `deploy/rollout/contract-ledger.json` is missing, has no `baseline`, names a baseline or an approved contract that is not a migration, has `windowReleases` ≠ 1, or has an entry with no approver, date, reason, follow-up task or review date. **Checked separately from the findings**: a ledger that silently parses as "approve nothing" would turn every approved contract into a violation, and one that parses as "approve everything" would turn the gate off |
+| `MATRIX_INCOMPLETE` | 1 | A compatibility cell is missing, a probe names a route the committed OpenAPI document does not serve, no run is recorded, the newest run did not exercise or pass a cell, it is older than 90 days, or a `PASS` carries no detail |
+| `FLAGS_UNDECLARED` | 1 | A registered flag has no `reviewBy`, has a default that disagrees with the file it is declared in, is not declared at all, declares a `gates` value outside `presentation`/`behaviour`/`rollout`/`inert`, does not assert `authorization: false`, or is referenced from a file under the authorization paths |
+| `REHEARSAL_STALE` | 1 | `deploy/rollout/rollback-rehearsal.json` is undated, older than 90 days, reports a non-`PASS` result, omits a workload the rollback procedure covers, records an undo whose revision or pod template did not change, records a revision no controller could have written (0, negative, fractional), records an API rollback whose pods still serve the same build, or does not say what the rehearsal did **not** cover |
+| `INPUT_INVALID` | 2 | A migrations directory, record file or OpenAPI document could not be read. **A failure, not a skip** — a window gate that read nothing has cleared nothing |
+
+Two design facts that matter when you read a finding:
+
+1. **`MIGRATION_NOT_ADDITIVE` is a different class of problem from
+   `MANIFEST_CHECK_FAILED`.** The manifests can be valid and the release
+   unshippable, and the fix is a split across two releases rather than a YAML
+   edit.
+2. **The record checks are not decoration.** A compatibility matrix that has
+   never been run and a rollback that has never been rehearsed are both readable
+   as passing, which is why an unrun matrix is `MATRIX_INCOMPLETE` rather than an
+   absent check, and why an unqualified rehearsal is `REHEARSAL_STALE` rather than
+   a note.
+
+`INPUT_INVALID` and `LEDGER_INVALID` may **never** be bypassed (§5).
 
 Two facts about the design that matter when you read the artifact:
 
@@ -718,7 +749,7 @@ QUARANTINE_TODAY=2030-01-01 bash scripts/quarantine-check.sh
 # Structural deploy checks, and the post-deploy release gate.
 bash deploy/verify.sh
 bash deploy/verify.sh --post-deploy --url https://staging.example.com --tag v1.2.3 \
-  --rollback-command 'kubectl -n dubbing-staging rollout undo deploy/api'
+  --rollback-command 'kubectl -n dubbing-staging rollout undo deploy/dubbing-api'
 
 # The skipped-test gate, against any recent test run.
 node tools/trx-assert.mjs tests/DubbingPlatform.UnitTests/TestResults --forbid-skipped

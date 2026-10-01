@@ -29,7 +29,7 @@ curl -N -H "Authorization: Bearer $TOKEN" \
 
 # 2. Connection count and reconnect rate, per pod.
 kubectl -n <ns> top pods -l app.kubernetes.io/component=api
-kubectl -n <ns> logs deploy/api --since=10m | grep -c 'sse.reconnect'
+kubectl -n <ns> logs deploy/dubbing-api --since=10m | grep -c 'sse.reconnect'
 
 # 3. Is this one user or everyone? One user is almost always their network.
 ```

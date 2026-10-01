@@ -32,7 +32,7 @@ kubectl -n <ns> get pods -l app.kubernetes.io/component=worker-maintenance
 kubectl -n <ns> logs deploy/worker-maintenance --since=15m | tail -40
 
 # 3. Is the SSE channel carrying notification.created at all?
-kubectl -n <ns> logs deploy/api --since=15m | grep -c 'notification.created'
+kubectl -n <ns> logs deploy/dubbing-api --since=15m | grep -c 'notification.created'
 
 # 4. Is there a delivery-failure signal?
 kubectl -n <ns> logs deploy/worker-maintenance --since=15m | grep -ci 'notify\|delivery.*fail'

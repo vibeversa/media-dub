@@ -9,8 +9,10 @@ cluster rollout with the raw K8s manifests (primary) or the thin Helm wrapper.
 `docs/ci-branch-protection.md` §2; see "Verifying a deployment" below.
 
 Task 043 owns the frontend's delivery and the rollout. Start at
-[`docs/topology.md`](../docs/topology.md) for what may talk to what, and
-[`docs/rollout.md`](../docs/rollout.md) for the release procedure.
+[`docs/topology.md`](../docs/topology.md) for what may talk to what,
+[`docs/rollout.md`](../docs/rollout.md) for the release procedure, and
+[`rollout.md`](rollout.md) for the release *record*: the compatibility window,
+the compatibility matrix, the flag register, and the last rollback rehearsal.
 
 | | |
 | --- | --- |
@@ -20,7 +22,8 @@ Task 043 owns the frontend's delivery and the rollout. Start at
 | `scripts/vite-env-audit.sh` | fails the build on a secret-shaped `VITE_*` key or value |
 | `deploy/tests/hosting.test.sh` | **the hosting gate** — builds the image and asserts the real headers |
 | `docs/runbooks/index.md` | every runbook, by symptom |
-| `docs/rollout.md` | migration-first, backward-compatible, flag-gated, verify, then contract |
+| `deploy/rollout.md` | **the release record** — migration ordering, the expand/contract window, the compatibility matrix, the flag register, the rollback rehearsal log |
+| `docs/rollout.md` | the operator procedure (migration-first, backward-compatible, flag-gated, verify, then contract) |
 
 ## Prerequisites
 
@@ -54,22 +57,39 @@ Apply in this order; each step gates the next:
    `kubectl -n dubbing-prod get externalsecret dubbing-secrets` (SYNCED True)
    and `kubectl -n dubbing-prod get secret dubbing-secrets`.
 3. Config: `kubectl apply -f deploy/k8s/configmap.yaml`.
-4. Migration job: `kubectl apply -f deploy/k8s/migration-job.yaml`, then
-   `kubectl -n dubbing-prod wait --for=condition=complete --timeout=600s job/dubbing-migration`.
+4. **Migration job — delete first, then apply, then wait.** This is the gate for
+   every step after it.
+
+   ```bash
+   kubectl -n dubbing-prod delete job dubbing-migration --ignore-not-found
+   kubectl apply -f deploy/k8s/migration-job.yaml
+   kubectl -n dubbing-prod wait --for=condition=complete --timeout=600s job/dubbing-migration
+   ```
+
    The Job runs `/app/efbundle` (idempotent; concurrent runners serialize on
    `__EFMigrationsHistory`) with the maintenance-role connection string.
    A failed migration BLOCKS the rollout: do not proceed until the Job is
    Complete. (ArgoCD runs this automatically as a PreSync hook; Helm as a
-   pre-upgrade hook — annotations are on the Job.)
+   pre-upgrade hook — annotations are on the Job, and both of them delete the
+   previous Job before creating the new one, which is why the delete below is
+   specific to the plain-`kubectl` path.)
+
    **The `wait` is the gate; the `apply` is not.** A Job that is merely applied
-   may be Running, may have failed, may be retrying. Task 043's ordering test
-   proved the refusal case end to end on an ephemeral cluster: a refusing bundle
-   makes the wait time out AND leaves the API pods in `Init:CrashLoopBackOff`
-   with `ready: false` in their EndpointSlice, so nothing routes to them.
+   may be Running, may have failed, may be retrying.
+
+   **The `delete` is part of the gate, not a preclean.** A Job's `spec` is
+   immutable, so applying this file against a Job that already *completed* is a
+   no-op that exits 0, and the `Complete` condition from the previous release is
+   still on the object — so the `wait` returns success immediately, having
+   observed a migration that never ran. That false pass was demonstrated on a
+   real cluster by `deploy/rollout/rehearse-rollback.sh` (the wait succeeded in
+   1 second on the same Job object, uid unchanged, no migration run), and
+   `deploy/verify.sh` asserts the delete is in this list. See
+   [`deploy/rollout.md`](rollout.md) §1.
 5. API: `kubectl apply -f deploy/k8s/api-deployment.yaml`. Pods run the
    `wait-for-migrations` initContainer (same bundle) and never start on a
    broken schema. Wait for readiness:
-   `kubectl -n dubbing-prod rollout status deploy/api`.
+   `kubectl -n dubbing-prod rollout status deploy/dubbing-api`.
    Readiness now also asserts **migration currency** (`MigrationCurrencyCheck`),
    so a pod whose build is ahead of the schema never takes traffic. Liveness
    stays process-only.
@@ -115,7 +135,7 @@ different script, and it is what decides whether a rollout stays.
 bash deploy/verify.sh --post-deploy \
   --url https://staging.example.com \
   --tag v1.2.3 \
-  --rollback-command 'kubectl -n dubbing-staging rollout undo deploy/api'
+  --rollback-command 'kubectl -n dubbing-staging rollout undo deploy/dubbing-api'
 ```
 
 In order, with a rollback triggered on the first failure:
@@ -168,7 +188,7 @@ when a post-deploy check fails, and records the triggering reason.
 and it opens with the decision table, because the database question comes first
 and it has an answer that is not "roll it back". Summary:
 
-- API: `kubectl -n <ns> rollout undo deployment/api`. The API and control PDBs
+- API: `kubectl -n <ns> rollout undo deployment/dubbing-api`. The API and control PDBs
   (`minAvailable: 1`) keep serving during the rollback, so it is a pointer change
   rather than a restart. Confirm with `/version`, not with the rollout status:
   `rollout undo` moving the Deployment does not prove the pods are the previous

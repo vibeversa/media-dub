@@ -5,7 +5,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: api
+  name: dubbing-api
   namespace: dubbing-prod
   labels:
     app.kubernetes.io/part-of: dubbing-platform
@@ -28,4 +28,4 @@ spec:
           - path: /
             pathType: Prefix
             backend:
-              service: {name: api, port: {number: 80}}
+              service: {name: dubbing-api, port: {number: 80}}

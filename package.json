@@ -14,6 +14,7 @@
     "test:perf": "playwright test --grep=@perf",
     "test:tools": "node --test tools/*.test.mjs deploy/frontend/*.test.mjs",
     "check:unit-containers": "node tools/unit-tier-containers.mjs",
+    "check:rollout": "node scripts/check-rollout-window.mjs",
     "check:hosting": "bash deploy/tests/hosting.test.sh",
     "check:frontend": "node --test deploy/frontend/*.test.mjs",
     "check:frontend-topology": "node scripts/check-frontend-topology.mjs",

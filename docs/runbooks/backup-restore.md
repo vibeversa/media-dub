@@ -68,7 +68,7 @@ unauthorised production change, and the audit log will show it as one.
 ### 1. Quiesce
 
 ```bash
-kubectl -n dubbing-prod scale deploy/api worker-control worker-ai \
+kubectl -n dubbing-prod scale deploy/dubbing-api worker-control worker-ai \
   worker-media-prep worker-media-render worker-export worker-gpu --replicas=0
 ```
 
@@ -131,7 +131,7 @@ against a stale schema double-applies or misroutes.
 
 ```bash
 kubectl -n dubbing-prod rollout restart deploy/worker-control
-kubectl -n dubbing-prod scale deploy/api worker-ai worker-media-prep \
+kubectl -n dubbing-prod scale deploy/dubbing-api worker-ai worker-media-prep \
   worker-media-render worker-export --replicas=<per topology>
 ```
 

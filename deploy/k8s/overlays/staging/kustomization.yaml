@@ -41,7 +41,7 @@ images:
   - {name: ghcr.io/CHANGE_ME/dubbing-worker-export, newTag: main}
   - {name: ghcr.io/CHANGE_ME/dubbing-maintenance, newTag: main}
 replicas:
-  - {name: api, count: 1}
+  - {name: dubbing-api, count: 1}
   - {name: worker-control, count: 1}
   - {name: worker-media-prep, count: 1}
   - {name: worker-media-render, count: 1}

@@ -76,6 +76,7 @@ readonly REASONS_SMOKE_RUNNER="SMOKE_RUNNER_UNAVAILABLE"
 readonly REASONS_SMOKE_FAILED="SMOKE_FAILED"
 readonly REASONS_ROLLBACK="ROLLBACK_TRIGGERED"
 readonly REASONS_ROLLBACK_UNAVAILABLE="ROLLBACK_UNAVAILABLE"
+readonly REASONS_ROLLBACK_WINDOW="MIGRATION_NOT_ADDITIVE"
 readonly REASONS_URL_REQUIRED="DEPLOY_URL_REQUIRED"
 readonly REASONS_INPUT="INPUT_INVALID"
 
@@ -254,6 +255,53 @@ assert j["spec"]["backoffLimit"] == 3, j["spec"]
 assert j["metadata"]["annotations"]["argocd.argoproj.io/hook"] == "PreSync", j["metadata"]
 assert "pre-upgrade" in j["metadata"]["annotations"]["helm.sh/hook"], j["metadata"]
 print("migration contract OK: backoffLimit 3, ArgoCD PreSync + helm pre-upgrade hooks")
+
+# Task 043B (R1): the ordering is a CLAIM, and these are the three ways the
+# claim is kept. Each one can be present while the release is still unsafe, so
+# each is asserted separately rather than inferred from the presence of another.
+#
+#   1. the Job's container and the API's `wait-for-migrations` initContainer run
+#      the SAME binary, from the same image. Two different mechanisms would be
+#      two different definitions of "migrations applied", and the one the runbook
+#      documents is not necessarily the one that gates.
+#   2. the initContainer is in the API Deployment at all. Without it, an
+#      out-of-band apply that skipped the Job would start pods against a schema
+#      they do not understand.
+#   3. the Job is DELETEd before it is re-applied in the documented order. A
+#      Job's spec is immutable, so re-applying a completed Job is a no-op and
+#      `kubectl wait --for=condition=complete` is then satisfied by the PREVIOUS
+#      release's success. That false pass was demonstrated on a real cluster by
+#      deploy/rollout/rehearse-rollback.sh; the assertion here is that the
+#      remedy is in the procedure somebody actually reads.
+migrate = next(c for c in j["spec"]["template"]["spec"]["containers"] if c["name"] == "migrate")
+init = next(c for c in dep["spec"]["template"]["spec"]["initContainers"] if c["name"] == "wait-for-migrations")
+assert migrate["command"] == init["command"], (
+    "the migration Job and the API's gate run different commands: "
+    + str(migrate["command"]) + " vs " + str(init["command"]) + ". There would be two definitions of "
+    "'migrations have been applied', and only one of them is documented.")
+assert migrate["image"] == init["image"], (
+    "the migration Job and the API's gate run different images, so the two can carry different bundles.")
+assert init["command"] == ["/app/efbundle"], init["command"]
+# Both take the maintenance-role connection string, never the app role: the app
+# role has no DDL, so a gate using it would fail for a reason that looks like a
+# broken migration.
+for container, where in ((migrate, "the migration Job"), (init, "the API migration gate")):
+    ref = next(e for e in container["env"] if e["name"] == "ConnectionStrings__Default")["valueFrom"]["secretKeyRef"]
+    assert ref["key"] == "maintenance-connection", (
+        where + " uses the '" + str(ref["key"]) + "' secret key. It must be 'maintenance-connection' (the "
+        "BYPASSRLS role); the app role has no DDL, so the failure reads as a broken migration.")
+assert dep["spec"]["strategy"]["rollingUpdate"]["maxUnavailable"] == 0, (
+    "the API rolls with maxUnavailable 0, so the previous revision keeps serving while the new one is gated. "
+    "A migration failure blocks the rollout; it does not stop traffic.")
+print("migration ordering OK: one gate binary, maintenance role on both, maxUnavailable 0")
+
+readme = open(os.path.join(os.path.dirname(base), "README.md"), encoding="utf-8").read()
+assert "delete job dubbing-migration" in readme, (
+    "deploy/README.md's deploy order does not DELETE the migration Job before applying it. A completed Job's "
+    "spec is immutable, so the re-apply is a no-op and 'kubectl wait --for=condition=complete' is then "
+    "satisfied by the previous release's success - a false pass on the gate R1 depends on. Demonstrated on a "
+    "real cluster; see deploy/rollout.md section 1.")
+print("deploy order OK: the migration Job is deleted before it is re-applied")
 
 # Media bounded-concurrency + scratch contract.
 prep = list(yaml.safe_load_all(open(os.path.join(base, "workers-media-prep.yaml"), encoding="utf-8")))
@@ -511,6 +559,27 @@ PY
   fi
 
   echo ""
+  echo "== rollout window (043B) =="
+  # A separate gate rather than another block in the structural tier above, and
+  # the reason is the same one that keeps the hosting policy out of the shell: the
+  # structural tier has a parsed PyYAML view of every manifest, and this gate
+  # answers questions about C# migration source and JSON records, which a YAML
+  # parser cannot read. One gate per question, in the language that can read it.
+  if have node; then
+    if node "$ROOT/scripts/check-rollout-window.mjs"; then
+      ok "rollout window: migration additivity, compatibility matrix, flag register, rollback rehearsal"
+    else
+      bad "rollout window: migration additivity, compatibility matrix, flag register, rollback rehearsal"
+    fi
+  else
+    # Fail-closed, for the same reason python3 is: a release gate that skipped its
+    # own structural assertions because a tool was missing is a gate that reports
+    # success having checked nothing.
+    echo "::error::node is required for the rollout-window checks."
+    fail_with "$REASONS_INPUT" "rollout window" "node is not installed; the expand/contract window, the flag register and the rehearsal record are not verified without it"
+  fi
+
+  echo ""
   echo "== kubectl dry-run =="
   if have kubectl; then
     if kubectl version --client >/dev/null 2>&1 && kubectl config current-context >/dev/null 2>&1; then
@@ -615,7 +684,16 @@ PY
   fi
 
   if [ "$FAIL" -ne 0 ]; then
-    REASON="$REASONS_MANIFEST"
+    # `MIGRATION_NOT_ADDITIVE` is called out separately because it is the one
+    # reason that is not about the manifests being wrong. The manifests can be
+    # perfectly valid and the release still unshippable, and an operator reading
+    # `MANIFEST_CHECK_FAILED` for a broken expand/contract window would go looking
+    # in the wrong file.
+    if printf '%s\n' "${CHECKS[@]:-}" | grep -q "FAIL|rollout window"; then
+      REASON="$REASONS_ROLLBACK_WINDOW"
+    else
+      REASON="$REASONS_MANIFEST"
+    fi
     EXIT_CODE=1
   fi
   finish

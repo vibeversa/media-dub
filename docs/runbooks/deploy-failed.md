@@ -83,8 +83,8 @@ Roll back, then find out how. `rollout undo` moves the Deployment; the `/version
 check is what proves the pods are the intended build:
 
 ```bash
-kubectl -n <ns> rollout undo deployment/api
-kubectl -n <ns> rollout status deployment/api
+kubectl -n <ns> rollout undo deployment/dubbing-api
+kubectl -n <ns> rollout status deployment/dubbing-api
 curl -fsS https://api.<env>/version | jq -r '.version, .commit'
 ```
 
@@ -99,7 +99,7 @@ for comparison. Do not re-run the deploy.
 migration currency:
 
 ```bash
-kubectl -n <ns> port-forward deploy/api 8080:8080 &
+kubectl -n <ns> port-forward deploy/dubbing-api 8080:8080 &
 curl -sS http://127.0.0.1:8080/health | jq
 ```
 

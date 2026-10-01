@@ -1,0 +1,110 @@
+{
+  "$comment": [
+    "THE ROLLBACK REHEARSAL RECORD (Task 043B, R5).",
+    "",
+    "R5 is 'rehearsed and recorded, not just documented', so this file is EVIDENCE",
+    "and the gate checks it as evidence. Five things it must carry, each because",
+    "its absence is a specific failure:",
+    "",
+    "  date         a rehearsal with no date is a claim, and a claim ages.",
+    "  environment  where it ran. What \"it worked\" means differs between an",
+    "                ephemeral single-node cluster and production, and the",
+    "                difference is the whole value of the record.",
+    "  targets      every workload the rollback procedure covers, with the revision",
+    "                and the POD TEMPLATE before and after. A revision that did not",
+    "                change is an undo that did not undo; a new revision whose",
+    "                template is identical is a rollback to the same build. NOTE that",
+    "                the revision annotation INCREMENTS on an undo - it does not go",
+    "                back to N-1 - which is not obvious and is asserted.",
+    "  observations what the run actually SAW, including the two facts that were not",
+    "                obvious beforehand: a failing migration gate blocks the rollout",
+    "                while the PREVIOUS revision keeps serving (a blocked rollout is",
+    "                not an outage), and re-applying a completed migration Job",
+    "                satisfies \"kubectl wait --for=condition=complete\" in about a",
+    "                second with no migration running at all.",
+    "  notCovered   what the rehearsal did NOT prove. An unqualified pass is read as",
+    "                a complete one, and the gap between \"rollout undo works in a",
+    "                kind cluster\" and \"a production rollback is safe\" is everything:",
+    "                the application, the database, the CDN pin and the operator.",
+    "                The gate REFUSES an empty notCovered.",
+    "",
+    "HOW TO PRODUCE ONE: deploy/rollout/rehearse-rollback.sh --record",
+    "deploy/rollout/rollback-rehearsal.json. tools/rollout-record.mjs writes the",
+    "file and preserves this block; the gate decides whether the record is",
+    "acceptable."
+  ],
+  "date": "2026-10-01",
+  "environment": "ephemeral Kubernetes cluster (kind, context kind-dubbing-rehearsal), namespace dubbing-prod, rehearsal stand-in image dubbing-rehearsal - NOT the application image",
+  "result": "PASS",
+  "targets": [
+    {
+      "deployment": "dubbing-api",
+      "revisionBefore": 10,
+      "revisionAfter": 11,
+      "imageBefore": "dubbing-rehearsal:rev2",
+      "imageAfter": "dubbing-rehearsal:rev1",
+      "servedAfter": "rehearsal-rev1",
+      "result": "PASS",
+      "detail": "rollout undo moved the Deployment 10 -> 11 and the pod template dubbing-rehearsal:rev2 -> dubbing-rehearsal:rev1"
+    },
+    {
+      "deployment": "worker-control",
+      "revisionBefore": 5,
+      "revisionAfter": 6,
+      "imageBefore": "dubbing-rehearsal:rev2",
+      "imageAfter": "dubbing-rehearsal:rev1",
+      "result": "PASS",
+      "detail": "rollout undo moved the Deployment 5 -> 6 and the pod template dubbing-rehearsal:rev2 -> dubbing-rehearsal:rev1"
+    },
+    {
+      "deployment": "worker-ai",
+      "revisionBefore": 5,
+      "revisionAfter": 6,
+      "imageBefore": "dubbing-rehearsal:rev2",
+      "imageAfter": "dubbing-rehearsal:rev1",
+      "result": "PASS",
+      "detail": "rollout undo moved the Deployment 5 -> 6 and the pod template dubbing-rehearsal:rev2 -> dubbing-rehearsal:rev1"
+    },
+    {
+      "deployment": "worker-media-prep",
+      "revisionBefore": 5,
+      "revisionAfter": 6,
+      "imageBefore": "dubbing-rehearsal:rev2",
+      "imageAfter": "dubbing-rehearsal:rev1",
+      "result": "PASS",
+      "detail": "rollout undo moved the Deployment 5 -> 6 and the pod template dubbing-rehearsal:rev2 -> dubbing-rehearsal:rev1"
+    },
+    {
+      "deployment": "frontend",
+      "revisionBefore": 5,
+      "revisionAfter": 6,
+      "imageBefore": "dubbing-rehearsal:rev2",
+      "imageAfter": "dubbing-rehearsal:rev1",
+      "result": "PASS",
+      "detail": "rollout undo moved the Deployment 5 -> 6 and the pod template dubbing-rehearsal:rev2 -> dubbing-rehearsal:rev1"
+    }
+  ],
+  "observations": [
+    {
+      "observation": "a failing migration-gate initContainer blocked the API rollout and the Service stopped routing to it",
+      "result": "yes"
+    },
+    {
+      "observation": "re-applying a completed migration Job left 'kubectl wait --for=condition=complete' satisfied with the SAME object, so no migration ran",
+      "result": "yes"
+    },
+    {
+      "observation": "the API Service answered /health/ready on every sample spanning both rollouts and the undo",
+      "samples": 200,
+      "failures": 0
+    }
+  ],
+  "notCovered": [
+    "the application: every workload ran deploy/rollout/rehearsal/, a stand-in that answers the same probe paths. Nothing here shows the API, a worker or the static origin behaving correctly after a rollback - only that Kubernetes moves them back.",
+    "the database: no PostgreSQL, no migration, no schema. A code-only rollback is safe only because the expand/contract window holds (deploy/rollout.md section 2), and this rehearsal does not test that window - deploy/rollout/compat-smoke.sh does.",
+    "the CDN version pin: the frontend rollback in docs/runbooks/rollback.md is a provider-specific pointer change, not 'rollout undo', and it is not a cluster operation.",
+    "the operator: no incident, no clock, no handover. The step most likely to fail in a real rollback is the decision to run it, and nothing here rehearses a decision.",
+    "not applied: deploy/k8s/migration-job.yaml (needs a database), ingress.yaml (needs ingress-nginx), keda-scalers.yaml (needs the KEDA CRDs) and networkpolicies.yaml (needs a CNI that enforces them). Their rollback path - re-applying the previous overlay revision - is declarative and is not a 'rollout undo'.",
+    "the media-prep scratch volume is a hostPath stand-in for the managed disk. A managed ReadWriteMany disk has an attach/detach lifecycle a hostPath does not, so nothing here says anything about a volume surviving a node failure - that belongs to docs/dr/backup-restore.md and the Task 043C drill."
+  ]
+}

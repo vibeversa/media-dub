@@ -5,14 +5,33 @@
 #     application until every PreSync hook reports Healthy, so a failed migration
 #     blocks the API rollout by construction rather than by procedure.
 #   - Helm: pre-upgrade hook (below), same guarantee.
-#   - Plain kubectl: apply this file first and WAIT
-#     (kubectl wait --for=condition=complete job/dubbing-migration -n <ns>),
+#   - Plain kubectl: DELETE any previous Job, apply this file, then WAIT
+#     (kubectl delete job dubbing-migration -n <ns> --ignore-not-found
+#      kubectl apply -f deploy/k8s/migration-job.yaml
+#      kubectl wait --for=condition=complete job/dubbing-migration -n <ns>),
 #     then roll out the API. The wait is the gate; the apply alone is not.
-#     See docs/rollout.md.
+#     See deploy/rollout.md §1 and docs/rollout.md §2.
+#
+# WHY THE DELETE IS PART OF THE ORDERING, NOT AN OPTIONAL PRECLEAN
+# ---------------------------------------------------------------
+# A Job's `spec` is immutable, so `kubectl apply -f` against a Job that already
+# COMPLETED is a no-op that exits 0, and the completed condition from the
+# PREVIOUS release is still there. `kubectl wait --for=condition=complete`
+# therefore returns success immediately, having observed a migration that ran
+# against a schema state nobody is in any more. That is a false pass on the one
+# gate R1 depends on, and it is silent: the wait prints the Job's name and
+# nothing else.
+#
+# ArgoCD and Helm are not exposed to it - `BeforeHookCreation` /
+# `before-hook-creation` delete the previous object before creating the new one -
+# so this is specifically the plain-`kubectl` path. `deploy/rollout/
+# rehearse-rollback.sh` demonstrates the false pass and then the fix, and
+# `scripts/check-rollout-window.mjs` asserts the delete is in the documented
+# order.
 #
 # A failed migration leaves the PREVIOUS release serving. It does not roll the
-# schema back: migrations are additive only (expand/contract, docs/rollout.md
-# §5), and reversing a migration that applied anywhere shared is how data is
+# schema back: migrations are additive only (expand/contract, deploy/rollout.md
+# §2), and reversing a migration that applied anywhere shared is how data is
 # lost. Forward-fix.
 #
 # Mechanism: the maintenance image ships a self-contained EF migrations bundle at
@@ -22,6 +41,13 @@
 # --context AppDbContext`). The bundle is idempotent (concurrent runners
 # serialize on __EFMigrationsHistory) and uses the maintenance-role connection
 # string (BYPASSRLS), never the app role.
+#
+# Least privilege: this Pod is the ONLY thing in the platform that can DDL, and
+# `migration-allow` in networkpolicies.yaml restricts its egress to PostgreSQL.
+# It has no ingress rule at all, no broker credential, no object-store
+# credential, and `readOnlyRootFilesystem` with all capabilities dropped. Its
+# connection string arrives from the ExternalSecret as `maintenance-connection`
+# - never from a literal in this file, and never as the app role.
 #
 # NETWORK: `migration-allow` in networkpolicies.yaml restricts this Job's egress
 # to PostgreSQL. Before Task 043 it was swept in by `workers-allow`, which also

@@ -1,8 +1,13 @@
 # Staging ingress: staging host + staging issuer.
+#
+# The patch's `metadata.name` MUST equal the base object's, or the patch selects
+# nothing and kustomize reports success. It was `api` when the base Ingress was
+# renamed to `dubbing-api` in Task 043B, which is the silent-no-op shape this
+# file's own existence is a warning about.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: api
+  name: dubbing-api
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-staging
 spec:
@@ -16,4 +21,4 @@ spec:
           - path: /
             pathType: Prefix
             backend:
-              service: {name: api, port: {number: 80}}
+              service: {name: dubbing-api, port: {number: 80}}

@@ -1,6 +1,25 @@
 # Task 40: API deployment (prod: 3 replicas) + ClusterIP Service.
 # Image org/tag are pinned per environment by the kustomize overlays
 # (deploy/k8s/overlays/*/kustomization.yaml `images:`); replace CHANGE_ME.
+#
+# NAMED `dubbing-api`, NOT `api` (Task 043B)
+# -----------------------------------------
+# Every operator command for this workload is `kubectl ... rollout <verb>
+# deployment/dubbing-api` - undo, history, status, restart. A Deployment named
+# `api` is one character-suffix away from every other `api` object in a shared
+# namespace, and the object this repository most often has to move backwards is
+# the one whose name collides. It also matches the image name
+# (`ghcr.io/CHANGE_ME/dubbing-api`) and the public hostname
+# (`api.dubbing.example.com`), so the name, the artefact and the DNS name are
+# one word instead of three.
+#
+# Renaming is not free and the rename was done with the references, not around
+# them: the Service and the Ingress in this file, `ingress.yaml`,
+# `overlays/*/kustomization.yaml` (`replicas:`), `overlays/staging/
+# ingress-patch.yaml`, and every `deploy/api` in a runbook. The `app.kubernetes
+# .io/component: api` LABEL is deliberately unchanged - it is what the
+# NetworkPolicies and the PodDisruptionBudget select on, and a label rename is
+# a selector migration with no benefit at all.
 # Task 043 (R3): readiness asserts MIGRATION CURRENCY as well as database
 # reachability, via `MigrationCurrencyCheck` in HealthRegistration. A pod whose
 # build knows migrations the schema does not have is not ready, so it never
@@ -14,7 +33,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api
+  name: dubbing-api
   namespace: dubbing-prod
   labels:
     app.kubernetes.io/part-of: dubbing-platform
@@ -148,7 +167,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: api
+  name: dubbing-api
   namespace: dubbing-prod
   labels:
     app.kubernetes.io/part-of: dubbing-platform

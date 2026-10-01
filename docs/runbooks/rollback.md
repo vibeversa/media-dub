@@ -7,7 +7,7 @@ triggered by the gate, and for the cases where the gate refuses to roll back.
 ## One command for the API
 
 ```bash
-kubectl -n <namespace> rollout undo deployment/api
+kubectl -n <namespace> rollout undo deployment/dubbing-api
 ```
 
 That is the whole thing for an API rollback. `maxUnavailable: 0` and the API PDB
@@ -17,7 +17,7 @@ while the new one drains, so the undo is a pointer change rather than a restart.
 Confirm it took:
 
 ```bash
-kubectl -n <namespace> rollout status deployment/api
+kubectl -n <namespace> rollout status deployment/dubbing-api
 curl -fsS "https://api.<env>/version" | jq -r '.version, .release, .commit'
 ```
 
@@ -71,7 +71,7 @@ curl -fsS "https://api.<env>/version" | jq '{applied: .migrationHead, defined: .
 
 | `migrationsPending` | Schema vs this build | Allowed? | Do this |
 | --- | --- | --- | --- |
-| `0` | current | **Yes** | `kubectl rollout undo deployment/api` + the CDN pin. Nothing else. |
+| `0` | current | **Yes** | `kubectl rollout undo deployment/dubbing-api` + the CDN pin. Nothing else. |
 | `> 0` | build is **ahead** of the schema | **Yes, and nothing is needed for the DB** | The migration Job did not run. `rollout undo` the API if the new pods are failing; the previous build tolerates the expanded schema because every new column is nullable. Then run the Job properly. |
 | `0`, but `migrationHead` is **newer** than the build's `migrationTarget` | schema is **ahead** of the build — the contract phase ran | **NO** | The previous build cannot know which of its queries relied on what was removed. `MigrationCurrencyCheck` reports this as `ahead: true` and readiness is false, so the pod never serves. Forward-fix: deploy a build that knows the current schema. Rolling back the *frontend* is still safe — it is a different product. |
 | any | the Job **failed** | **No rollback of anything** | The Job is idempotent. Fix the migration and re-run it. The previous release is still serving; nothing has changed. |
