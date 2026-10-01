@@ -125,11 +125,11 @@ path. Both of these work with a `psql` and a log stream and nothing else.
 ```bash
 # 1. Is the projector running? A projector that threw on every message leaves a
 #    gap in its own log and no error anywhere the user can see.
-kubectl -n <ns> logs deploy/api --since=15m | grep -ciE 'notification.*(project|dispatch)'
+kubectl -n <ns> logs deploy/dubbing-api --since=15m | grep -ciE 'notification.*(project|dispatch)'
 
 # 2. Dead-letter reasons, by code. This is the admin ops "errors" panel as plain
 #    text, and the codes are the public ErrorCodes catalog.
-kubectl -n <ns> logs deploy/api --since=15m \
+kubectl -n <ns> logs deploy/dubbing-api --since=15m \
   | grep -oE 'NOTIFICATION_[A-Z_]+|SCHEMA_VERSION_MISMATCH|DLQ' | sort | uniq -c | sort -rn
 
 # 3. The DLQ depth without the diagnostics API. A non-zero depth is the single

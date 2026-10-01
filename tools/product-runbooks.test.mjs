@@ -39,6 +39,31 @@ const PRODUCT = join(REPO_ROOT, 'docs/runbooks/product');
 const INDEX = join(PRODUCT, 'index.md');
 const OPS_INDEX = join(REPO_ROOT, 'docs/runbooks/index.md');
 
+/**
+ * Minimal multi-document YAML reader for the manifests, which are hand-written
+ * and use only the block-mapping subset. Written here rather than pulling in a
+ * parser for four fields per document: the alternative is a dependency, and a
+ * dependency in a gate that has to run before anything is installed is its own
+ * class of problem.
+ *
+ * Deliberately not a YAML implementation: it reads `kind:` and the `name:` that
+ * follows `metadata:` at the document's top level, and nothing else. If a
+ * manifest ever nests `name:` under something else, the reader returns fewer
+ * documents and the `size >= 7` assertion below fails rather than silently
+ * passing with an empty set.
+ */
+function yamlDocs(source) {
+  return source
+    .split(/^---$/m)
+    .map((doc) => {
+      const kind = doc.match(/^kind:\s*(\S+)\s*$/m)?.[1];
+      const metadataBlock = doc.match(/^metadata:\s*\n((?:\s{2,}.*\n|\n)*)/m)?.[1] ?? '';
+      const name = metadataBlock.match(/^\s+name:\s*(\S+)\s*$/m)?.[1];
+      return kind ? { kind, metadata: { name } } : null;
+    })
+    .filter(Boolean);
+}
+
 /** The eight, named exactly as Task 043C instruction 1 names them. */
 const REQUIRED_RUNBOOKS = [
   'auth-outage.md',
@@ -555,6 +580,77 @@ test('every relative link in the product index and the runbooks resolves', () =>
     }
   }
   assert.ok(checked >= REQUIRED_RUNBOOKS.length * 2, `only ${checked} links were checked; the regex is probably wrong`);
+});
+
+test('no product runbook names a Kubernetes workload that does not exist', () => {
+  // The `kubectl` commands are the part of a runbook most likely to be wrong
+  // and least likely to be noticed, because a responder copies one, it fails
+  // with "deployments.apps \"api\" not found", and the natural reading is that
+  // the namespace is wrong rather than the name. Task 043B renamed the API
+  // Deployment `api` -> `dubbing-api` and the runbooks written before it were
+  // all wrong; this is the check that would have caught it at review time.
+  //
+  // Read the names out of the committed manifests, so the assertion follows a
+  // rename instead of needing to be updated alongside one.
+  const manifests = [
+    'deploy/k8s/api-deployment.yaml',
+    'deploy/k8s/frontend/deployment.yaml',
+    'deploy/k8s/workers-control.yaml',
+    'deploy/k8s/workers-media-prep.yaml',
+    'deploy/k8s/workers-media-render.yaml',
+    'deploy/k8s/workers-ai.yaml',
+    'deploy/k8s/workers-export.yaml',
+    'deploy/k8s/workers-maintenance.yaml',
+  ];
+
+  const workloadNames = new Set();
+  for (const file of manifests) {
+    const source = readFileSync(join(REPO_ROOT, file), 'utf8');
+    for (const doc of yamlDocs(source)) {
+      if (doc?.kind === 'Deployment' && doc?.metadata?.name) workloadNames.add(doc.metadata.name);
+    }
+  }
+  assert.ok(workloadNames.size >= 7, `only ${workloadNames.size} deployment name(s) read from the manifests`);
+
+  // Only the `kubectl` invocations are checked. Anchored to `kubectl` because
+  // `deploy/observability`, `deploy/backup` and `deploy/k8s` are real paths in
+  // these pages and are not workloads — matching every `deploy/<word>` would
+  // make the assertion about file paths instead of about commands.
+  const KUBECTL_WORKLOAD = /kubectl\b[^\n]*?\bdeploy\/([a-z0-9][a-z0-9-]*)/g;
+
+  // Per-page, pages that DO name a workload by `deploy/<name>`. Two of the eight
+  // are database- and API-side runbooks with no `kubectl deploy/…` command at all,
+  // so requiring one per page would be requiring noise; requiring it across the
+  // set is what stops the regex from being quietly wrong.
+  let totalChecked = 0;
+  for (const name of REQUIRED_RUNBOOKS) {
+    const text = readFileSync(join(PRODUCT, name), 'utf8');
+    for (const match of text.matchAll(KUBECTL_WORKLOAD)) {
+      const workload = match[1];
+      totalChecked += 1;
+      assert.ok(
+        workloadNames.has(workload),
+        `${name} runs \`kubectl … deploy/${workload}\`, which is not a Deployment in deploy/k8s (known: ${[...workloadNames].sort().join(', ')})`,
+      );
+    }
+  }
+  assert.ok(
+    totalChecked >= 10,
+    `only ${totalChecked} \`kubectl … deploy/<workload>\` commands were checked across the set; the regex is probably wrong`,
+  );
+
+  // And every Deployment in the manifests should be reachable from somewhere in
+  // the product set, which is a cheap inverse: a workload nobody can diagnose is
+  // a gap, and the list is short enough to state.
+  const allWorkloads = new Set();
+  for (const name of REQUIRED_RUNBOOKS) {
+    for (const match of readFileSync(join(PRODUCT, name), 'utf8').matchAll(KUBECTL_WORKLOAD)) {
+      allWorkloads.add(match[1]);
+    }
+  }
+  for (const workload of allWorkloads) {
+    assert.ok(workloadNames.has(workload), `the product set names deploy/${workload}, which is not in deploy/k8s`);
+  }
 });
 
 test('every product runbook is linked from the product index and the ops index', () => {

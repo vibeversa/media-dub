@@ -81,7 +81,7 @@ distinguishing check is cheap and the wrong answer is a security incident.
 
 ```bash
 # The replay-vs-retry discriminator: one client failing to reuse a token, or many.
-kubectl -n <ns> logs deploy/api --since=15m \
+kubectl -n <ns> logs deploy/dubbing-api --since=15m \
   | grep -c 'TOKEN_REUSED'
 ```
 
@@ -98,11 +98,11 @@ only path. It needs nothing but pod logs and the API's own error envelope.
 ```bash
 # 1. Does the login handler run at all? A 500 with no auth log line means the
 #    request died in middleware, which is a different incident.
-kubectl -n <ns> logs deploy/api --since=10m | grep -c 'auth.login'
+kubectl -n <ns> logs deploy/dubbing-api --since=10m | grep -c 'auth.login'
 
 # 2. Classify every auth error the API emitted, by code. The codes are the
 #    public ErrorCodes catalog, so this needs no dashboard vocabulary.
-kubectl -n <ns> logs deploy/api --since=10m \
+kubectl -n <ns> logs deploy/dubbing-api --since=10m \
   | grep -oE 'INVALID_CREDENTIALS|TOKEN_EXPIRED|TOKEN_REUSED|USER_DISABLED|UNAUTHORIZED' \
   | sort | uniq -c | sort -rn
 

@@ -90,11 +90,11 @@ real. No dashboard, no metrics, no alert: the log path is the path.
 ```bash
 # 1. Is the endpoint being hit at all? A zero here means the client never
 #    connected, and the fault is in the client or in front of it.
-kubectl -n <ns> logs deploy/api --since=10m | grep -c 'progress/stream'
+kubectl -n <ns> logs deploy/dubbing-api --since=10m | grep -c 'progress/stream'
 
 # 2. Reconnect cadence, per pod. This is the mechanism page's step 2 and it
 #    works without any metrics infrastructure.
-kubectl -n <ns> logs deploy/api --since=10m | grep -c 'sse.reconnect'
+kubectl -n <ns> logs deploy/dubbing-api --since=10m | grep -c 'sse.reconnect'
 
 # 3. Did the ingress cut the connection? A 60 s default read timeout closes an
 #    idle stream every minute and the client reconnects, which is

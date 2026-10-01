@@ -95,17 +95,17 @@ never reaches `Completed` is a **wedged worker**, and that is step 3.
 so it gets the most attention.
 
 ```bash
-kubectl -n <ns> get pods -l app.kubernetes.io/component=worker-media-preparation
-kubectl -n <ns> logs deploy/worker-media-preparation --since=15m \
+kubectl -n <ns> get pods -l app.kubernetes.io/component=worker-media-prep
+kubectl -n <ns> logs deploy/worker-media-prep --since=15m \
   | grep -oE 'MEDIA_[A-Z_]+|ARTIFACT_[A-Z_]+|STORAGE_[A-Z_]+|LEASING_LEASE_LOST' \
   | sort | uniq -c | sort -rn
 
 # The concurrency limit is deliberately 2 per pod and the scratch PVC is 50Gi.
 # Both are asserted by deploy/verify.sh, so a change here is a change somebody
 # made on purpose.
-kubectl -n <ns> get deploy worker-media-preparation \
+kubectl -n <ns> get deploy worker-media-prep \
   -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="Media__MaxConcurrentMediaJobs")].value}{"\n"}'
-kubectl -n <ns> top pods -l app.kubernetes.io/component=worker-media-preparation
+kubectl -n <ns> top pods -l app.kubernetes.io/component=worker-media-prep
 ```
 
 `Media__MaxConcurrentMediaJobs = 2` and a 50 Gi scratch PVC are the two numbers
@@ -145,14 +145,14 @@ a log stream and a database session.
 ```bash
 # 1. The four phases, straight from the API's log. The stage names are the
 #    funnel's own labels, so this is the funnel without the metrics pipeline.
-kubectl -n <ns> logs deploy/api --since=15m \
+kubectl -n <ns> logs deploy/dubbing-api --since=15m \
   | grep -oE 'upload\.(initiated|chunk_received|completed|failed)' \
   | sort | uniq -c
 
 # 2. Storage, from inside the API pod. A storage fault that the API's health
 #    check does not cover is a real failure mode: readiness covers the database
 #    and the broker, and the bucket is neither.
-kubectl -n <ns> exec deploy/api -- sh -c 'nc -z -w3 <storage-endpoint> 9000 && echo "storage reachable"'
+kubectl -n <ns> exec deploy/dubbing-api -- sh -c 'nc -z -w3 <storage-endpoint> 9000 && echo "storage reachable"'
 
 # 3. The wedged-worker signature: sessions stuck in a non-terminal state, with
 #    an age that exceeds any plausible media job.
@@ -166,7 +166,7 @@ psql "$DB" -c "
 # 4. Scratch space. A full PVC fails the *commit*, which is exactly the
 #    "fails at 90%" signature, and it does not look like a storage outage in any
 #    dashboard.
-kubectl -n <ns> exec deploy/worker-media-preparation -- df -h /scratch 2>/dev/null \
+kubectl -n <ns> exec deploy/worker-media-prep -- df -h /scratch 2>/dev/null \
   || kubectl -n <ns> get pvc
 ```
 
@@ -187,8 +187,8 @@ media-preparation pods. The sessions are in the database and the bytes are in th
 bucket, so a restart resumes the commit rather than losing anything.
 
 ```bash
-kubectl -n <ns> rollout restart deploy/worker-media-preparation
-kubectl -n <ns> rollout status deploy/worker-media-preparation --timeout=180s
+kubectl -n <ns> rollout restart deploy/worker-media-prep
+kubectl -n <ns> rollout status deploy/worker-media-prep --timeout=180s
 ```
 
 **The scratch PVC is full:** that is a capacity fix, not a restart. Raise the PVC

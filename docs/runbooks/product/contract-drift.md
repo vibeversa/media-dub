@@ -87,7 +87,7 @@ but the bundle was not".
 API logs the route template and the status; it does not log bodies, by design.
 
 ```bash
-kubectl -n <ns> logs deploy/api --since=15m \
+kubectl -n <ns> logs deploy/dubbing-api --since=15m \
   | grep -oE '"(GET|POST|PUT|DELETE) /api/v1/[a-z0-9{}/-]+" [0-9]{3}' \
   | sort | uniq -c | sort -rn | head -20
 ```
@@ -126,7 +126,7 @@ curl -sS "https://api.<env>/openapi.json" \
 curl -sS "https://api.<env>/openapi.json" | jq -r '.info.version, .["x-stamp"] // "no stamp"'
 
 # 4. Which routes are actually 4xx-ing, from the API's own log, grouped.
-kubectl -n <ns> logs deploy/api --since=15m \
+kubectl -n <ns> logs deploy/dubbing-api --since=15m \
   | grep -oE '/api/v1/[a-zA-Z0-9{}/_-]+' | sort | uniq -c | sort -rn | head -20
 ```
 
@@ -153,7 +153,7 @@ the one that can be *refused* a rollback. Check
   is refused. Old code calling a removed endpoint is a worse state than new code
   calling a new one. The forward-fix is a client release.
 - Before the contract phase: a code-only rollback is safe. `kubectl rollout undo
-  deploy/api` and leave the schema alone.
+  deploy/dubbing-api` and leave the schema alone.
 
 **A repository-side drift with a self-consistent environment:** nothing to
 mitigate for users. Fix the source — regenerate with `make generate-api`, update

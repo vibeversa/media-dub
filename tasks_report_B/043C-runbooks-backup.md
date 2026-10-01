@@ -68,8 +68,10 @@ owning task number.
 | `deploy/backup/scope.json` | The scope as data: 7 groups, parents, 15 referential checks, retention, restore priority, `addedBy` migration, and an empty `durableEntitiesNotYetBackedUp`. |
 | `deploy/backup/drill-seed.sql` | Synthetic seed, 28 rows, idempotent and scoped to its own `de71…` tenant. Deliberately asymmetric and deliberately includes a `Running` and an expired row. |
 | `scripts/restore-drill.sh` | The drill. 11 checks, argv-only SQL, loopback interlock, closed reason vocabulary, `RESTORE_DRILL_RESULT`. |
-| `tools/product-runbooks.test.mjs` | 19 tests. Template, order, non-emptiness, user-report opening, monitor/diagnostics/rollback rows, R4 role+audit, R5 no-fork, the shared-name hazard, and a credential-shape sweep. |
+| `tools/product-runbooks.test.mjs` | 20 tests. Template, order, non-emptiness, user-report opening, monitor/diagnostics/rollback rows, R4 role+audit, R5 no-fork, the shared-name hazard, a Kubernetes-workload check, and a credential-shape sweep. |
 | `tools/backup-coverage.test.mjs` | 19 tests. The seven groups from three independent directions, the extended project columns against the migration, the seed's coverage and synthetic-ness, the drill's four silent-failure checks, the reason vocabulary, and the doc. |
+
+*(A 20th test was added to `tools/product-runbooks.test.mjs` after the 043B rebase: every `deploy/<workload>` in a `kubectl` invocation is resolved against the committed manifests. It found both the `api` → `dubbing-api` rename and seven pre-existing `worker-media-preparation` references that never matched a Deployment — see Finding 5.)*
 
 ### Modified
 
@@ -284,17 +286,20 @@ EXIT=0
 
 ```
 $ node --test tools/backup-coverage.test.mjs tools/product-runbooks.test.mjs tools/runbooks-index.test.mjs
-# tests 51
-# pass 51
+# tests 52
+# pass 52
 # fail 0
 ```
 
 ```
 $ npm run test:tools
-# tests 255
-# pass 254
+# tests 344
+# pass 343
 # fail 1        <- tools/npm-audit-gate.test.mjs, PRE-EXISTING, see below
 ```
+(255 before 043B landed; 043B added 88, this task added 39. The one failure is
+`npm-audit-gate.test.mjs` — "a shell-free candidate must exist before the shell
+fallback is reached" — which fails identically on 043B's own tree.)
 
 ### Backend
 
@@ -350,15 +355,20 @@ requirement, not a regression, and it is worth knowing before a next agent reads
 
 ```
 $ bash deploy/verify.sh
+== result: all rollout-window checks passed ==
 FAIL: kustomize build staging + prod (see the load-restrictor and patch-target notes above)
-== result: 2 passed, 1 failed ==
+== result: 3 passed, 1 failed ==
 VERIFY_RESULT reason=MANIFEST_CHECK_FAILED status=FAIL exit=1
 ```
-**Pre-existing, identical on the stashed tree.** This is 043A's Finding 6
-verbatim: the kustomize overlays have never built (load restrictor rejects `..`
-resources; the base manifests hard-code `namespace: dubbing-prod` while the
-patches declare none). 043A assigned it to 043B. This task adds no manifest and
-does not touch the overlays.
+**Pre-existing.** Verified in a clean `git worktree` at 043B's own commit
+(`306d26c`), where it produces the identical failure. This is 043A's Finding 6
+verbatim: the kustomize overlays have never built (the load restrictor rejects
+`..` resources, and the base manifests hard-code `namespace: dubbing-prod` while
+the patches declare none). **043B did not fix it either** — it renamed the API
+Deployment and added the rollout-window gate, and reports
+`deploy/verify.sh VERIFY_RESULT reason=OK` in its own report, which the same
+command on its own tree contradicts. Do not take either report's word for it;
+run it.
 
 ```
 $ bash deploy/tests/hosting.test.sh
@@ -396,7 +406,9 @@ MIGRATION_COMPAT_RESULT reason=OK status=PASS previous=20260921115016_AddVoicePr
 | runbook monitor | a `GAP` with no owner | `declares a GAP without naming an owning task` | `**Owner: NNN.**` on every gap row |
 | runbook signals | a `## Signals` table row wrapped across three lines | Markdown renders the continuation as a paragraph, so the row loses its tail — **including the `Owner:`**. The gate failed on a gap that was correctly attributed on paper | rows are single-line; asserted |
 | runbook monitor | `notification_backlog` named as a metric | not declared, emitted or graphed anywhere | rewritten to name the emitted counter and declare the gap |
-| runbook monitor | `chunk_received` treated as a metric | it is a `stage` **label** of `upload_funnel_total` | the gate collects label values from the declaration site |
+| runbook workload | `deploy/api` after 043B's rename | `not a Deployment in deploy/k8s (known: …)` naming every real one | 12 invocations renamed |
+| runbook workload | `deploy/worker-media-preparation`, `-l …/component=worker-media-preparation` | never matched a Deployment or a label; **pre-existing**, found by the same check | 7 references corrected to `worker-media-prep` |
+| runbook monitor | `chunk_received` treated as a metric | it is a `stage` **label** of `upload_funnel_total`, and a metric-name regex either fails on a correct runbook or must be loosened until it asserts nothing | the gate collects label values from the declaration site |
 | backup doc | "Result: PASS" buried in a sentence | the gate could be satisfied by a `PASS` in a later paragraph | anchored to the `Result` line, `PASS` required |
 | seed | a second `INSERT` without a preceding scoped `DELETE` | `pk_tenants` violation on re-run | the seed is idempotent, and the test asserts every `DELETE` carries the `de71…` id |
 | SQL safety | a `psql -c` interpolating a whole statement | the test enumerates every invocation and rejects any variable outside the two permitted identifier positions | — |
@@ -475,7 +487,29 @@ and enumerates them. Identical on the stashed tree, so nothing here regressed �
 since removed.** Worth reconciling, because a report that overstates a gate's
 coverage is the same class of problem as a gate that overstates its own.
 
-### 5. `frontend` tests need four env vars, and 30 red tests look like damage
+### 5. Eleven `kubectl` commands named workloads that do not exist — found by the
+gate, in the same commit, after 043B landed
+
+043B renamed the API Deployment `api` → `dubbing-api` while this task was in
+flight, so the runbooks were written against the old name. Rebasing surfaced it.
+Rather than a rename sweep by hand, the check is now a gate: `deploy/<workload>`
+inside a `kubectl` invocation is resolved against the names in the committed
+manifests, and a name that is not there fails with the full list of names that
+are. Proved by renaming the deployment in a runbook to `api-prod` and watching it
+fail.
+
+It found a second, older error in the same pass:
+`upload-surge-failure.md` referred to **`worker-media-preparation`** in seven
+places — `deploy/worker-media-preparation` and
+`-l app.kubernetes.io/component=worker-media-preparation` — and the workload is
+`worker-media-prep`. Neither the Deployment name nor the component label has ever
+been `worker-media-preparation`; that name is the *image* name
+(`dubbing-worker-media-preparation` in the overlay `images:` list) and a runbook
+author read it from the overlay and used it as a Deployment name. Every one of
+those seven commands returns `not found`, and a responder following them learns
+nothing. The gate now holds the label-based form too.
+
+### 6. `frontend` tests need four env vars, and 30 red tests look like damage
 
 `VITE_API_BASE_URL`, `VITE_CDN_ORIGIN`, `VITE_ENVIRONMENT`, `VITE_APP_VERSION`.
 `testSetup.ts` sets none of them and `vite.config.ts` has no `env` block for
@@ -491,12 +525,26 @@ a shared harness for a task about runbooks), but the next agent reading those
 
 ### Repo state
 
-- `main` carries 043C on top of 043A. The previous report in
-  `tasks_report_B/` is **043A** — **043B has no report and its changes are not
-  on `main`**. `git log` goes `5bf914a` (043A) → `dbc1d5a` (043, combined) →
-  `c1d7c22` (042A). **043B (rollout/rollback) is still outstanding**, and 043C
-  links `../../rollout.md` and `../rollback.md` for it, which is correct and
-  resolves — those pages exist from 043.
+- `main` carries **043C → 043B → 043A → 043 (combined) → 042A**, i.e.
+  `3069b0c` → `306d26c` → `5bf914a` → `dbc1d5a` → `c1d7c22`. **043B landed on
+  `origin/main` while this task was in flight**, so this commit was rebased onto
+  it; read `tasks_report_B/043B-rollout-rollback.md` before 043A's. Nothing in
+  043C contradicts 043B — the runbooks link `../../rollout.md`,
+  `../rollback.md` and 043B's `deploy/rollout/` artefacts, and all of those
+  resolve.
+- **043B renamed the API Deployment `api` → `dubbing-api`**
+  (`deploy/k8s/api-deployment.yaml`; the `app.kubernetes.io/component: api` label
+  is deliberately unchanged, so selectors, NetworkPolicies and the PDB are
+  untouched). **This task absorbed the rename** — twelve `kubectl` invocations
+  across five product runbooks — and added the gate that holds it (Finding 5).
+  The `app.kubernetes.io/component: api` label is still `api`, so
+  `-l app.kubernetes.io/component=api` remains correct and is used where a
+  selector is what is meant.
+- 043B also added `ROLLOUT_GATE_RESULT` and a `MIGRATION_NOT_ADDITIVE` reason to
+  `docs/ci-branch-protection.md`, which I extended in the same file. Read the
+  record-check section there: an unrun compatibility matrix and an unrehearsed
+  rollback are both readable as passing, which is the same family of defect as
+  everything in this report.
 - `master-prompt.md` is modified and uncommitted, pre-existing scratch, left
   alone as 042/042A/043/043A did.
 - Green: `dotnet build` 0 warnings/0 errors; frontend typecheck, lint,
@@ -597,8 +645,18 @@ change. `check:runbooks` and `check:backup` are convenience aliases.
   `deploy/k8s/frontend/configmap.yaml`** — inherited from 043A, still open, and
   the reason `product/frontend-deploy-failure.md` has to tell a responder to read
   a build log line by hand.
-- **The kustomize overlay patch-target failure** (043A Finding 6) remains 043B's.
-  I added no manifest and touched no overlay.
+- **The kustomize overlay patch-target failure** (043A Finding 6) is **still
+  open** after 043B. Confirmed in a clean worktree at `306d26c`. It is the last
+  `FAIL` in `deploy/verify.sh`, and it needs the design decision 043A described:
+  drop the hard-coded `namespace: dubbing-prod` from the six base manifests and
+  let the kustomization own it, which changes the flat `kubectl apply -f
+  deploy/k8s/` path. **043C added no manifest and touched no overlay.**
+- **043B's Deployment rename was absorbed here.** `deploy/api` →
+  `deploy/dubbing-api` in twelve `kubectl` invocations across five product
+  runbooks, and `worker-media-preparation` → `worker-media-prep` in seven more
+  (`upload-surge-failure.md`). Both are now held by
+  `product-runbooks.test.mjs`'s workload check, which resolves names against
+  `deploy/k8s/*.yaml`, so a future rename fails a gate rather than a responder.
 - **The 30-vs-28 hosting-gate count** — 043A's report overstates it (Finding 4).
   Reconcile before anyone cites that number as a baseline.
 
@@ -616,10 +674,17 @@ change. `check:runbooks` and `check:backup` are convenience aliases.
    a `**GAP …** **Owner: NNN.**` row.
 5. Every `/api/v1/admin/…` route you cite must exist on `AdminController`; the
    test resolves the routes from the source.
-6. `## Access and audit` must name `RequireTenantAdmin`, both roles, `401` **and**
+6. Every `deploy/<workload>` in a `kubectl` command must be a Deployment name in
+   `deploy/k8s/*.yaml`. Note that the **image** name
+   (`dubbing-worker-media-preparation`), the **Deployment** name
+   (`worker-media-prep`) and the **component label**
+   (`app.kubernetes.io/component: worker-media-prep`) are three different
+   strings, and only the second is a `deploy/<name>` — which is how seven
+   commands that always returned `not found` got written.
+7. `## Access and audit` must name `RequireTenantAdmin`, both roles, `401` **and**
    `403`, `ProjectViewer`, `audit_events`, and link
    `../../operations/support-access.md`.
-7. Do not restate a mechanism — link the page in `MECHANISM_PAGE`. The test
+8. Do not restate a mechanism — link the page in `MECHANISM_PAGE`. The test
    fails on mechanism vocabulary inside `## Mitigation`.
-8. No credential shapes and only synthetic ids (`prj_01…`, `usr_01…`,
+9. No credential shapes and only synthetic ids (`prj_01…`, `usr_01…`,
    `ntf_01…`, `ten_01…`).
