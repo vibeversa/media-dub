@@ -108,3 +108,45 @@ recorded here — only counts, durations, and verdicts.
 - Wall-clock RTO: live test ~13–14 s, within the 1 h RTO.
 - Verdict: **PASS** (local backup sanity + live tier green; managed
   PITR/failover remains staging-gated).
+
+## 2026-10-01 — Task 043C new-entity restore drill (seven new groups)
+
+- Date: 2026-10-01 (UTC), 07:09–07:10. Full record, including every gap
+  found: [`../backup.md`](../backup.md). This entry is the index; that page is
+  the evidence.
+- Scope: the seven durable-entity groups Plan B added (tenant users,
+  preferences, notifications, activity events, memberships, voice preview jobs,
+  extended project metadata) plus four parents — 10 tables, 28 synthetic rows.
+  **New tables only**, as the task allows; the media half was not restored and
+  is recorded as an open gap rather than counted as coverage.
+- Command: `bash scripts/restore-drill.sh` (new in this task). Target: a
+  disposable `postgres:16-alpine` 16.15 started by the script, schema created by
+  the **committed** migration chain (7 migrations, 57 tables).
+- Result: **PASS** — `RESTORE_DRILL_RESULT reason=OK status=PASS tables=10
+  rows=28 gaps=0`.
+  - RLS verified enabled on all 9 tenant-scoped tables **before** any write.
+  - `pg_dump -Fc` 6,251 bytes → `TRUNCATE` to 0 across all 10 tables →
+    `pg_restore --data-only --exit-on-error`.
+  - All 10 counts identical before and after, none zero.
+  - 15 referential checks, 0 dangling (the schema has no foreign keys between
+    these tables, so this is the only coherence check that exists).
+  - Spot-read: one project, one user, one notification, with the nine Plan B
+    project-metadata columns populated.
+- **Six defects in the drill itself were found by running it against broken
+  inputs, and all six are fixed.** They are D1–D6 in [`../backup.md`](../backup.md).
+  Two are the same defect at two levels and are the reason that page exists: a
+  check whose subject list comes from the same file as the data it checks will
+  always agree with itself. Removing a group from `scope.json` (D2) and
+  truncating `referentialChecks` (D6) each produced a **PASS byte-identical to a
+  clean run**.
+- Quiesce timestamp: N/A (disposable instance; no live environment touched).
+- PITR target: N/A — the managed-service PITR tier is still **STAGING-GATED**
+  and this drill does not change that. The two earlier entries in this log are
+  explicit that the live tier is deferred; gap D2a in `docs/backup.md` keeps it
+  open rather than letting a green local drill imply otherwise.
+- Wall-clock RTO: ~9 s for the data half against a single-node server. The live
+  RTO against a managed instance is unmeasured and is not claimed here.
+- Verdict: **PASS** for the new-entity data tier. The full-system drill
+  (database **and** media) remains the gate in
+  [`../runbooks/backup-restore.md`](../runbooks/backup-restore.md), and a gap
+  recorded here does not satisfy it.

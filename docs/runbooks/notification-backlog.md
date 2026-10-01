@@ -93,3 +93,16 @@ Any of:
 - a stuck item blocked the queue for more than 30 minutes;
 - the drain was scaled and the new replica count was not recorded in the
   deployment's `resources` — so the next incident re-derives it.
+
+## The product runbook for this
+
+[`product/notification-backlog.md`](product/notification-backlog.md) — or start
+from [`product/index.md`](product/index.md), which indexes the set by symptom — is
+the same incident indexed by what a **user says** — "I never got the notification", "the
+badge says 3 unread but the list is empty". Its first step is the one that splits
+this incident in half and is easy to skip: whether the row is in the database at
+all. Rows present and the unread count matching means the user is not being
+*pushed* to and the fault is in the stream, not in the backlog — a different
+runbook. It also covers the expired-row cause for a badge that will not clear,
+which is a data fault rather than a projector fault, and states the access
+requirement for a DLQ redrive. No mechanism from this page is repeated there.

@@ -91,3 +91,17 @@ Any of:
 A key change with no user impact still gets a postmortem: the question is how a
 key was rotated in a way that could have signed everyone out, and the answer is
 usually that the dual-support window did not exist yet.
+
+## The product runbook for this
+
+[`product/auth-outage.md`](product/auth-outage.md) — or start from
+[`product/index.md`](product/index.md), which indexes the set by symptom — is
+the same incident indexed
+by what a **user says** — "the login page just spins", "it says my password is
+wrong and it is not", "I keep getting signed out" — rather than by what the
+session machinery is doing. It carries the two-step triage that separates "nobody
+can log in" from "one tenant" from "one browser", the logs-first path for when
+the metrics stack is down, and the access-and-audit restatement for the
+privileged actions here (re-enabling a user, rotating a signing key, granting a
+role). It does not restate any of the mechanism on this page; start it from the
+user's report and come back here once the class of fault is known.

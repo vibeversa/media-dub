@@ -1,0 +1,148 @@
+{
+  "$comment": [
+    "Backup scope for the durable entities added by Plan B (Task 043C).",
+    "This file is the single source of truth. docs/backup.md renders it,",
+    "deploy/k8s/backup-cronjob.yaml dumps exactly `tables`, and",
+    "tools/backup-coverage.test.mjs fails if the three drift apart.",
+    "",
+    "Why a file and not a table in prose: the drill has to know which tables to",
+    "count, the job has to know which tables to dump, and a responder has to know",
+    "what to restore first. Three hand-maintained lists drift; one does not."
+  ],
+  "scopeVersion": 1,
+  "introducedBy": "Task 043C",
+  "mechanism": {
+    "postgres": {
+      "kind": "base-backup-plus-wal",
+      "rpoMinutes": 5,
+      "pitrWindowDays": 7,
+      "dumpFormat": "custom",
+      "note": "WAL archiving is the RPO. This CronJob is the SELECTABLE artefact: it is what a responder restores from when a PITR is not the answer, and what the drill proves is restorable without a provider CLI."
+    },
+    "media": {
+      "kind": "object-storage-versioning",
+      "rpoMinutes": 15,
+      "finalsRetentionDays": 90,
+      "intermediatesRetentionDays": 30,
+      "note": "Not in PostgreSQL. A database restore does not bring back a media file; the drill verifies both halves against each other for this reason."
+    },
+    "encryption": "at-rest, by the managed services",
+    "restoreAccess": "service-role only; every drill action audited"
+  },
+  "newEntityGroups": [
+    {
+      "id": "tenant-users",
+      "title": "Tenant users",
+      "tables": ["tenant_users"],
+      "restorePriority": 1,
+      "retentionDays": 365,
+      "restoredBy": "postgres",
+      "why": "The identity row every other subject is scoped to. A restore without it is a restore nobody can log in to.",
+      "addedBy": "20260921093301_AddProductIdentityExtensions"
+    },
+    {
+      "id": "preferences",
+      "title": "User preferences",
+      "tables": ["user_preferences"],
+      "restorePriority": 3,
+      "retentionDays": 365,
+      "restoredBy": "postgres",
+      "why": "Key/value per (tenant, user). Cheap to lose functionally, expensive to lose as a product promise, and `settings_version` on the project row makes a partial restore visible.",
+      "addedBy": "20260921093301_AddProductIdentityExtensions"
+    },
+    {
+      "id": "notifications",
+      "title": "Notifications",
+      "tables": ["notifications"],
+      "restorePriority": 4,
+      "retentionDays": 90,
+      "restoredBy": "postgres",
+      "why": "Expires by `expires_at`; rows older than the retention window are not user-visible even when restored. A restore is correct without them, and must not be reported as a partial success because they are absent.",
+      "addedBy": "20260921100912_AddNotificationsActivity"
+    },
+    {
+      "id": "activity-events",
+      "title": "Activity events",
+      "tables": ["activity_events"],
+      "restorePriority": 5,
+      "retentionDays": 90,
+      "restoredBy": "postgres",
+      "why": "Append-only feed rendered by `GET /api/v1/projects/{id}/activity`. History, not state: recoverable, and the absence of a window is a gap to record rather than a reason to refuse the restore.",
+      "addedBy": "20260921100912_AddNotificationsActivity"
+    },
+    {
+      "id": "memberships",
+      "title": "Project memberships",
+      "tables": ["project_memberships"],
+      "restorePriority": 2,
+      "retentionDays": 365,
+      "restoredBy": "postgres",
+      "why": "Authorization state. Restoring rows without memberships turns every project into a 403 for every non-owner, which reads as a broken release and is not one.",
+      "addedBy": "20260921093301_AddProductIdentityExtensions"
+    },
+    {
+      "id": "voice-preview-jobs",
+      "title": "Voice preview jobs",
+      "tables": ["voice_preview_jobs"],
+      "restorePriority": 6,
+      "retentionDays": 30,
+      "restoredBy": "postgres",
+      "why": "Rows in a terminal state are history; rows in `Running` are a claim on a worker that no longer exists. The drill restores them as-is and the forward-fix is a reaper, not a rollback.",
+      "addedBy": "20260921115016_AddVoicePreviewJobs"
+    },
+    {
+      "id": "project-metadata",
+      "title": "Extended project metadata",
+      "tables": ["dubbing_projects"],
+      "columns": [
+        "name",
+        "description",
+        "is_archived",
+        "archived_at",
+        "owner_user_id",
+        "created_by_user_id",
+        "updated_by_user_id",
+        "processing_settings_json",
+        "settings_version"
+      ],
+      "restorePriority": 2,
+      "retentionDays": 365,
+      "restoredBy": "postgres",
+      "why": "`dubbing_projects` predates Plan B; the nine columns are new. A base backup taken before the expand migration restores the table WITHOUT them, and the application then reads a null `name` and an unset `owner_user_id` - which is why the drill asserts the columns and not just the row count.",
+      "addedBy": "20260921093301_AddProductIdentityExtensions"
+    }
+  ],
+  "parents": {
+    "$comment": "Not new, and not a Plan B deliverable. Listed because none of the seven groups has a foreign key to its parent, so a partial restore is silent - see referentialChecks in the drill.",
+    "tables": ["tenants", "speakers", "voice_profiles", "dubbing_projects"]
+  },
+  "notInPostgres": [
+    {
+      "id": "media",
+      "title": "Media assets, previews, exports, output",
+      "restoredBy": "object-storage",
+      "why": "The single most important fact in this file. A database restore does not bring back a media file and a media restore does not bring back the row describing it."
+    }
+  ],
+  "referentialChecks": [
+    "dubbing_projects.tenant_id -> tenants.id",
+    "dubbing_projects.owner_user_id -> tenant_users.id",
+    "dubbing_projects.created_by_user_id -> tenant_users.id",
+    "dubbing_projects.updated_by_user_id -> tenant_users.id",
+    "project_memberships.project_id -> dubbing_projects.id",
+    "project_memberships.user_id -> tenant_users.id",
+    "project_memberships.granted_by_user_id -> tenant_users.id",
+    "user_preferences.user_id -> tenant_users.id",
+    "notifications.recipient_user_id -> tenant_users.id",
+    "notifications.project_id -> dubbing_projects.id",
+    "activity_events.project_id -> dubbing_projects.id",
+    "activity_events.actor_user_id -> tenant_users.id",
+    "voice_preview_jobs.project_id -> dubbing_projects.id",
+    "voice_preview_jobs.speaker_id -> speakers.id",
+    "voice_preview_jobs.requested_by_user_id -> tenant_users.id"
+  ],
+  "durableEntitiesNotYetBackedUp": {
+    "$comment": "Empty by design. An entry here is a release blocker, not a note.",
+    "entries": []
+  }
+}

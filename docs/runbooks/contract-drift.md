@@ -104,3 +104,20 @@ not drive this API, and the entry exists so that known defect does not block
 every other change. It has an owner and an expiry, and
 `scripts/quarantine-check.sh` fails the build the day the expiry passes. Treat
 it as a scheduled postmortem, not as a background condition.
+
+## The product runbook for this
+
+[`product/contract-drift.md`](product/contract-drift.md) — or start from
+[`product/index.md`](product/index.md), which indexes the set by symptom — is
+the same incident
+indexed by what a **user says** — "the page says the field doesn't exist", "I'm
+signed out and logging in doesn't help". Its first step is the three-way version
+comparison (the edge's `/version.json`, the API's `/version`, the committed
+bundle's stamp) that names the drift in one call, and it links this page for the
+gate commands rather than repeating them.
+
+It also carries the one point that matters most at 3 a.m. and is easiest to get
+wrong: **after the contract phase, a rollback is refused.** Old code calling a
+removed endpoint is a worse state than new code calling a new one. The decision
+table at [`rollback.md`](rollback.md) is the authority; this page's triage is not
+a substitute for reading it.

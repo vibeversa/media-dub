@@ -35,6 +35,34 @@ page exists, and a search for "upload" finds six documents.
 | Too many reviews pending | [`review-backlog.md`](review-backlog.md) |
 | **Who do I page, and when** | [`escalation.md`](escalation.md) — read this one first on a new rotation |
 
+## The product runbooks
+
+[`product/index.md`](product/index.md) is a second set, and the split is worth
+knowing before you open either. **These pages are indexed by what a *user says*;
+the pages above are indexed by what a *component* is doing.** Same incidents, two
+entry points, and neither is a copy of the other.
+
+Use the product page first if a user has called. Use the mechanism page first if
+you already know the component. Each links the other, and a page that restates
+the other is a bug — `tools/product-runbooks.test.mjs` fails on one.
+
+| What a user says | Start here | Then |
+| --- | --- | --- |
+| "Nobody can log in." | [`product/auth-outage.md`](product/auth-outage.md) | [`auth-outage.md`](auth-outage.md) |
+| "The site is blank / serving yesterday's build." | [`product/cdn-outage.md`](product/cdn-outage.md) | [`cdn-cache-poison.md`](cdn-cache-poison.md) |
+| "The progress bar is frozen." | [`product/sse-outage.md`](product/sse-outage.md) | [`sse-degraded.md`](sse-degraded.md) |
+| "The site is broken after the deploy." | [`product/frontend-deploy-failure.md`](product/frontend-deploy-failure.md) | [`deploy-failed.md`](deploy-failed.md) |
+| "I never got the notification." | [`product/notification-backlog.md`](product/notification-backlog.md) | [`notification-backlog.md`](notification-backlog.md) |
+| "The page says the field doesn't exist." | [`product/contract-drift.md`](product/contract-drift.md) | [`contract-drift.md`](contract-drift.md) |
+| "My upload keeps failing at 90%." | [`product/upload-surge-failure.md`](product/upload-surge-failure.md) | [`upload-surge.md`](upload-surge.md) |
+| "My project has been waiting for review for days." | [`product/review-backlog-surge.md`](product/review-backlog-surge.md) | [`review-surge.md`](review-surge.md) |
+
+The product pages carry two sections the pages above do not: a
+**degraded-mode triage** path that works with no dashboard and no metrics
+pipeline, and an explicit **access-and-audit** restatement, because their
+mitigations are privileged. Several name a monitoring gap that does not exist yet
+— that is deliberate, and the owner is on the page.
+
 ## The shape every runbook shares
 
 Each has the same five sections, and the order is deliberate: **symptoms →

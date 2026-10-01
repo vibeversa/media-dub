@@ -258,6 +258,69 @@ module (`deploy/tests/hosting-topology.py`) rather than a heredoc, because a
 Python `SyntaxError` inside a `$( )` produces a traceback the caller then counts
 as zero violations — a pass that checked nothing.
 
+### `scripts/restore-drill.sh` (the new-entity restore drill, Task 043C)
+
+```
+RESTORE_DRILL_RESULT reason=<REASON> status=<PASS|FAIL> tables=<n> rows=<n> gaps=<n>
+```
+
+Operational rather than a merge gate: it needs a PostgreSQL server, and it
+**writes to** the one it is given. It is a promotion input, not a PR check — see
+`docs/backup.md`, which records the last run and the gaps it found.
+
+| Reason | Exit | Meaning |
+| --- | --- | --- |
+| `OK` | 0 | Every check passed: the seven required groups declared, RLS enabled, dump non-empty, wipe complete, restore counted and non-zero, no dangling references, spot-read intact |
+| `CLIENT_UNAVAILABLE` | 2 | `pg_dump` and `pg_restore` are both absent (neither in `PATH` nor in the container). **A SKIP-shaped absence reported as a FAIL, never as a PASS** |
+| `SCOPE_INVALID` | 1 | `deploy/backup/scope.json` is unreadable, declares a group with no table or no retention, or is **missing one of the seven required groups**. A group that is not in the scope is not in the dump, not in the count check, and not in the drill |
+| `SEED_MISSING` | 2 | `deploy/backup/drill-seed.sql` is absent. The drill would prove nothing without it |
+| `REMOTE_TARGET_REFUSED` | 1 | `DRILL_HOST` is not loopback and `DRILL_ALLOW_REMOTE` is not `1`. The safety interlock: a drill must not restore over production by accident |
+| `SERVER_UNAVAILABLE` | 2 | The container would not start, or the target instance did not answer. The drill did not run |
+| `SCHEMA_NOT_APPLIED` | 1 | The target has no `public` schema. The drill refuses to create one — a drill that migrates its own target verifies a schema nobody migrated |
+| `TENANT_ISOLATION_MISSING` | 1 | Row level security is **disabled** on a scoped table, checked *before any write*. A restore into a cross-tenant-readable database is invisible to a row count, and is the worst outcome available |
+| `SEED_FAILED` | 1 | The seed did not apply, or a scoped table is still empty afterwards. An empty table would make the count comparison vacuous |
+| `DUMP_FAILED` | 1 | `pg_dump` exited non-zero, or produced a 0-byte archive. A 0-byte archive restores "successfully" and inserts nothing |
+| `WIPE_FAILED` | 1 | `TRUNCATE` failed, or any row survived. A count comparison against a partial wipe proves nothing |
+| `RESTORE_FAILED` | 1 | `pg_restore` exited non-zero. The first three lines of its diagnostic are quoted, because `--exit-on-error` is relaxed only when the archive itself demands it and that relaxation must be visible |
+| `COUNT_MISMATCH` | 1 | A table's post-restore count differs from its pre-dump count |
+| `EMPTY_RESTORE` | 1 | A table restored with **zero** rows and exited 0. The usual cause is restoring as a role without `BYPASSRLS`: RLS filters the `COPY` silently and `pg_restore` still reports success |
+| `DANGLING_REFERENCES` | 1 | An orphan was found. **The schema has no foreign keys between any of these tables**, so this check is the only thing that can distinguish a coherent restore from a partial one |
+| `SPOT_READ_FAILED` | 1 | The spot-read row is absent, or one of the Plan B columns (`name`, `email`, notification `type`) did not survive. A count-only check passes a restore from a pre-expand archive |
+
+`gaps=` counts the gaps the drill **recorded about itself** — chiefly that the
+media half is out of scope, so a green drill has verified half the system. It is
+not the number of open issues in `docs/backup.md`; it is what this run could not
+close.
+
+### `tools/backup-coverage.test.mjs` and `tools/product-runbooks.test.mjs`
+
+Both are pure, need no database and no cluster, and run under
+`npm run test:tools`. They are not separately wired: `test:tools` globs
+`tools/*.test.mjs`, so a new file is covered by adding it there.
+
+| Property | Held by |
+| --- | --- |
+| The seven new-entity groups are declared, with a real table, a real migration, a contiguous restore priority and a retention | `backup-coverage.test.mjs` |
+| The scope file, the drill's own `REQUIRED_GROUPS`, and `docs/backup.md` agree | both (independently — the duplication is the point) |
+| The drill fails on an empty restore, a disabled RLS policy, a dangling reference, a non-loopback target, and a spot-read that lost the Plan B columns | `backup-coverage.test.mjs`, by asserting the checks exist in the script |
+| Every `reason` the drill can emit is documented here | `backup-coverage.test.mjs` |
+| Eight product runbooks exist with the uniform template, in order, none empty | `product-runbooks.test.mjs` |
+| Every monitor a runbook names is a real alert, dashboard or emitted metric — **or is declared a GAP with a named owner** | `product-runbooks.test.mjs` |
+| Every diagnostics view a runbook cites is a route `AdminController` serves | `product-runbooks.test.mjs` |
+| Every product runbook restates the role restriction and the audit requirement (R4) | `product-runbooks.test.mjs` |
+| No product runbook restates a Plan A mechanism page instead of linking it (R5) | `product-runbooks.test.mjs` |
+| No runbook or drill file contains a credential, and the example ids are synthetic | both |
+
+The GAP rule is the one worth explaining. Several product runbooks name a
+monitor **that does not exist** — there is no auth, CDN, SSE, contract or
+notification rule in `deploy/observability/alerts.yml`, and no panel anywhere
+reads the SSE or upload-funnel counters. Deleting those references would make the
+runbooks look complete and leave the responder discovering the gap at 3 a.m. The
+gate therefore requires a named monitor to be one of: a real alert, a real
+dashboard, a real emitted metric, **or a declared GAP with an owner and a task
+number**. A "GAP" with no owner fails, because a shrug in a runbook is
+indistinguishable from a page nobody checked.
+
 ### `scripts/vite-env-audit.sh` (the public-config gate, Task 043)
 
 ```
