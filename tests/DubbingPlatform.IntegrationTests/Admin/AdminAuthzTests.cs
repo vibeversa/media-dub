@@ -71,6 +71,23 @@ public sealed class AdminAuthzTests
             "GET /api/v1/admin/diagnostics/leases",
             "GET /api/v1/admin/diagnostics/orphans",
             "GET /api/v1/admin/diagnostics/review-backlog",
+            // Task 044: the operator-only local-GPU health read. It belongs in
+            // this loop and NOT in `AdminReads`, and the difference matters.
+            //
+            // `AdminReads` feeds three tests that assert a LIVE status: 401
+            // anonymous, 403 `ProjectViewer`, 200 `TenantAdmin`.
+            // `/admin/local-gpu` has no `AdminController` route yet - it falls
+            // to the catch-all and answers 404 `ADMIN_ROUTE_UNKNOWN` for every
+            // caller - so adding it there would fail the 200 assertion with a
+            // message about a missing route rather than about authorization.
+            // `Admin_Destructive_Without_Reason_Rejected` is the existing
+            // precedent for an un-provisioned admin path: it asserts the marker
+            // instead of a status the route does not have.
+            //
+            // What this loop DOES pin is the authorization contract itself:
+            // device inventory is `Service`/`TenantAdmin` only. When the route
+            // is implemented, widening these roles fails here before it ships.
+            "GET /api/v1/admin/local-gpu",
         })
         {
             Assert.True(RoleMatrix.IsAllowed(route, ["TenantAdmin"]));
@@ -78,7 +95,29 @@ public sealed class AdminAuthzTests
             Assert.False(RoleMatrix.IsAllowed(route, ["ProjectViewer"]));
             Assert.False(RoleMatrix.IsAllowed(route, ["ProjectEditor"]));
             Assert.False(RoleMatrix.IsAllowed(route, ["Reviewer"]));
+            // `ProjectOwner` is a membership role, not an elevated one, and it
+            // must not be a back door into device inventory. Named explicitly
+            // because the list above would otherwise never exercise it.
+            Assert.False(RoleMatrix.IsAllowed(route, ["ProjectOwner"]));
         }
+    }
+
+    /// <summary>
+    /// Task 044: the local-GPU route grants exactly the elevated pair, so a
+    /// third name cannot be added later by accident. The matrix is the
+    /// documented record of who may read infrastructure inventory, and an
+    /// inventory route is exactly where an extra entry does the most damage.
+    /// </summary>
+    [Fact]
+    public void Admin_LocalGpu_Matrix_Grants_Exactly_The_Elevated_Pair()
+    {
+        const string Route = "GET /api/v1/admin/local-gpu";
+
+        Assert.Equal([Roles.Service, Roles.TenantAdmin], RoleMatrix.AllowedFor(Route));
+        Assert.DoesNotContain(Roles.ProjectOwner, RoleMatrix.AllowedFor(Route));
+        Assert.DoesNotContain(Roles.ProjectEditor, RoleMatrix.AllowedFor(Route));
+        Assert.DoesNotContain(Roles.Reviewer, RoleMatrix.AllowedFor(Route));
+        Assert.DoesNotContain(Roles.ProjectViewer, RoleMatrix.AllowedFor(Route));
     }
 
     [Fact]

@@ -38,6 +38,7 @@ const AREAS = [
   { area: 'src/features/auth', owner: '019' },
   { area: 'src/features/cost', owner: '035A' },
   { area: 'src/features/dashboard', owner: '020' },
+  { area: 'src/features/enrichment', owner: '044' },
   { area: 'src/features/exports', owner: '033' },
   { area: 'src/features/notifications', owner: '034' },
   { area: 'src/features/processing', owner: '024' },

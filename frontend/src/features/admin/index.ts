@@ -3,6 +3,8 @@ export { DestructiveAction } from './DestructiveAction.js';
 export type { DestructiveActionProps } from './DestructiveAction.js';
 export { FlagsPanel } from './FlagsPanel.js';
 export { HealthRoutesPanel } from './HealthRoutesPanel.js';
+export { LocalGpuPanel } from './LocalGpuPanel.js';
+export type { LocalGpuPanelProps } from './LocalGpuPanel.js';
 export { OpsDashboard } from './OpsDashboard.js';
 export { RetentionAuditPanel } from './RetentionAuditPanel.js';
 export { TenantsPanel } from './TenantsPanel.js';

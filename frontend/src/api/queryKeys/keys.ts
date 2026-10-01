@@ -266,6 +266,24 @@ export const queryKeys = {
       segmentId,
     ],
   },
+  /**
+   * Optional enrichment (Task 044, §19.1–§19.3). Deliberately a *sibling*
+   * scope, never nested inside transcript/translations/timeline/outputs:
+   * video-intel and lip-sync results are separate artifacts that link to core
+   * data, so a prefix invalidation of `['projects','detail',id,'transcript']`
+   * must not be able to cascade into them, and vice versa. R2 depends on that
+   * asymmetry being structural rather than a convention.
+   *
+   * `flags` is session-scoped rather than project-scoped: the flag slice comes
+   * from `GET /me` and is identical for every project, so one key serves the
+   * whole session and the gate never refetches per project.
+   */
+  enrichment: {
+    all: ['enrichment'] as const,
+    flags: (): QueryKey => ['enrichment', 'flags'],
+    videoIntel: (projectId: string): QueryKey => ['enrichment', 'video-intel', projectId],
+    lipSync: (projectId: string): QueryKey => ['enrichment', 'lip-sync', projectId],
+  },
   admin: {
     all: ['admin'] as const,
     section: (name: string, params?: PageParams): QueryKey => ['admin', name, withDefaults(params)],
@@ -301,6 +319,11 @@ export const queryKeys = {
     health: (): QueryKey => ['admin', 'diagnostics', 'provider-health'],
     routes: (): QueryKey => ['admin', 'diagnostics', 'provider-routes'],
     status: (): QueryKey => ['admin', 'diagnostics', 'status'],
+    // Task 044: operator-only local-GPU health. Under `diagnostics` so the
+    // prefix invalidation an operator refresh already performs covers it, and
+    // separate from `health` because the two report different subjects (the
+    // provider pool vs. one device) and must never be conflated.
+    localGpu: (): QueryKey => ['admin', 'diagnostics', 'local-gpu'],
   },
 };
 

@@ -31,6 +31,7 @@ shared harness; aggregate tasks own gap closure, seams, and gates only.
 | `src/features/auth` | 019 | `src/features/auth/__tests__/` |
 | `src/features/cost` | 035A | `src/features/cost/__tests__/` |
 | `src/features/dashboard` | 020 | `src/features/dashboard/__tests__/` |
+| `src/features/enrichment` | 044 | `src/features/enrichment/__tests__/` |
 | `src/features/exports` | 033 | `src/features/exports/__tests__/` |
 | `src/features/notifications` | 034 | `src/features/notifications/__tests__/` |
 | `src/features/processing` | 024 | `src/features/processing/__tests__/` |

@@ -55,6 +55,16 @@ public static class RoleMatrix
             ["GET /api/v1/admin/diagnostics/leases"] = [Roles.Service, Roles.TenantAdmin],
             ["GET /api/v1/admin/diagnostics/orphans"] = [Roles.Service, Roles.TenantAdmin],
             ["GET /api/v1/admin/diagnostics/review-backlog"] = [Roles.Service, Roles.TenantAdmin],
+            // Task 044 (Plan B §19.3): operator-only local-GPU health. Device
+            // inventory — accelerator model, model revision, device count,
+            // per-device latency — is infrastructure detail. It is not secret,
+            // and it is equally not appropriate for an ordinary project member,
+            // so the entry is restricted to the same two roles every other
+            // admin read uses and to nothing below. The frontend reads
+            // `/admin/local-gpu` through `apiFetch` and degrades on the
+            // controller's `ADMIN_ROUTE_UNKNOWN` 404 until the route is
+            // provisioned; see `LocalGpuPanel`.
+            ["GET /api/v1/admin/local-gpu"] = [Roles.Service, Roles.TenantAdmin],
         };
 
     /// <summary>
