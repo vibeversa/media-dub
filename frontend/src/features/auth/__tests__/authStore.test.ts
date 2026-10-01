@@ -90,6 +90,51 @@ describe('auth store transitions', () => {
     expect(useAppStore.getState().permissions).toEqual(['project.view', 'project.edit']);
   });
 
+  // Task 045, R5: the locale preference is applied from the SAME `/me` document
+  // that yields the permission hints, and it is applied before the status flip
+  // that releases the pre-shell skeleton.
+  it('applies the /me locale preference before the session becomes authenticated', async () => {
+    window.localStorage.setItem('dubbing.locale', 'ru');
+    useAppStore.getState().setLocale('ru');
+    mockLoginAndMe(LOGIN_BODY, { ...ME_BODY, locale: 'ar-EG' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
+    expect(useAppStore.getState().locale).toBe('ar-EG');
+    // The full tag survives: `en-US` and `en-GB` format dates differently, and
+    // the tag is what `Intl` needs. i18next resolves the bundle itself.
+    expect(window.localStorage.getItem('dubbing.locale')).toBe('ar-EG');
+    // One read, two answers.
+    const meCalls = mockFetch.mock.calls.filter((call) => {
+      const url = typeof call[0] === 'string' ? call[0] : (call[0] as Request).url;
+      return url.endsWith('/me');
+    }).length;
+    expect(meCalls).toBe(1);
+    expect(useAuthStore.getState().permissions).toEqual(['project.view', 'project.edit']);
+  });
+
+  it('falls back to the stored locale when /me has no locale (older backend)', async () => {
+    window.localStorage.setItem('dubbing.locale', 'ru');
+    useAppStore.getState().setLocale('ru');
+    mockLoginAndMe(LOGIN_BODY, ME_BODY); // no `locale` field at all
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
+    expect(useAppStore.getState().locale).toBe('ru');
+    expect(useAuthStore.getState().status).toBe('authenticated');
+  });
+
+  it('survives an unreadable /me locale without failing the session', async () => {
+    mockLoginAndMe(LOGIN_BODY, { ...ME_BODY, locale: 'not a locale' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    expect(useAppStore.getState().locale).toBe('en');
+  });
+
+  it('resolves zero permissions from an unreadable /me document, never a crash', async () => {
+    mockLoginAndMe(LOGIN_BODY, { locale: 'ar', permissions: 'not-an-array' });
+    await useAuthStore.getState().login({ tenantId: '11111111-1111-1111-1111-111111111111', externalSubject: 'o@e.c' });
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    expect(useAuthStore.getState().permissions).toEqual([]);
+    expect(useAppStore.getState().locale).toBe('ar');
+  });
+
   it('keeps global state on failed login and records the code', async () => {
     mockFetch.mockImplementation((input) => {
       const url = typeof input === 'string' ? input : (input as Request).url;

@@ -17,6 +17,7 @@
     "dev": "vite",
     "preview": "vite preview",
     "check:no-hex": "node ../tools/check-no-hex.mjs",
+    "check:no-hardcoded-copy": "node ../scripts/check-no-hardcoded-copy.mjs",
     "build-storybook": "storybook build -o storybook-static"
   },
   "devDependencies": {

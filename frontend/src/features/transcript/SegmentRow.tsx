@@ -38,7 +38,7 @@ export const SegmentRow = memo(function SegmentRow({ segment, isSelected, isActi
         gap: '0.5rem',
         alignItems: 'flex-start',
         padding: '0.5rem 0.75rem',
-        borderLeft: isSelected ? '3px solid var(--color-brand)' : '3px solid transparent',
+        borderInlineStart: isSelected ? '3px solid var(--color-brand)' : '3px solid transparent',
         background: isActive ? 'var(--color-info-bg)' : 'transparent',
       }}
     >
@@ -57,7 +57,7 @@ export const SegmentRow = memo(function SegmentRow({ segment, isSelected, isActi
         type="button"
         data-testid={`transcript-select-${segment.id}`}
         className="dp-focus-ring"
-        style={{ flexGrow: 1, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        style={{ flexGrow: 1, textAlign: 'start', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
         onClick={() => {
           onSelect(segment.id);
         }}

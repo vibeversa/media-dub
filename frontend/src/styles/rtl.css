@@ -1,0 +1,107 @@
+/* RTL layout layer (Task 045, instruction 3 / R3).
+ *
+ * WHAT IS ALREADY MIRRORED, AND WHY THIS FILE IS SMALL
+ * ---------------------------------------------------
+ * Task 016 wrote the component stylesheet with CSS *logical* properties
+ * (`inline-size`, `margin-inline`, `inset-inline-start`, `text-align: start`,
+ * `border-inline-start-*-*`). Setting `<html dir="rtl">` therefore mirrors the
+ * entire primitives layer for free: header, sidebar, cards, tables, drawers,
+ * switches, tooltips, breadcrumbs. That is the whole reason this file has no
+ * 200-line block of `[dir="rtl"]` overrides — a direction override block is a
+ * symptom that something was written physically.
+ *
+ * WHAT THIS FILE IS FOR
+ * ---------------------
+ * Three things logical properties genuinely cannot express:
+ *
+ *   1. Icon mirroring for glyphs that encode a *direction* rather than an
+ *      action. A back-arrow and a "next" chevron point the wrong way when the
+ *      reading direction flips; a magnifier or a warning triangle do not. The
+ *      opt-in class is `dp-icon-mirror`, so a wrong guess is visible in the
+ *      markup instead of silently flipping every icon on the page.
+ *   2. Font stacks with a script-specific fallback chain, so an Arabic or
+ *      Hebrew run picks up a face that has those glyphs at all.
+ *   3. The numeric/latin islands inside RTL text — an ID, a code, a timestamp
+ *      pasted from a log. `.dp-bidi-isolate` is the opt-in for those.
+ *
+ * THE PHYSICAL-PROPERTY RULE
+ * --------------------------
+ * New styles may not hard-code a physical side. `margin-left` is a defect in an
+ * RTL build exactly when `margin-inline-start` was available, and it fails on
+ * the *Arabic* layout while passing every LTR test — the failure mode where a
+ * gate goes green and the bug ships. `tools/check-no-hardcoded-copy.mjs`'s
+ * sibling `scripts/check-no-hardcoded-copy.mjs` is the copy gate; the physical
+ * side rule is enforced for new code by the rule table in that same module
+ * (`physical-side` entries) and asserted here by the RTL suite.
+ *
+ * NOTE ON THE TIMELINE CANVAS
+ * ---------------------------
+ * The Task 030 waveform canvas is pinned to `dir="ltr"` in the component itself,
+ * with the reason in the markup. `drawWaveform` uses physical canvas
+ * coordinates and `seekFromClientX` maps `clientX - rect.left`, so both the
+ * drawing and the hit test are left-to-right by construction. Nothing in this
+ * file overrides that; mirroring the canvas is a change to playback semantics,
+ * not a styling flip, and it is deliberately not made here.
+ */
+
+/* --- 1. Direction-encoded glyphs: opt-in, never blanket --------------------- */
+.dp-icon-mirror {
+  transform: scaleX(-1);
+}
+
+/* A glyph that is already mirrored by the font (and therefore would double-flip)
+ * opts out explicitly. Kept as a rule so the decision is visible in the CSS. */
+.dp-icon-no-mirror {
+  transform: none;
+}
+
+/* --- 2. Script-aware font fallbacks ----------------------------------------- */
+:root {
+  --font-family-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Menlo, Consolas, monospace;
+}
+
+[dir='rtl'] {
+  /* Arabic and Hebrew have no glyph coverage in several latin-first UI stacks.
+   * Listing an Arabic face *before* the latin stack (not after) is what makes a
+   * missing glyph fall through to a readable run instead of tofu boxes. */
+  font-family: 'Segoe UI', Tahoma, 'Noto Sans Arabic', 'Noto Sans Hebrew', 'Geeza Pro', var(--font-family-sans);
+}
+
+[dir='rtl'] code,
+[dir='rtl'] kbd,
+[dir='rtl'] samp,
+[dir='rtl'] pre {
+  /* Monospace faces are script-agnostic; leave the stack alone. */
+  font-family: var(--font-family-mono);
+}
+
+/* --- 3. Bidi islands: IDs, codes, timestamps inside RTL prose --------------- */
+.dp-bidi-isolate {
+  unicode-bidi: isolate;
+}
+
+.dp-bidi-isolate code,
+.dp-bidi-isolate [data-testid$='-id'],
+.dp-bidi-isolate [data-entity-id] {
+  unicode-bidi: isolate;
+}
+
+/* Numerals keep western digits in an RTL run by default in most locales; this
+ * makes the choice explicit for the columns where a mixed-digit row would
+ * otherwise be unreadable (timecodes, byte counts, scores). */
+[dir='rtl'] .dp-numerals-ltr {
+  direction: ltr;
+  unicode-bidi: embed;
+}
+
+/* --- Scrolling regions ------------------------------------------------------
+ * `overflow-x: auto` panels (the data grid, a transcript column) scroll in the
+ * inline direction already under logical `overflow`; the one thing worth stating
+ * is that a scroll container must not pin its content to a physical edge, or the
+ * initial scroll position lands mid-content in RTL. */
+[dir='rtl'] .dp-scroll-inline {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+}

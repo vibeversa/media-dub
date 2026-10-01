@@ -9,7 +9,12 @@ export function ConfigErrorScreen({ error }: { readonly error: EnvError }): Reac
       <p className="mt-2 text-sm dp-muted">
         The app is missing required configuration and cannot start. Contact your administrator.
       </p>
-      <ul className="mt-4 text-left text-xs dp-muted">
+      {/* Task 045, R3: `text-start`, not `text-left`. This is the one physical
+          text alignment in `frontend/src` and the start screen renders under
+          whatever `dir` is active, so `text-left` would left-align the issue
+          list inside an RTL document — a config error is exactly the moment
+          somebody is reading carefully. */}
+      <ul className="mt-4 text-start text-xs dp-muted">
         {error.issues.map((issue) => (
           <li key={issue}>{issue}</li>
         ))}

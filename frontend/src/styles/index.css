@@ -3,3 +3,7 @@
 /* Task 041C: component rules, moved out of inline <style> tags that the app's
  * own CSP (`style-src 'self'`) blocked. See the file header for the full story. */
 @import "./components.css";
+/* Task 045: the RTL layer. Loaded LAST so a `[dir='rtl']` rule wins over a
+ * same-specificity base rule, and because it is additive — the primitives
+ * already mirror through logical properties, which is why it is short. */
+@import "./rtl.css";

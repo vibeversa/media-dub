@@ -213,11 +213,24 @@ export function Waveform({ projectId, onSeek }: WaveformProps): ReactNode {
   return (
     <section data-testid="timeline-waveform" aria-label="Waveform">
       <div ref={wrapRef} data-testid="timeline-waveform-wrap">
+        {/* Task 045, RTL: the canvas is pinned to `dir="ltr"` ON PURPOSE.
+            `drawWaveform` paints with physical canvas coordinates and
+            `seekFromClientX` maps `clientX - rect.left` left-to-right, so 0 ms
+            is on the left in both the drawing and the hit test. Inheriting
+            `dir="rtl"` would not change either of those — a 2D context has no
+            direction — but it WOULD flip the element's own text/uniform baseline
+            and the caret direction of the focused range control next to it,
+            producing an assistive-technology reading of a left-to-right timeline
+            as right-to-left. The chrome around the canvas (section, label, scrub
+            input) mirrors normally. Changing this to follow `dir` requires
+            mirroring the draw loop and the hit test together, which is a real
+            change to playback semantics and not a styling flip. */}
         <canvas
           ref={canvasRef}
           data-testid="timeline-waveform-canvas"
           data-peaks={String(series.length)}
           data-position={String(positionMs)}
+          dir="ltr"
           role="img"
           aria-label={`Waveform with ${String(series.length)} peaks`}
           tabIndex={0}

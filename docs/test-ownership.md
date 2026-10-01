@@ -21,8 +21,8 @@ shared harness; aggregate tasks own gap closure, seams, and gates only.
 | `src/components` | 016 | per-component `*.test.tsx` |
 | `src/api` (excl. `generated/`) | 017 | `src/api/__tests__/` |
 | `src/hooks` | 026 | `src/hooks/*/__tests__/` |
-| `src/i18n` | 018 | `src/i18n/__tests__/` |
-| `src/lib` | 015 | `src/lib/__tests__/` |
+| `src/i18n` | 018 (framework) / 045 (pseudo, RTL, fallback chain) | `src/i18n/__tests__/`, `src/i18n/pseudo.spec.tsx` |
+| `src/lib` | 015 (env) / 045 (`dates/`, `formatting/`) | `src/lib/__tests__/`, `src/lib/dates/dates.spec.ts`, `src/lib/formatting/formatting.spec.ts` |
 | `src/mocks` | 039A | `src/mocks/conformance.spec.ts` |
 | `src/stores` | 018 | exercised via importing suites (no dedicated spec) |
 | `src/telemetry` | 038 | `src/telemetry/__tests__/` |
@@ -47,6 +47,15 @@ shared harness; aggregate tasks own gap closure, seams, and gates only.
 
 Excluded from the presence gate by policy: `src/api/generated` (generated,
 Task 014), `src/types` and `src/styles` (no runtime logic).
+
+## Repository-level gate specs (Task 045)
+
+Not feature areas, and therefore not in the table above:
+
+| Gate | Owner | Spec |
+| --- | --- | --- |
+| Hard-coded copy extraction + RTL physical sides (`scripts/check-no-hardcoded-copy.mjs`) | 045 | `deploy/frontend/hardcoded-copy.test.mjs` (`npm run check:frontend`) |
+| Frontend infrastructure topology (043A) | 043A | `deploy/frontend/topology.test.mjs` |
 
 ## Presence gate (039A R4)
 

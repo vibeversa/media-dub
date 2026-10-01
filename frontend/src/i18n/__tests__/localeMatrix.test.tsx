@@ -110,7 +110,17 @@ describe('format edge matrix', () => {
     expect(formatNumber(12.5, { locale: 'en', style: 'currency', currency: 'USD' })).toContain('12.50');
     expect(formatNumber(12.5, { locale: 'en', style: 'percent' })).toContain('1,250%');
     expect(formatNumber(12.5, { locale: '!!!' })).toBe('12.5');
-    expect(formatDate('2024-01-15T12:00:00Z', { locale: '!!!' })).toContain('2024-01-15');
+    // Task 045 changed this one on purpose. An unformattable locale tag used to
+    // throw out of `Intl` and fall through to `toISOString()`, so a bad `lang`
+    // in a preference row put the raw machine string `2024-01-15T12:00:00.000Z`
+    // on screen. `lib/dates.resolveLocale` now resolves the tag to `en` *before*
+    // formatting, so the bad tag degrades to English copy instead of to ISO-8601.
+    // The assertion that matters is therefore the equality with the `en` render,
+    // not the substring the ISO fallback happened to contain.
+    expect(formatDate('2024-01-15T12:00:00Z', { locale: '!!!' })).toBe(
+      formatDate('2024-01-15T12:00:00Z', { locale: 'en' }),
+    );
+    expect(formatDate('2024-01-15T12:00:00Z', { locale: '!!!' })).not.toContain('T12:00:00');
   });
 
   it('falls back to other for unformattable plural locales', () => {

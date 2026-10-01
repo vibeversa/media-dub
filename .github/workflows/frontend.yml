@@ -92,6 +92,23 @@ jobs:
       - name: No hardcoded hex outside tokens.css
         run: npm run check:no-hex --prefix frontend
 
+      # Task 045. Two failure classes in one gate, because they share a scanner
+      # and a review conversation: a user-facing string outside `src/i18n/`, and
+      # a side pinned to left or right in a class list, an inline style or a
+      # stylesheet (correct in every LTR test this job runs, wrong in Arabic).
+      # It is a ratchet against `scripts/hardcoded-copy-baseline.json`, so a NEW
+      # literal fails and every existing file's count may only go down.
+      - name: Hard-coded copy + RTL physical sides
+        run: npm run check:no-hardcoded-copy --prefix frontend
+
+      # The gate's own tests: every rule driven with a source written the way the
+      # mistake is written, and driven again with the correct code the task
+      # exists to produce. A rule that has never fired is a rule that reports
+      # PASS having asserted nothing, and a rule that fires on `t('nav:primary')`
+      # gets disabled within a week.
+      - name: Copy-gate rule tests
+        run: npm run check:frontend
+
       # R2: the coverage thresholds live in `frontend/vite.config.ts`
       # (`test.coverage.thresholds`, 80/80/80/80). Vitest enforces them and exits
       # non-zero below the floor, so there is no second threshold to keep in sync

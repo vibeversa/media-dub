@@ -352,14 +352,14 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                       gap: '0.5rem',
                       alignItems: 'flex-start',
                       padding: '0.5rem 0.75rem',
-                      borderLeft: isSelected ? '3px solid var(--color-brand)' : '3px solid transparent',
+                      borderInlineStart: isSelected ? '3px solid var(--color-brand)' : '3px solid transparent',
                     }}
                   >
                     <button
                       type="button"
                       data-testid={`translation-select-${segment.id}`}
                       className="dp-focus-ring"
-                      style={{ flexGrow: 1, textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                      style={{ flexGrow: 1, textAlign: 'start', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                       onClick={() => {
                         handleRequestSegment(segment.id);
                       }}

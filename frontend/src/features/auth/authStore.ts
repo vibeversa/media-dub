@@ -2,8 +2,9 @@ import { create } from 'zustand';
 import { setTokenProvider } from '../../api/client/index.js';
 import { NETWORK_ERROR, normalizeError } from '../../api/errors/index.js';
 import { queryClient } from '../../app/providers/queryClient.js';
+import { resolveAndApplyLocale } from '../../i18n/localePreference.js';
 import { useAppStore } from '../../stores/index.js';
-import { fetchMe, login as apiLogin, logout as apiLogout, refreshSession } from './api.js';
+import { fetchMeDocument, login as apiLogin, logout as apiLogout, readMePermissions, refreshSession } from './api.js';
 import type { LoginCredentials } from './api.js';
 
 /**
@@ -211,6 +212,46 @@ export const useAuthStore = create<AuthState>()((set, get) => {
     syncShell('authenticated', permissions);
   }
 
+  /**
+   * The one `/me` read that resolves both identity hints (Task 045, R5).
+   *
+   * ONE REQUEST, TWO ANSWERS
+   * ------------------------
+   * Before this, the shell read `/me` through the generated client for
+   * `permissions`. Task 045 needs `locale` from the same document (the committed
+   * bundle's `MeResponse` has no `locale`, so the raw read is needed anyway), and
+   * two reads of one document is a race with itself: the locale could come from a
+   * response that disagrees with the permissions on purpose or by accident.
+   *
+   * WHY THE LOCALE IS APPLIED FIRST
+   * -------------------------------
+   * `applyAuthenticated` calls `syncShell`, which flips `sessionStatus` — and
+   * that is what releases `RequireAuth`'s skeleton, so it is what makes the first
+   * frame of product chrome exist. Applying the locale after it would paint one
+   * frame in the previous locale and then repaint: a visible flash on every cold
+   * start for every user whose `/me` locale differs from their stored one. So the
+   * locale is written before the status flips, in the same synchronous turn.
+   *
+   * NEVER FAILS THE SESSION
+   * -----------------------
+   * A `/me` locale we cannot parse resolves to `stored`/`browser`/`en` (see
+   * `i18n/localePreference.ts`). A `/me` read that throws is handled by the
+   * caller's own status classification, unchanged. Presentation never gates
+   * identity.
+   */
+  async function resolveIdentityHints(): Promise<readonly string[]> {
+    const raw = await fetchMeDocument();
+    const app = useAppStore.getState();
+    // `app.locale` IS the persisted choice: `useAppStore` seeds it from
+    // `localStorage['dubbing.locale']` at construction. Passing it as the
+    // `stored` rung is what stops the *browser* default from outranking an
+    // explicit choice this user made and signed out of.
+    resolveAndApplyLocale(raw, (locale) => {
+      app.setLocale(locale);
+    }, app.locale);
+    return readMePermissions(raw);
+  }
+
   async function attemptRefresh(refreshToken: string): Promise<boolean> {
     const pair = await refreshSession(refreshToken);
     applyPair(pair);
@@ -253,8 +294,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
   /** Re-validates identity after a rotation; failure here expires the session. */
   async function refreshNowConfirm(): Promise<boolean> {
     try {
-      const me = await fetchMe();
-      applyAuthenticated(me.permissions ?? []);
+      applyAuthenticated(await resolveIdentityHints());
       return true;
     } catch (error) {
       return classifyRefreshFailure(error);
@@ -276,8 +316,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
     try {
       const pair = await apiLogin(credentials);
       applyPair(pair);
-      const me = await fetchMe();
-      applyAuthenticated(me.permissions ?? []);
+      applyAuthenticated(await resolveIdentityHints());
     } catch (error) {
       const normalized = normalizeError(error, { method: 'POST' });
       if (get().accessToken !== undefined && get().accessToken !== '') {
@@ -297,8 +336,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
     const state = get();
     if (state.accessToken !== undefined && state.accessToken !== '') {
       try {
-        const me = await fetchMe();
-        applyAuthenticated(me.permissions ?? []);
+        applyAuthenticated(await resolveIdentityHints());
         return;
       } catch (error) {
         const normalized = normalizeError(error, { method: 'GET' });
