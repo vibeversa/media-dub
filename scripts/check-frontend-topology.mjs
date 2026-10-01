@@ -196,8 +196,16 @@ export function isScannableFile(relativePath) {
   if (normalized.includes(TEST_DIRECTORY)) return false;
   if (TEST_FILE.test(normalized)) return false;
   if (STORY_FILE.test(normalized)) return false;
-  // Both forms, because the scan root makes this path relative and the suffix
-  // form alone silently stops matching the moment the file moves up a level.
+  // The Vitest harness. Task 046 moved it from `src/testSetup.ts` to
+  // `src/test/setup.ts`, and BOTH spellings are exempted: the new one because it
+  // is live, the old one because a rename that leaves the old exemption behind is
+  // how an exclusion outlives the file it was written for.
+  //
+  // The leading form has to be present on each alternative. The scan root is
+  // `frontend/src`, so callers pass `test/setup.ts` with no leading slash - and
+  // an anchored `'/test/setup.ts'` suffix test silently never matches, which is
+  // how this exemption looked live while the harness was being scanned.
+  if (normalized === 'test/setup.ts' || normalized.endsWith('/test/setup.ts')) return false;
   if (normalized === 'testSetup.ts' || normalized.endsWith('/testSetup.ts')) return false;
   return SCANNED_EXTENSIONS.has(extname(normalized));
 }

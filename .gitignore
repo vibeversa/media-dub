@@ -67,6 +67,12 @@ coverage*/
 ## Task 040A cross-layer rig
 # Playwright output.
 tests/cross-layer/.artifacts/
+## Task 046 E2E harness
+# `e2e/playwright.config.ts` writes its own output directory, so it is ignored
+# separately from the rig's rather than reusing the same entry - a shared entry
+# would have meant editing 040A's line to cover a directory that did not exist
+# when it was written.
+e2e/.artifacts/
 test-results/
 playwright-report/
 # The rig's build profile holds public VITE_* values only and is committed on

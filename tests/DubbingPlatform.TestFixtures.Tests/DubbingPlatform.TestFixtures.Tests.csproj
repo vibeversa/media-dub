@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Task 046 instruction 4: the fixture library's own proofs.
+
+    A separate xunit project (not a test class inside the library) for two
+    reasons:
+
+      1. `Microsoft.NET.Sdk` libraries are not discovered by `dotnet test`, so
+         the proofs have to live in a project the VSTest runner walks. Task 046's
+         own validation command filters on `FullyQualifiedName~TestFixturesTests`,
+         which only finds tests in a test project.
+      2. The library must stay referenceable by non-test executables (the 040A
+         seeder, and any future CLI), and a project that references a test
+         project drags xunit, coverlet and the whole runner graph with it.
+
+    These tests are pure: no database, no Testcontainers, no HTTP. They run on a
+    developer's laptop, in a container-less CI shard, and in the 042 basic-ci job
+    that has no Docker at all.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DubbingPlatform.Domain\DubbingPlatform.Domain.csproj" />
+    <ProjectReference Include="..\..\src\DubbingPlatform.Application\DubbingPlatform.Application.csproj" />
+    <ProjectReference Include="..\DubbingPlatform.TestFixtures\DubbingPlatform.TestFixtures.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -312,8 +312,9 @@ fires on the defensive use of a string gets disabled:
 * `//` immediately preceded by `:` is a URL, not a comment — masking it would
   delete the very strings the URL rule reads. Comments *are* masked, so
   documenting an old endpoint is not a finding.
-* Test files, stories and `testSetup.ts` are out of scope: they legitimately
-  contain hostile strings as fixtures.
+* Test files, stories and the Vitest harness (`src/test/setup.ts`, previously
+  `src/testSetup.ts`) are out of scope: they legitimately contain hostile
+  strings as fixtures.
 * `frontend/src/config/env.ts` is excluded **with a stated reason**: it is the
   secret-shape catalogue, and every rule it breaks it breaks in order to detect
   that rule.

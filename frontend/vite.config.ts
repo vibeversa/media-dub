@@ -19,7 +19,13 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'src/**/*.spec.{ts,tsx}'],
     reporters: ['default'],
-    setupFiles: ['./src/testSetup.ts'],
+    setupFiles: ['./src/test/setup.ts'],
+    // Task 046 R1: MSW is opt-in per suite via `installMocks()`
+    // (`src/mocks/server.ts`), NOT installed globally here. Installing it for
+    // every suite would put the ~1760 tests that use `setInnerFetchForTests` and
+    // never reach the network behind a request interceptor, and it would make an
+    // unmocked request in a pure state-machine suite fail for a reason that has
+    // nothing to do with that suite.
     // Task 039A: coverage enforcement. `vite.config.ts` is the canonical
     // coverage owner (no separate `vitest.config.ts`, to avoid dual-config
     // drift — see `docs/coverage.md`). `npm run test -- --coverage` emits
@@ -41,7 +47,12 @@ export default defineConfig({
         // Task 039B: Storybook stories are dev-only demos, never shipped.
         // Visual regressions own them in 041B; Vitest must not count them.
         'src/**/*.stories.{ts,tsx}',
-        'src/testSetup.ts',
+        // Task 046: the shared harness. It is loaded by every test file and has
+        // no branch a suite can exercise, so counting it would add a permanent
+        // uncovered line that trains everyone to ignore the threshold. It
+        // replaced the single-purpose `src/testSetup.ts`; keeping both would mean
+        // two files loaded in an order nobody could reason about.
+        'src/test/**',
         '**/*.d.ts',
         'playwright.config.ts',
         'e2e/**',

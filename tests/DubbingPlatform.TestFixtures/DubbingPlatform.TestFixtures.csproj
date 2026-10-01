@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Task 046: the shared synthetic-fixture library.
+
+    It is a LIBRARY, not a test project, on purpose. Task 046 R3 says the
+    factories must build "tenant-isolated graphs usable by backend + E2E tests",
+    which means three different executables have to call the same code:
+
+      * tests/DubbingPlatform.TestFixtures (this project's own proofs)
+      * tests/DubbingPlatform.UnitTests, .../IntegrationTests, .../E2ETests
+      * tests/cross-layer/seed (the .NET seeder 040A's rig drives)
+
+    A test project cannot be referenced by another executable, so making this a
+    `Microsoft.NET.Sdk` library is what allows one factory implementation to be
+    the single source of truth rather than three drifting copies. The proofs live
+    in a separate xunit project so that `dotnet test` discovers them.
+
+    IsPackable=false because this never ships; it is build-time test scaffolding.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DubbingPlatform.Domain\DubbingPlatform.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      `ToProjectRole` is internal so the seeded-role -> ProjectRole mapping is
+      not part of the library's public surface (callers grant roles through
+      `SyntheticEnvironments.Membership`). `TestFixturesTests` still needs to
+      assert the mapping is complete, because a seeded role with no mapping is
+      exactly the drift that produces a session the API rejects - and the
+      mapping table is where that drift would live. See the test's remarks.
+    -->
+    <InternalsVisibleTo Include="DubbingPlatform.TestFixtures.Tests" />
+  </ItemGroup>
+
+</Project>

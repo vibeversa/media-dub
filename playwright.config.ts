@@ -12,6 +12,7 @@
 //   @cross-layer-harness  the rig smoke (040A)
 //   @cross-layer          the seven named seam specs (040B)
 //   @cross-layer-ai       seam specs that need a non-default mock-AI scenario
+//   @smoke                the Task 046 harness smoke (e2e/support/smoke.spec.ts)
 //   @visual               the visual matrix and its structural checks (041B)
 //   @a11y                 the WCAG 2.2 AA audit and its manual checks (041C)
 //   @perf                 the six performance budgets and their structural
@@ -21,6 +22,22 @@
 // the documented run command, because the rig's services are health-gated and
 // need a database migration and a seed before any browser work is meaningful.
 // globalSetup then fails closed if the stack is not actually up.
+//
+// The Task 046 harness (`e2e/support/**`) runs here too, in its own project with
+// its own global setup, rather than only under `e2e/playwright.config.ts`. Two
+// reasons, both practical:
+//
+//   * `npx playwright test --project=chromium e2e/support/smoke.spec.ts` - the
+//     command Task 046's own validation block names - resolves the ROOT config,
+//     because Playwright reads `playwright.config.ts` from the working directory.
+//     Without a project here it fails with "no projects match", which is the
+//     worst possible shape for a documented command.
+//   * The harness needs the same stack the rig does, so it shares the same
+//     `globalSetup` and pays for one seed rather than two.
+//
+// `e2e/playwright.config.ts` remains the standalone config for running the harness
+// against a stack that is NOT the rig (`--config e2e/playwright.config.ts`), which
+// is how a developer points it at a deployed environment.
 
 import { defineConfig, devices } from '@playwright/test';
 
@@ -39,6 +56,7 @@ export default defineConfig({
   testDir: '.',
   testMatch: [
     'tests/cross-layer/**/*.spec.ts',
+    'e2e/support/**/*.spec.ts',
     'e2e/visual/**/*.spec.ts',
     'e2e/a11y/**/*.spec.ts',
     'e2e/perf/**/*.spec.ts',
@@ -112,13 +130,27 @@ export default defineConfig({
   projects: [
     {
       name: 'cross-layer-chromium',
-      testIgnore: 'e2e/perf/**',
+      // `e2e/perf/**` is the perf project's; `e2e/support/**` is the harness
+      // project's. Both exclusions are explicit rather than left implicit, so
+      // adding a new tree produces a stated decision instead of a spec that runs
+      // twice because nobody wrote down where it belongs.
+      testIgnore: ['e2e/perf/**', 'e2e/support/**'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'perf-chromium',
       testMatch: 'e2e/perf/**/*.spec.ts',
       use: { ...devices['Desktop Chrome'], trace: 'off' },
+    },
+    {
+      // Task 046: the harness smoke, in a project named `chromium` because that
+      // is the name Task 046's validation command passes to `--project`. It runs
+      // the shared rig global setup (same stack, same seed) and inherits the rig's
+      // `workers: 1` and `retries: 0`, which is why no per-project overrides are
+      // needed for either.
+      name: 'chromium',
+      testMatch: 'e2e/support/**/*.spec.ts',
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
 });

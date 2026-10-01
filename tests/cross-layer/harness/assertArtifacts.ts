@@ -142,6 +142,21 @@ export async function readProjectRow(projectId: string): Promise<ProjectRow> {
   }
 
   const [id, status, activeRunId, settings] = raw.split('|');
+
+  // `id` and `status` are non-optional in `ProjectRow`, so an absent column is a
+  // malformed psql result rather than a legitimately-empty value - and returning
+  // `undefined` for it would type-error at every call site instead of here. The
+  // message names the row and the raw output, because a missing column means the
+  // query above and the schema have diverged, which is a rig defect.
+  if (id === undefined || status === undefined) {
+    // `detail` is a record, not a string: the error carries observed values
+    // structurally so a caller can assert on them.
+    throw new ArtifactAssertionError(
+      `The seeded project row ${projectId} came back without an id and status.`,
+      { rawPsqlOutput: raw },
+    );
+  }
+
   return { id, status, activeRunId: activeRunId ?? null, processingSettingsJson: settings || null };
 }
 

@@ -45,7 +45,10 @@ Explicit `exclude` list in `vite.config.ts` (policy, never accident):
 
 - `src/api/generated/**` — generated OpenAPI client owned by Task 014
   (generator + drift gate); testing generated output would test the generator.
-- `src/**/*.test.*`, `src/**/*.spec.*`, `src/testSetup.ts` — tests and harness.
+- `src/**/*.test.*`, `src/**/*.spec.*`, `src/test/**` — tests and harness. The
+  harness moved from `src/testSetup.ts` to `src/test/setup.ts` in Task 046; the
+  exclusion follows it, and the reason is that it is loaded by every file and has
+  no branch a suite can exercise.
 - `src/**/*.stories.*` — Storybook stories (Task 039B, permanent): dev-only
   component demos, never shipped in the app bundle. State coverage for the
   underlying components lives in Vitest (`*.test.*`); visual coverage lives

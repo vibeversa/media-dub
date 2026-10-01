@@ -30,6 +30,7 @@ using DubbingPlatform.Domain.Entities;
 using DubbingPlatform.Domain.Enums;
 using DubbingPlatform.Infrastructure.Persistence;
 using DubbingPlatform.Infrastructure.Persistence.Interceptors;
+using DubbingPlatform.TestFixtures;
 using EFCore.NamingConventions;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -280,6 +281,42 @@ internal static class Program
                     processingSettingsJson: ProcessingSettings));
             }
 
+            // Task 046: the seeded identities come from the shared fixture
+            // library, not from a list written out here. 040A seeded one user
+            // because only one was needed; the E2E harness needs one per role, and
+            // when this list was duplicated the two drifted - the harness expected
+            // `harness-owner` and the seeder produced `cross-layer-owner`, so every
+            // signed-in harness spec would have got 401 INVALID_CREDENTIALS and
+            // read as an auth defect. Deriving both from the same declaration is
+            // what stops that recurring.
+            //
+            // The original single user is kept and granted ProjectOwner as well: the
+            // 040A/040B seams sign in as it, and removing it would break them.
+            foreach (var roleUser in RoleUsers(options, now))
+            {
+                if (!await context.Set<TenantUser>()
+                    .AnyAsync(u => u.TenantId == options.TenantId
+                        && u.ExternalSubject == roleUser.User.ExternalSubject)
+                    .ConfigureAwait(false))
+                {
+                    context.Set<TenantUser>().Add(roleUser.User);
+                }
+
+                if (!await context.Set<ProjectMembership>()
+                    .AnyAsync(m => m.ProjectId == options.ProjectId && m.UserId == roleUser.User.Id)
+                    .ConfigureAwait(false))
+                {
+                    context.Set<ProjectMembership>().Add(new ProjectMembership(
+                        roleUser.MembershipId,
+                        options.TenantId,
+                        options.ProjectId,
+                        roleUser.User.Id,
+                        roleUser.Role,
+                        options.UserId,
+                        now));
+                }
+            }
+
             var memberExists = await context.Set<ProjectMembership>()
                 .AnyAsync(m => m.ProjectId == options.ProjectId && m.UserId == options.UserId)
                 .ConfigureAwait(false);
@@ -374,6 +411,76 @@ internal static class Program
         };
         await Console.Out.WriteLineAsync(JsonSerializer.Serialize(result)).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The Task 046 role set, built from the shared fixture library.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each role gets its own user and its own membership, so a signed-in
+    /// harness spec can assert a specific authorisation boundary: a viewer that
+    /// could create a project would be a defect the harness cannot otherwise see,
+    /// because every role signing in as the same user would pass.
+    /// </para>
+    /// <para>
+    /// The membership id is derived rather than random. A random one duplicates
+    /// the row on a re-seed, and a user holding two memberships reads as two
+    /// roles and a permission check that passes for the wrong reason.
+    /// </para>
+    /// </remarks>
+    /// <param name="options">Seed options, for the tenant and owner.</param>
+    /// <param name="now">The frozen instant.</param>
+    private static List<(TenantUser User, Guid MembershipId, ProjectRole Role)> RoleUsers(
+        SeedOptions options,
+        DateTimeOffset now)
+    {
+        var rows = new List<(TenantUser, Guid, ProjectRole)>();
+
+        foreach (var role in SyntheticUsers.SeededRoles)
+        {
+            var user = SyntheticUsers.Build(
+                options.TenantId,
+                options.TenantId,
+                SubjectForRole(role),
+                DisplayNameForRole(role));
+
+            // `TenantAdmin` is a platform role with no ProjectRole counterpart; the
+            // fixture library maps it to ProjectOwner so an admin's session carries
+            // a role the project endpoints accept.
+            var projectRole = SyntheticProjectGraphBuilder.ToProjectRole(role);
+            rows.Add((
+                user,
+                FixtureIds.Derive(options.TenantId, $"membership/{user.Id:D}/{projectRole}", options.ProjectId),
+                projectRole));
+        }
+
+        _ = now;
+        return rows;
+    }
+
+    /// <summary>The external subject the fixture library seeds a role under.</summary>
+    private static string SubjectForRole(string role) => role switch
+    {
+        SyntheticUsers.AdminSubjectRole => SyntheticUsers.AdminSubject,
+        SyntheticUsers.OwnerSubjectRole => SyntheticUsers.OwnerSubject,
+        SyntheticUsers.EditorSubjectRole => SyntheticUsers.EditorSubject,
+        SyntheticUsers.ReviewerSubjectRole => SyntheticUsers.ReviewerSubject,
+        SyntheticUsers.ViewerSubjectRole => SyntheticUsers.ViewerSubject,
+        _ => throw new SeedVerificationException(
+            $"Unknown seeded role '{role}'. Add it to SyntheticUsers.SeededRoles and give it a " +
+            "subject here, or the seeder refuses to run."),
+    };
+
+    /// <summary>The display name the fixture library seeds a role under.</summary>
+    private static string DisplayNameForRole(string role) => role switch
+    {
+        SyntheticUsers.AdminSubjectRole => "Harness Administrator",
+        SyntheticUsers.OwnerSubjectRole => "Harness Owner",
+        SyntheticUsers.EditorSubjectRole => "Harness Editor",
+        SyntheticUsers.ReviewerSubjectRole => "Harness Reviewer",
+        SyntheticUsers.ViewerSubjectRole => "Harness Viewer",
+        _ => throw new SeedVerificationException($"Unknown seeded role '{role}'."),
+    };
 
     /// <summary>Ids of the rows Task 040B seams mutate.</summary>
     private sealed record SeamFixtures(
@@ -660,7 +767,7 @@ internal static class Program
         {
             await using var context = new AppDbContext(CreateOptions(options.ConnectionString));
 
-            var checks = new (string Label, bool Ok)[]
+            var checks = new List<(string Label, bool Ok)>
             {
                 ("tenant", await context.Tenants.AnyAsync(t => t.Id == options.TenantId).ConfigureAwait(false)),
                 ("tenant_user", await context.Set<TenantUser>()
@@ -674,6 +781,19 @@ internal static class Program
                     .AnyAsync(a => a.ProjectId == options.ProjectId)
                     .ConfigureAwait(false)),
             };
+
+            // Task 046: every seeded role must be readable, or an E2E spec signing
+            // in as that role gets 401 INVALID_CREDENTIALS and reads as an auth
+            // defect rather than as a seed that did not do what it said.
+            foreach (var role in SyntheticUsers.SeededRoles)
+            {
+                var subject = SubjectForRole(role);
+                checks.Add((
+                    $"tenant_user:{subject}",
+                    await context.Set<TenantUser>()
+                        .AnyAsync(u => u.TenantId == options.TenantId && u.ExternalSubject == subject)
+                        .ConfigureAwait(false)));
+            }
 
             var missing = checks.Where(c => !c.Ok).Select(c => c.Label).ToArray();
             if (missing.Length > 0)

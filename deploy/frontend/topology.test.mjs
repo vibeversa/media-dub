@@ -229,7 +229,18 @@ test('tests, stories and the test setup are out of scope, and they are full of h
     'features/admin/admin.test.ts',
     'features/admin/admin.spec.ts',
     'features/voices/VoiceCard.stories.tsx',
+    // Task 046 moved the Vitest harness from `src/testSetup.ts` to
+    // `src/test/setup.ts`. Both spellings are asserted: the new one because it is
+    // the live path, the old one because a rename that leaves the old exemption
+    // in place is how an exclusion outlives the file it was written for.
+    //
+    // The scan root is `frontend/src`, so these are the forms callers actually
+    // pass. An anchored `'/test/setup.ts'` suffix check matches none of them,
+    // which is how the exemption appeared to work while the harness was being
+    // scanned - and this test is what caught it.
+    'test/setup.ts',
     'testSetup.ts',
+    'src/test/setup.ts',
   ]) {
     assert.equal(isScannableFile(path), false, path);
   }

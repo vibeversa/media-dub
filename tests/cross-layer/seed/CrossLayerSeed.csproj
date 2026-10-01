@@ -41,6 +41,15 @@
     <ProjectReference Include="..\..\..\src\DubbingPlatform.Infrastructure\DubbingPlatform.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\src\DubbingPlatform.Application\DubbingPlatform.Application.csproj" />
     <ProjectReference Include="..\..\..\src\DubbingPlatform.Domain\DubbingPlatform.Domain.csproj" />
+    <!--
+      Task 046: the seeded identities come from the shared fixture library rather
+      than from a list written out in Program.cs. When the list was duplicated the
+      two drifted - the E2E harness expected `harness-owner` and this seeder produced
+      `cross-layer-owner` - and every signed-in harness spec would have failed with
+      401 INVALID_CREDENTIALS, which reads as an auth defect rather than as a seed
+      that did not do what it said.
+    -->
+    <ProjectReference Include="..\..\DubbingPlatform.TestFixtures\DubbingPlatform.TestFixtures.csproj" />
   </ItemGroup>
 
 </Project>
