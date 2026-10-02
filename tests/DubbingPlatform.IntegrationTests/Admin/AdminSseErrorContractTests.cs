@@ -239,6 +239,11 @@ public sealed class AdminSseErrorContractTests
             "GET /api/v1/admin/diagnostics/orphans",
             "GET /api/v1/admin/diagnostics/review-backlog",
             "GET /api/v1/admin/diagnostics/workers",
+            "GET /api/v1/admin/tenants",
+            "GET /api/v1/admin/users",
+            "GET /api/v1/admin/retention",
+            "GET /api/v1/admin/feature-flags",
+            "GET /api/v1/admin/audit-events",
         })
         {
             Assert.True(RoleMatrix.IsAllowed(route, ["TenantAdmin"]));

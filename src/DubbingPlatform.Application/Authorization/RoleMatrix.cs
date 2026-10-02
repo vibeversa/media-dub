@@ -59,6 +59,16 @@ public static class RoleMatrix
             // GAP-020: worker health (lease-derived roster) is operator
             // infrastructure state, same gate as the other diagnostics reads.
             ["GET /api/v1/admin/diagnostics/workers"] = [Roles.Service, Roles.TenantAdmin],
+
+            // GAP-024 (Plan B §12.19 admin areas): the tenants/users/retention/
+            // feature-flags/audit-events reads are tenant-scoped operator reads
+            // with the same gate as every other admin route. Membership and audit
+            // history are not ordinary-project information.
+            ["GET /api/v1/admin/tenants"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/users"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/retention"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/feature-flags"] = [Roles.Service, Roles.TenantAdmin],
+            ["GET /api/v1/admin/audit-events"] = [Roles.Service, Roles.TenantAdmin],
             // Task 044 (Plan B §19.3): operator-only local-GPU health. Device
             // inventory — accelerator model, model revision, device count,
             // per-device latency — is infrastructure detail. It is not secret,

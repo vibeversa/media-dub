@@ -22,5 +22,6 @@ public static class DiagnosticsRegistration
         services.AddScoped<LeaseOrphanService>();
         services.AddScoped<ReviewBacklogService>();
         services.AddScoped<WorkerHealthService>();
+        services.AddScoped<AdminScopeReadsService>();
     }
 }

@@ -52,6 +52,11 @@ public sealed class AdminAuthzTests
         "/api/v1/admin/diagnostics/orphans",
         "/api/v1/admin/diagnostics/review-backlog",
         "/api/v1/admin/diagnostics/workers",
+        "/api/v1/admin/tenants",
+        "/api/v1/admin/users",
+        "/api/v1/admin/retention",
+        "/api/v1/admin/feature-flags",
+        "/api/v1/admin/audit-events",
         "/api/v1/admin/status",
         "/api/v1/admin/dlq/summary",
         "/api/v1/admin/leases/status",
@@ -73,6 +78,11 @@ public sealed class AdminAuthzTests
             "GET /api/v1/admin/diagnostics/orphans",
             "GET /api/v1/admin/diagnostics/review-backlog",
             "GET /api/v1/admin/diagnostics/workers",
+            "GET /api/v1/admin/tenants",
+            "GET /api/v1/admin/users",
+            "GET /api/v1/admin/retention",
+            "GET /api/v1/admin/feature-flags",
+            "GET /api/v1/admin/audit-events",
             // Task 044: the operator-only local-GPU health read. It belongs in
             // this loop and NOT in `AdminReads`, and the difference matters.
             //

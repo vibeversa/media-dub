@@ -58,6 +58,7 @@ public sealed class AdminController : ControllerBase
     private readonly ReviewBacklogService _reviews;
     private readonly ProviderHealthQueryService _providers;
     private readonly WorkerHealthService _workers;
+    private readonly AdminScopeReadsService _scopes;
     private readonly IPermissionResolver _permissions;
     private readonly QuotaOptions _quota;
     private readonly DashboardService _dashboard;
@@ -70,6 +71,7 @@ public sealed class AdminController : ControllerBase
         ReviewBacklogService reviews,
         ProviderHealthQueryService providers,
         WorkerHealthService workers,
+        AdminScopeReadsService scopes,
         IPermissionResolver permissions,
         IOptions<QuotaOptions> quotaOptions,
         DashboardService dashboard)
@@ -81,6 +83,7 @@ public sealed class AdminController : ControllerBase
         ArgumentNullException.ThrowIfNull(reviews);
         ArgumentNullException.ThrowIfNull(providers);
         ArgumentNullException.ThrowIfNull(workers);
+        ArgumentNullException.ThrowIfNull(scopes);
         ArgumentNullException.ThrowIfNull(permissions);
         ArgumentNullException.ThrowIfNull(quotaOptions);
         ArgumentNullException.ThrowIfNull(dashboard);
@@ -91,6 +94,7 @@ public sealed class AdminController : ControllerBase
         _reviews = reviews;
         _providers = providers;
         _workers = workers;
+        _scopes = scopes;
         _permissions = permissions;
         _quota = quotaOptions.Value;
         _dashboard = dashboard;
@@ -436,6 +440,103 @@ public sealed class AdminController : ControllerBase
             tenantId, null, User.GetSubject(), "admin.access",
             "admin", "diagnostics/review-backlog", null, cancellationToken).ConfigureAwait(false);
         return Ok(backlog);
+    }
+
+    /// <summary>
+    /// Tenant read (GAP-024, Plan B 12.19): the caller's tenant, resolved from
+    /// the JWT claim. Admin reads never cross tenants, so the list has at most
+    /// one entry. Ids, name, and slug only.
+    /// </summary>
+    [HttpGet("tenants")]
+    [ProducesResponseType(typeof(IReadOnlyList<AdminTenantDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetTenants(CancellationToken cancellationToken)
+    {
+        var tenantId = User.GetTenantId();
+        var userId = RequireUserId(User);
+        await RequireElevatedAsync(tenantId, userId, cancellationToken).ConfigureAwait(false);
+        var tenants = await _scopes.GetTenantsAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        await _audit.LogAsync(
+            tenantId, null, User.GetSubject(), "admin.access",
+            "admin", "tenants", null, cancellationToken).ConfigureAwait(false);
+        return Ok(tenants);
+    }
+
+    /// <summary>
+    /// Tenant users with resolved membership role names (GAP-024). Display
+    /// names and roles only — no emails, external subjects, or credential state.
+    /// </summary>
+    [HttpGet("users")]
+    [ProducesResponseType(typeof(IReadOnlyList<AdminUserDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
+    {
+        var tenantId = User.GetTenantId();
+        var userId = RequireUserId(User);
+        await RequireElevatedAsync(tenantId, userId, cancellationToken).ConfigureAwait(false);
+        var users = await _scopes.GetUsersAsync(tenantId, cancellationToken).ConfigureAwait(false);
+        await _audit.LogAsync(
+            tenantId, null, User.GetSubject(), "admin.access",
+            "admin", "users", null, cancellationToken).ConfigureAwait(false);
+        return Ok(users);
+    }
+
+    /// <summary>
+    /// Effective retention windows (GAP-024): intermediate artifacts, final
+    /// deliverables, and the audit trail. Scopes and day counts only; hold
+    /// state and per-row sweeper decisions are never exposed.
+    /// </summary>
+    [HttpGet("retention")]
+    [ProducesResponseType(typeof(AdminRetentionPoliciesResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRetentionPolicies(CancellationToken cancellationToken)
+    {
+        var tenantId = User.GetTenantId();
+        var userId = RequireUserId(User);
+        await RequireElevatedAsync(tenantId, userId, cancellationToken).ConfigureAwait(false);
+        var policies = _scopes.GetRetentionPolicies();
+        await _audit.LogAsync(
+            tenantId, null, User.GetSubject(), "admin.access",
+            "admin", "retention", null, cancellationToken).ConfigureAwait(false);
+        return Ok(policies);
+    }
+
+    /// <summary>
+    /// Effective optional-capability flags (GAP-024). Read-only: optional
+    /// capabilities stay disabled by default and no flag write route is
+    /// provisioned, so <c>frozen</c> is always false.
+    /// </summary>
+    [HttpGet("feature-flags")]
+    [ProducesResponseType(typeof(AdminFeatureFlagsResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetFeatureFlags(CancellationToken cancellationToken)
+    {
+        var tenantId = User.GetTenantId();
+        var userId = RequireUserId(User);
+        await RequireElevatedAsync(tenantId, userId, cancellationToken).ConfigureAwait(false);
+        var flags = _scopes.GetFeatureFlags();
+        await _audit.LogAsync(
+            tenantId, null, User.GetSubject(), "admin.access",
+            "admin", "feature-flags", null, cancellationToken).ConfigureAwait(false);
+        return Ok(flags);
+    }
+
+    /// <summary>
+    /// Paged tenant audit trail, newest first (GAP-024). Payload details are
+    /// never returned — actor, action, resource identity, and timestamp only.
+    /// Page size defaults to 20 and is capped at 100.
+    /// </summary>
+    [HttpGet("audit-events")]
+    [ProducesResponseType(typeof(AdminAuditEventsResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAuditEvents(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var tenantId = User.GetTenantId();
+        var userId = RequireUserId(User);
+        await RequireElevatedAsync(tenantId, userId, cancellationToken).ConfigureAwait(false);
+        var events = await _scopes.GetAuditEventsAsync(tenantId, page, pageSize, cancellationToken).ConfigureAwait(false);
+        await _audit.LogAsync(
+            tenantId, null, User.GetSubject(), "admin.access",
+            "admin", "audit-events", null, cancellationToken).ConfigureAwait(false);
+        return Ok(events);
     }
 
     /// <summary>

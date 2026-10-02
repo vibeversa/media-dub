@@ -3372,6 +3372,163 @@
         }
       }
     },
+    "/admin/tenants": {
+      "get": {
+        "operationId": "getAdminTenants",
+        "tags": ["admin"],
+        "summary": "Tenant read (elevated, Plan B 12.19)",
+        "description": "Elevated (admin.manage or diagnostics.view). Returns the caller's tenant only — admin reads never cross tenants, so the list has at most one entry. Ids, name, and slug only; never membership, quotas, or settings.",
+        "responses": {
+          "200": {
+            "description": "Tenant list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminTenant"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/users": {
+      "get": {
+        "operationId": "getAdminUsers",
+        "tags": ["admin"],
+        "summary": "Tenant users with resolved roles (elevated, Plan B 12.19)",
+        "description": "Elevated (admin.manage or diagnostics.view). Display names and membership role names only — no emails, external subjects, or credential state.",
+        "responses": {
+          "200": {
+            "description": "User list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminUser"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/retention": {
+      "get": {
+        "operationId": "getAdminRetentionPolicies",
+        "tags": ["admin"],
+        "summary": "Effective retention windows (elevated, Plan B 12.19)",
+        "description": "Elevated (admin.manage or diagnostics.view). Intermediate artifacts, final deliverables, and the audit trail as scope + day counts. Hold state and per-row sweeper decisions are never exposed.",
+        "responses": {
+          "200": {
+            "description": "Retention policies.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRetentionPolicies"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/feature-flags": {
+      "get": {
+        "operationId": "getAdminFeatureFlags",
+        "tags": ["admin"],
+        "summary": "Effective optional-capability flags (elevated, read-only)",
+        "description": "Elevated (admin.manage or diagnostics.view). Optional capabilities stay disabled by default and no flag write route is provisioned, so `frozen` is always false and the panel toggle never persists.",
+        "responses": {
+          "200": {
+            "description": "Feature flags.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminFeatureFlags"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/admin/audit-events": {
+      "get": {
+        "operationId": "getAdminAuditEvents",
+        "tags": ["admin"],
+        "summary": "Paged tenant audit trail (elevated, Plan B 12.19)",
+        "description": "Elevated (admin.manage or diagnostics.view). Newest first; `page`/`pageSize` (default 20, max 100). Payload details are never returned — actor, action, resource identity, and timestamp only.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAuditEvents"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
     "/admin/diagnostics/workers": {
       "get": {
         "operationId": "getDiagnosticsWorkers",
@@ -5234,6 +5391,159 @@
           "version": {
             "type": "string",
             "nullable": true
+          }
+        }
+      },
+      "AdminTenant": {
+        "type": "object",
+        "description": "Tenant slice for the admin tenants read (ids, name, slug only).",
+        "required": ["id", "name", "slug"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        }
+      },
+      "AdminUser": {
+        "type": "object",
+        "description": "Tenant user slice: display name + resolved membership role names.",
+        "required": ["id", "displayName"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AdminRetentionPolicy": {
+        "type": "object",
+        "description": "One effective retention window (scope + day count).",
+        "required": ["scope", "retentionDays"],
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "retentionDays": {
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "AdminRetentionPolicies": {
+        "type": "object",
+        "description": "Envelope for the retention policies read.",
+        "required": ["policies"],
+        "properties": {
+          "policies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRetentionPolicy"
+            }
+          }
+        }
+      },
+      "AdminFeatureFlag": {
+        "type": "object",
+        "description": "One effective optional-capability flag.",
+        "required": ["key", "enabled"],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "frozen": {
+            "type": "boolean",
+            "description": "True when a rollout freeze is active; always false in this deployment (no flag write route is provisioned)."
+          }
+        }
+      },
+      "AdminFeatureFlags": {
+        "type": "object",
+        "description": "Envelope for the feature flags read.",
+        "required": ["flags"],
+        "properties": {
+          "flags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminFeatureFlag"
+            }
+          }
+        }
+      },
+      "AdminAuditEvent": {
+        "type": "object",
+        "description": "One audit row: actor, action, resource identity, and timestamp. Payload details are never returned.",
+        "required": ["id", "timestamp", "actor", "action"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "resourceType": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "AdminAuditEvents": {
+        "type": "object",
+        "description": "Paged audit envelope (page, pageSize, total, hasMore).",
+        "required": ["items", "page", "pageSize", "total", "hasMore"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminAuditEvent"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "hasMore": {
+            "type": "boolean"
           }
         }
       },

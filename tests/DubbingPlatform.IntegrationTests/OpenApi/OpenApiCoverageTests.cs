@@ -121,6 +121,14 @@ public sealed class OpenApiCoverageTests
         "GET /api/v1/admin/diagnostics/orphans",
         "GET /api/v1/admin/diagnostics/review-backlog",
         "GET /api/v1/admin/diagnostics/workers",
+
+        // GAP-024: Plan B 12.19 admin-area reads provisioned so the operator
+        // panels stop rendering the "not provisioned" placeholder.
+        "GET /api/v1/admin/tenants",
+        "GET /api/v1/admin/users",
+        "GET /api/v1/admin/retention",
+        "GET /api/v1/admin/feature-flags",
+        "GET /api/v1/admin/audit-events",
     ];
 
     // Naturally-idempotent POSTs that intentionally omit Idempotency-Key docs.

@@ -102,6 +102,43 @@ with the entity:
 There is no per-job expiry column: preview artifacts follow the standard
 retention/hold path (`RetentionService`), so nothing is deleted on a job timer.
 
+## Admin scope reads and deployment-only surfaces (GAP-024)
+
+Plan B §12.19 lists the operator admin areas. The read side of each is now
+provisioned behind the same elevated gate as the diagnostics reads
+(`admin.manage` or `diagnostics.view`; JWT `TenantAdmin`/`Service`):
+
+| Route | Returns | Notes |
+|---|---|---|
+| `GET /admin/tenants` | `{ id, name, slug }[]` | Caller's tenant only; admin reads never cross tenants, so the list has at most one entry. |
+| `GET /admin/users` | `{ id, displayName, roles[] }[]` | Roles come from `project_memberships`. No emails, external subjects, or credential state. |
+| `GET /admin/retention` | `{ policies: [{ scope, retentionDays, description }] }` | Effective windows from configuration; hold state and sweeper decisions are never exposed. |
+| `GET /admin/feature-flags` | `{ flags: [{ key, enabled, description, frozen }] }` | Read-only. Optional capabilities stay disabled by default. |
+| `GET /admin/audit-events` | `{ items, page, pageSize, total, hasMore }` | Newest first; `details_json` payloads are never returned. |
+
+Every read is tenant-scoped, `AsNoTracking`, audited as `admin.access`, and
+returns ids, names, counts, and timestamps only.
+
+### Explicitly out of scope for this deployment
+
+Two surfaces stay unprovisioned **by decision**, recorded here rather than left
+as an open placeholder. The frontend keeps its 404-tolerant `EmptyState` /
+`NotAvailableState` path so a future deployment can add the route without a
+frontend change:
+
+- **Local-GPU device health** (`GET /admin/local-gpu`). Device inventory —
+  accelerator model, revision, per-device latency — is node-level infrastructure
+  telemetry with no product consumer: nothing in the pipeline reads it, and no
+  operator action in the product depends on it. Exposing it would add an
+  infrastructure-coupling route for zero product capability. The
+  `Features:LocalInferenceEnabled` flag remains the operator-visible switch.
+- **Enrichment runtime reads** (video-intelligence / lip-sync run inspection).
+  Enrichment is a future-ready extension point (Plan A §19): the capability
+  flags exist and stay `false` by default, but the stages are not part of the
+  32-endpoint v1 contract, so a runtime-inspection read has no contract to hang
+  off. When enrichment stages are provisioned, their read surfaces come with
+  them.
+
 ## Drift dry-run (CI)
 
 `check-api-drift` fails closed on two mutations (verified in Task 014):

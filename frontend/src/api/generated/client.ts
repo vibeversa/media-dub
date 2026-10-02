@@ -189,6 +189,14 @@ export class ApiClient {
     return { id, event, data: JSON.parse(data) as S.SseEnvelope };
   }
 
+  /** getAdminAuditEvents — Paged tenant audit trail (elevated, Plan B 12.19) */
+  public async getAdminAuditEvents(params?: GetAdminAuditEventsParams, options?: RequestOptions): Promise<S.AdminAuditEvents> {
+    const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
+    const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;
+    const filled = "/admin/audit-events".replace(/\{([^}]+)\}/g, (_m, key) => encodeURIComponent(String(pathParams[key as string])));
+    return this.request<S.AdminAuditEvents>('GET', filled, { query, body: undefined, options });
+  }
+
   /** getDiagnosticsDlq — DLQ summary (empty is a 200 zero-shape) */
   public async getDiagnosticsDlq(params?: GetDiagnosticsDlqParams, options?: RequestOptions): Promise<S.DlqSummary> {
     const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
@@ -245,6 +253,14 @@ export class ApiClient {
     return this.request<S.GetAdminDlqSummaryResponse>('GET', filled, { query, body: undefined, options });
   }
 
+  /** getAdminFeatureFlags — Effective optional-capability flags (elevated, read-only) */
+  public async getAdminFeatureFlags(params?: GetAdminFeatureFlagsParams, options?: RequestOptions): Promise<S.AdminFeatureFlags> {
+    const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
+    const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;
+    const filled = "/admin/feature-flags".replace(/\{([^}]+)\}/g, (_m, key) => encodeURIComponent(String(pathParams[key as string])));
+    return this.request<S.AdminFeatureFlags>('GET', filled, { query, body: undefined, options });
+  }
+
   /** getAdminLeases — Lease status (paginated, max 100) */
   public async getAdminLeases(params?: GetAdminLeasesParams, options?: RequestOptions): Promise<S.PaginatedResult> {
     const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
@@ -285,6 +301,14 @@ export class ApiClient {
     return this.request<S.AdminQuotasResponse>('GET', filled, { query, body: undefined, options });
   }
 
+  /** getAdminRetentionPolicies — Effective retention windows (elevated, Plan B 12.19) */
+  public async getAdminRetentionPolicies(params?: GetAdminRetentionPoliciesParams, options?: RequestOptions): Promise<S.AdminRetentionPolicies> {
+    const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
+    const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;
+    const filled = "/admin/retention".replace(/\{([^}]+)\}/g, (_m, key) => encodeURIComponent(String(pathParams[key as string])));
+    return this.request<S.AdminRetentionPolicies>('GET', filled, { query, body: undefined, options });
+  }
+
   /** getAdminReviewBacklogLegacy — Review backlog rows (paginated, max 100) */
   public async getAdminReviewBacklogLegacy(params?: GetAdminReviewBacklogLegacyParams, options?: RequestOptions): Promise<S.PaginatedResult> {
     const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
@@ -309,12 +333,28 @@ export class ApiClient {
     return this.request<S.GetAdminStatusResponse>('GET', filled, { query, body: undefined, options });
   }
 
+  /** getAdminTenants — Tenant read (elevated, Plan B 12.19) */
+  public async getAdminTenants(params?: GetAdminTenantsParams, options?: RequestOptions): Promise<(S.AdminTenant)[]> {
+    const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
+    const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;
+    const filled = "/admin/tenants".replace(/\{([^}]+)\}/g, (_m, key) => encodeURIComponent(String(pathParams[key as string])));
+    return this.request<(S.AdminTenant)[]>('GET', filled, { query, body: undefined, options });
+  }
+
   /** getAdminUsage — Tenant usage aggregate */
   public async getAdminUsage(params?: GetAdminUsageParams, options?: RequestOptions): Promise<S.AdminUsageResponse> {
     const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
     const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;
     const filled = "/admin/usage".replace(/\{([^}]+)\}/g, (_m, key) => encodeURIComponent(String(pathParams[key as string])));
     return this.request<S.AdminUsageResponse>('GET', filled, { query, body: undefined, options });
+  }
+
+  /** getAdminUsers — Tenant users with resolved roles (elevated, Plan B 12.19) */
+  public async getAdminUsers(params?: GetAdminUsersParams, options?: RequestOptions): Promise<(S.AdminUser)[]> {
+    const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
+    const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;
+    const filled = "/admin/users".replace(/\{([^}]+)\}/g, (_m, key) => encodeURIComponent(String(pathParams[key as string])));
+    return this.request<(S.AdminUser)[]>('GET', filled, { query, body: undefined, options });
   }
 
   /** authLogin — Log in with a tenant id and external subject */
@@ -861,6 +901,15 @@ export class ApiClient {
 
 }
 
+export interface GetAdminAuditEventsParams {
+  readonly path: {
+  };
+  readonly query?: {
+    readonly "page"?: number;
+    readonly "pageSize"?: number;
+  };
+}
+
 export interface GetDiagnosticsDlqParams {
   readonly path: {
   };
@@ -908,6 +957,11 @@ export interface GetAdminDlqSummaryParams {
   };
 }
 
+export interface GetAdminFeatureFlagsParams {
+  readonly path: {
+  };
+}
+
 export interface GetAdminLeasesParams {
   readonly path: {
   };
@@ -938,6 +992,11 @@ export interface GetAdminQuotasParams {
   };
 }
 
+export interface GetAdminRetentionPoliciesParams {
+  readonly path: {
+  };
+}
+
 export interface GetAdminReviewBacklogLegacyParams {
   readonly path: {
   };
@@ -958,7 +1017,17 @@ export interface GetAdminStatusParams {
   };
 }
 
+export interface GetAdminTenantsParams {
+  readonly path: {
+  };
+}
+
 export interface GetAdminUsageParams {
+  readonly path: {
+  };
+}
+
+export interface GetAdminUsersParams {
   readonly path: {
   };
 }

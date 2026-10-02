@@ -2,6 +2,39 @@
 
 // Bundle: openapi v1. Do not hand-edit; regenerate with make generate-api.
 
+/** One audit row: actor, action, resource identity, and timestamp. Payload details are never returned. */
+export type AdminAuditEvent = {
+  readonly "action": string;
+  readonly "actor": string;
+  readonly "id": string;
+  readonly "projectId"?: string | null;
+  readonly "resourceId"?: string;
+  readonly "resourceType"?: string;
+  readonly "timestamp": string;
+};
+
+/** Paged audit envelope (page, pageSize, total, hasMore). */
+export interface AdminAuditEvents {
+  readonly "hasMore": boolean;
+  readonly "items": (AdminAuditEvent)[];
+  readonly "page": number;
+  readonly "pageSize": number;
+  readonly "total": number;
+}
+
+/** One effective optional-capability flag. */
+export interface AdminFeatureFlag {
+  readonly "description"?: string;
+  readonly "enabled": boolean;
+  readonly "frozen"?: boolean;
+  readonly "key": string;
+}
+
+/** Envelope for the feature flags read. */
+export interface AdminFeatureFlags {
+  readonly "flags": (AdminFeatureFlag)[];
+}
+
 /** Frozen Quota limits. */
 export interface AdminQuotasResponse {
   readonly "correlationId": string;
@@ -14,6 +47,25 @@ export interface AdminQuotasResponse {
   readonly "maxStorageBytes": number;
 }
 
+/** Envelope for the retention policies read. */
+export interface AdminRetentionPolicies {
+  readonly "policies": (AdminRetentionPolicy)[];
+}
+
+/** One effective retention window (scope + day count). */
+export interface AdminRetentionPolicy {
+  readonly "description"?: string;
+  readonly "retentionDays": number;
+  readonly "scope": string;
+}
+
+/** Tenant slice for the admin tenants read (ids, name, slug only). */
+export interface AdminTenant {
+  readonly "id": string;
+  readonly "name": string;
+  readonly "slug": string;
+}
+
 /** Tenant usage aggregate (counts and bytes only). */
 export interface AdminUsageResponse {
   readonly "activeRuns": number;
@@ -24,6 +76,13 @@ export interface AdminUsageResponse {
   readonly "storageQuotaBytes": number;
   readonly "storageUsedBytes": number;
   readonly "totalProjects": number;
+}
+
+/** Tenant user slice: display name + resolved membership role names. */
+export interface AdminUser {
+  readonly "displayName": string;
+  readonly "id": string;
+  readonly "roles"?: (string)[];
 }
 
 export interface AuthLoginRequest {
