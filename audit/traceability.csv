@@ -1,0 +1,481 @@
+id,requirement,status,evidence
+A-01.1,DubbingPlatform.sln exists,DONE,DubbingPlatform.sln:8-32
+A-01.2,6 src projects created,DONE,src/DubbingPlatform.{Domain|Contracts|Application|Infrastructure|Api|Workers}
+A-01.3,4 required test projects,DONE,tests/UnitTests|IntegrationTests|ContractTests|E2ETests (+2 TestFixtures extras)
+A-01.4,Domain references nothing,DONE,Domain.csproj zero ProjectReference
+A-01.5,Contracts references nothing,DONE,Contracts.csproj:1-9 zero ProjectReference
+A-01.6,Application refs Domain+Contracts only,DONE,Application.csproj:4-5
+A-01.7,Infrastructure refs App+Domain+Contracts,DONE,Infrastructure.csproj:4-6
+A-01.8,Api refs App+Infra+Contracts (not Domain),DONE,Api.csproj:59-61
+A-01.9,Workers refs App+Infra+Contracts,DONE,Workers.csproj:27-29
+A-01.10,Directory.Build.props net10/nullable/implicitUsings/warningsAsErrors,DONE,Directory.Build.props:1-10
+A-01.11,global.json pins .NET 10 SDK,DONE,global.json 10.0.100
+A-01.12,.editorconfig,DONE,.editorconfig root utf-8/lf cs-indent-4
+A-01.13,.gitignore,DONE,.gitignore present
+A-01.14,Tool manifest dotnet-ef,DONE,.config/dotnet-tools.json ef-10.0.12; restore PASS
+A-01.15,NuGet set (EF+Npgsql+Naming+MassTransit3+Redis+S3+Serilog+OTel+Prom+Polly+FV+xUnit+TC+WireMock),DONE,grep PackageReference src tests — all present
+A-01.16,8 Dockerfiles,DONE,Dockerfile.api|worker.control|media.preparation|media.render|ai|gpu|export|maintenance (+backup/frontend extras)
+A-01.17,FFmpeg only in media images,DONE,grep ffmpeg Dockerfile* → media.prep+media.render only
+A-01.18,compose profiles fast+full,DONE,docker-compose.yml every service profiles fast/full
+A-01.19,full = pg+rabbit+redis+minio+api+workers,DONE,docker-compose.yml:9-314
+A-01.20,fast = pg+minio+api+control in-memory+mocks,DONE,Transport InMemory + DefaultProvider mock; rabbit/redis required:false
+A-01.21,Healthchecks for dependencies,DONE,docker-compose.yml:19-23|33-37|44-48|64-70|104-109
+A-01.22,Makefile targets,DONE,Makefile:1-43 all 12 +generate-api/check-api-drift extras
+A-01.23,Config placeholders 15 sections,DONE,Api/appsettings.json ConnectionStrings→Transport +extras
+A-01.24,No placeholder fails compilation,DONE,UnitTests build 0 errors; grep NotImplementedException|TODO Domain/StateMachines/Processes/Api/Middleware → zero
+A-01.V1,dotnet build succeeds,UNVERIFIABLE,full-sln rebuild >120s timeout twice; incremental via dotnet test 0 warn/0 err — see GAP-036a
+A-01.V2,docker compose config validates,DONE,exit 0
+A-01.V3,make compose-fast/full config half,DONE,Makefile:19|22 run compose config first
+A-01.V4,dotnet tool restore succeeds,DONE,exit 0 ef-10.0.12
+A-02.1,45 core entities defined,DONE,grep class <Name> Domain/Entities — all 45 +PlanB extras
+A-02.2,25 enums defined,DONE,grep enum <Name> Domain/Enums — all 25
+A-02.3,10 value objects,DONE,Domain/ValueObjects TimeRange|ContentHash|ConfigurationHash|ExecutionSnapshotHash|ProviderRouteHash|PromptHash|Money|ProviderModelReference|LoudnessTarget|TimingWindow
+A-02.4,Internal IDs PG uuid,DONE,Guid props (UploadPart.cs:9); Npgsql Guid→uuid
+A-02.5,Prefixed public IDs via EF converters + API serialization,PARTIAL,API DONE PublicIdMapper.cs:12-33 + Api PublicIdParser; EF converters MISSING — see GAP-010
+A-02.6,TenantId on all tenant tables,DONE,grep TenantId Entities — all except Tenant + projection DTO
+A-02.7,ProcessingRun authoritative; project status projection,DONE,ProjectStatusProjector.cs:12; RunStateMachine independent
+A-02.8,Project transitions (12),DONE,ProjectStateMachine.cs:23-34 + DomainException
+A-02.9,Run transitions (8),DONE,RunStateMachine.cs:22-28
+A-02.10,Stage transitions (9),DONE,StageStateMachine.cs:22-31
+A-02.11,Upload transitions (5),DONE,UploadStateMachine.cs:21-25
+A-02.12,Review transitions (4),DONE,ReviewStateMachine.cs:21-24
+A-02.13,Export transitions (4),DONE,ExportStateMachine.cs:21-24
+A-02.14,Artifact Pending/Committed/Deleted,DONE,ArtifactStatus.cs + ArtifactStateMachine.cs:21-22
+A-02.15,ContentObject Pending/Committed/Orphaned/Deleted,PARTIAL,statuses DONE; transitions omit Committed→Deleted — see GAP-015
+A-02.16,Partial unique one active run per project,DONE,ProcessingRunConfiguration.cs:19-21 HasFilter Pending|Running|Cancelling|ManualReviewRequired
+A-02.17,Unique (TenantId Endpoint IdempotencyKey),DONE,IdempotencyRecordConfiguration.cs:19
+A-02.18,Unique (TenantId ContentHash),DONE,ContentObjectConfiguration.cs:19
+A-02.19,Unique (Run Stage Scope ScopeId Attempt),DONE,StageExecutionConfiguration.cs:25
+A-02.20,Unique ledger (Run Stage Scope ScopeId StageExecutionId),DONE,StageUnitCompletionConfiguration.cs:18
+A-02.21,Unique (UploadSessionId PartNumber),DONE,UploadPartConfiguration.cs:15
+A-02.22,Composite tenant/project/run/stage/status indexes,DONE,DubbingProjectConfiguration:25-28 StageExecution:26-29 ReviewItem:18-19
+A-02.23,Partial index lease recovery Running AND LeaseExpiresAt<now,DONE,"Running-only filter only — see GAP-004 | FIX Covering partial index (Status,LeaseExpiresAt) WHERE status='Running' + migration 20261002143017 (immutable, no NOW()); GAP-004 DONE 419e1ba"
+A-02.24,9 workload-oriented indexes,DONE,grep HasIndex Configurations — all 9 verified
+A-02.25,AppDbContext,DONE,Persistence/AppDbContext.cs 50+ DbSets outbox/inbox tenant-filters snake_case
+A-02.26,EF configurations for all entities,DONE,53 files Configurations/ (45 + 8 PlanB extras)
+A-02.27,Initial migration + per-entity coverage,DONE,20260911061428_InitialCreate +6 follow-ups + snapshot
+A-02.28,Schema version metadata for JSON artifacts,DONE,Artifact.cs:20 SchemaVersion +validation 105-107
+A-02.29,ConfigurationHashCalculator,DONE,Application/Configuration/ConfigurationHashCalculator.cs canonical-JSON SHA-256
+A-02.30,ExecutionSnapshotCalculator,DONE,ExecutionSnapshotCalculator.cs:20-38
+A-02.31,Secrets excluded from hashes,DONE,ConfigurationHashCalculator.cs:20 strips secret|password|token|key|credential
+A-02.32,Hashes deterministic + culture-invariant,DONE,Ordinal sort ToLowerInvariant UTF-8; HashCalculatorTests.cs
+A-02.33,RLS policies + session tenant interceptor wired,DONE,Sql/rls_policies.sql 53 tables + TenantSessionInterceptor + registered Api/Program.cs:422 Workers/Program.cs:189
+A-02.V1,Snake_case verified,DONE,UseSnakeCaseNamingConvention Api:421 Workers:189 + ToTable dubbing_projects
+A-02.V2,Transition unit tests,DONE,StateMachines throw DomainException; UnitTests Domain|StateMachines dirs (3067 tests)
+A-02.V3,Hash determinism tests,DONE,UnitTests/Configuration/HashCalculatorTests.cs
+A-02.V4,One-active-run integration test,UNVERIFIABLE,index exists (A-02.16) but no live-PG run — see GAP-036b
+A-03.1,CorrelationIdMiddleware X-Correlation-Id generate+echo,DONE,Api/Middleware/CorrelationIdMiddleware.cs:16 + echo ExceptionHandling:57 ErrorMapping:54
+A-03.2,Propagate via HTTP/logs/traces/messages/executions,DONE,Serilog Enrich.FromLogContext ObservabilitySetup.cs:41; OTel sources; contracts TenantId..CorrelationId (RunStarted.cs:10 StageWorkRequested.cs:12)
+A-03.3,ExceptionHandlingMiddleware + 29 public error codes,DONE,ExceptionHandlingMiddleware + ApiError + ErrorCodes.cs all-29 +~35 extras
+A-03.4,Internal failure categories separate,DONE,FailureCategory.cs + OutcomeClass.cs distinct from public codes
+A-03.5,Serilog API + workers,DONE,Api/Program.cs:36-39 Workers/Program.cs:23-25 ObservabilitySetup.ConfigureLogger
+A-03.6,Structured props (14),DONE,ObservabilitySetup.cs:17-18 CorrelationId→LeaseToken; controllers push scopes
+A-03.7,OTel tracing AspNetCore/HTTP/EF/MassTransit/provider/FFmpeg,DONE,ObservabilitySetup.cs:72-88 AddSource MassTransit|Orchestration|Media|Providers|FFmpeg
+A-03.8,Prometheus metrics + /metrics,DONE,ObservabilitySetup.cs:131 exporter; Api/Program.cs:488 MapPrometheusScrapingEndpoint
+A-03.9,Health live vs ready split + worker-specific,DONE,HealthRegistration.cs:12-20|34-53|67-102; Api/Program.cs:477-484 /health/live vs /health/ready
+A-03.10,Liveness independent of deps,DONE,LiveCheck no dep ctors; only ready touches Npgsql/S3/Rabbit/Redis
+A-03.11,FFmpeg checks only media workers,DONE,HealthRegistration.cs:88-92 IsMediaRole → FfmpegVersionCheck.cs:8
+A-03.12,FluentValidation registration,DONE,ValidationRegistration.cs:29-33 + Api/Program.cs:243
+A-03.13,Polly retry(exp+jitter)+circuit+timeout outbound HTTP,DONE,ProviderResilience.cs:22-31 + ProviderRegistration.cs:71-80|108-114 MaxRetry 3 30s timeouts
+A-03.14,11 options classes,DONE,Application/Options Observability|Media|Retry|Timing|Storage|Provider|Quota|RateLimit|Privacy|Feature|Deployment +20 extras
+A-03.15,Options validated at startup,DONE,Api/Program.cs:41-172 ValidateOnStart +174-206 IValidateOptions; same Workers/Program.cs:30-147
+A-03.16,Secrets sensitive + excluded logs/traces/hashes/errors,DONE,SecretAttribute + SecretRedactor (ProcessRunner:96 ApiError:57 Audit/Activity/Notification) + logger enricher + hash strip
+A-03.17,ProcessRunner ArgumentList-only no-shell cancel capture timeout tempdir resources,DONE,Processes/ProcessRunner.cs:106-124 UseShellExecute=false ArgumentList +:80-86 cancel/timeout +:127-144 1MB cap +:59-73 tempdir 0700 +:188-205 ResourceLimits
+A-03.18,Fast profile pg+minio+mocks+in-memory,DONE,compose fast + InMemory + mock default + MassTransitConfig.cs:128-153
+A-03.19,Full profile pg+rabbit+redis+minio+workers,DONE,compose full + UsingRabbitMq durable + EF outbox:58-63 inbox AppDbContext:156-159
+A-03.20,Cost reservations atomic,DONE,CostService.cs:110|230-298 BeginTransaction + ExecuteSqlRaw + Commit
+A-03.21,Quotas enforced,DONE,QuotaService.cs:79 IQuotaGate :221-259 EnforceStorageOnCommit active-run caps; 429 QUOTA_EXCEEDED; Api/Program.cs:279
+A-03.22,Redis rate limiter + tenant fairness,DONE,Redis/RateLimiter.cs:46 + TenantFairnessGate.cs:264; null-safe singletons Api/Program.cs:280-290; AddRateLimiter login/refresh :298-346
+A-03.23,Retention/deletion/holds wired,DONE,RetentionHold|DeletionJob entities + RetentionService + RetentionSweeper + OrphanObjectReconciler + DeletionJobWorker hosted Workers/Program.cs:208-210|237
+A-03.24,Consent records wired,DONE,ConsentRecord + ConsentStatus + ConsentService.cs:24 Grant/Revoke (CONSENT_REQUIRED|POLICY_DENIED :73-76); MediaRegistration.cs:49; RLS consent_records
+A-03.V1,/health/live local /health/ready deps,DONE,[DONE code] Mapping + tag predicates verified; live-probe needs running host
+A-03.V2,Structured error envelope on invalid request,DONE,[DONE code] ErrorMappingMiddleware + ApiError {code|message|correlationId|details}; openapi.v1.json:3693+
+A-03.V3,ProcessRunner rejects shell concat (unit test),DONE,[DONE code] RejectIfShellChars + ArgumentList; UnitTests/Processes dir
+A-03.V4,Fast profile runs without RabbitMQ,DONE,[DONE code] InMemory + required:false + IsFullProfile gate
+A-04.01,RunStarted contract,DONE,Contracts/Messages/RunStarted.cs
+A-04.02,RunCancelledRequested,DONE,Contracts/Messages/RunCancelledRequested.cs
+A-04.03,StageWorkRequested,DONE,Contracts/Messages/StageWorkRequested.cs
+A-04.04,StageCompleted,DONE,Contracts/Messages/StageCompleted.cs
+A-04.05,StageFailed,DONE,Contracts/Messages/StageFailed.cs
+A-04.06,StageCancelled,DONE,Contracts/Messages/StageCancelled.cs
+A-04.07,StageReviewRequired,DONE,Contracts/Messages/StageReviewRequired.cs
+A-04.08,ReviewResolved,DONE,Contracts/Messages/ReviewResolved.cs
+A-04.09,RunCompleted,DONE,Contracts/Messages/RunCompleted.cs
+A-04.10,RunFailed,DONE,Contracts/Messages/RunFailed.cs
+A-04.11,RunCancelled distinct from Requested,DONE,RunCancelled.cs + RunCancelledRequested.cs
+A-04.12,MediaUploaded,DONE,Contracts/Messages/MediaUploaded.cs
+A-04.13,MediaValidated,DONE,Contracts/Messages/MediaValidated.cs
+A-04.14,ExportJobRequested,DONE,Contracts/Messages/ExportJobRequested.cs
+A-04.15,StageLeaseTimeout token+expiry,DONE,Contracts/Messages/StageLeaseTimeout.cs
+A-04.16,Common fields 16 on all messages,DONE,IntegrationMessage.cs abstract record; MessageContractTests All_Messages_Have_Common_Fields
+A-04.17,Remove JobId,DONE,grep JobId Messages → only domain-specific *JobId; No_JobId_Field_Exists test
+A-04.18,Schema version additive/tolerant→_skipped+metric,DONE,MessageVersionPolicy.cs v1 + MessagingJson tolerant + BaseConsumer + MessageDisposition→QueueNames.Skipped + MessagingMeters.SchemaMismatches
+A-04.19,MassTransit RabbitMQ transport,DONE,MassTransitConfig.cs UsingRabbitMq when Transport:RabbitMq else InMemory
+A-04.20,Durable queues,DONE,MassTransitConfig e.Durable=true AutoDelete=false all 7 workload+_skipped+_error
+A-04.21,Error queue _error,DONE,QueueNames.cs:Error + ReceiveEndpoint(Error)
+A-04.22,Skipped queue _skipped,DONE,QueueNames.cs:Skipped + ReceiveEndpoint(Skipped)
+A-04.23,EF Core outbox,DONE,MassTransitConfig AddEntityFrameworkOutbox UsePostgres+UseBusOutbox 1s; AppDbContext:145-158
+A-04.24,EF Core inbox,DONE,AppDbContext:149|156 InboxStates + AddInboxStateEntity; InitialCreate contains tables
+A-04.25,Queue control.orchestration,DONE,QueueNames.cs + WorkloadQueues + saga AttachOrchestration:ConfigureSaga
+A-04.26,Queue media.preparation,DONE,QueueNames + WorkQueueRouter 6 stages + ConfigureConsumers
+A-04.27,Queue media.render,DONE,QueueNames + WorkQueueRouter Timeline|Mix|Render
+A-04.28,Queue ai.provider,DONE,QueueNames + WorkQueueRouter Diar|Trans|Ctx|Transl|VoiceAssign|Timing|QC
+A-04.29,Queue ai.gpu,DONE,QueueNames + WorkQueueRouter VoiceGeneration
+A-04.30,Queue export,DONE,QueueNames + ExportWorker:IConsumer<ExportJobRequested> Workers/Program.cs:236
+A-04.31,Queue maintenance,DONE,QueueNames + StageLeaseTimeoutConsumer + DeletionJobWorker|sweepers
+A-04.32,No queue per micro-stage,DONE,7 workload queues; WorkQueueRouter.QueueFor shared; BaseConsumer.ShouldProcess filter
+A-04.33,BaseConsumer pipeline (corr|version|tenant|claim|idempotency|renew|recheck),DONE,Infrastructure/Messaging/BaseConsumer.cs:Consume full pipeline + LeaseLostException path
+A-04.34,StageExecutionService 10 ops,DONE,Application/Services/StageExecutionService.cs:45|74|103|151|191|352|389|429|467|499 (+SkipAsync)
+A-04.35,Atomic claim unique+txn+return-existing,DONE,unique (Run Stage Scope ScopeId Attempt) + ClaimCoreAsync insert-catch-FirstOrDefault-TryTakeoverExpired
+A-04.36,LeaseToken on StageExecution,DONE,StageExecution.cs:30 + config required + migration lease_token
+A-04.37,LeaseToken increments every grant,DONE,string rotation works; LeaseTokenVersion never incremented — see GAP-003 | FIX TakeoverSql increments lease_token_version=lease_token_version+1; renew unchanged; LeaseSqlTests 8 passed; GAP-003 DONE fb62b73
+A-04.38,Conditional-commit SQL id+owner+token+Running,DONE,StageExecutionSql Complete|Fail|Renew|Release|Takeover fenced triple
+A-04.39,Zero rows → discard no publish,DONE,Complete|Fail rows==0 → LeaseLostException; BaseConsumer catch returns
+A-04.40,ProcessingRunSaga lifecycle/schedule/cancel/review/retry/invalidation,DONE,Infrastructure/Orchestration/ProcessingRunSaga.cs 691 lines 7-states 10-events; registered AddSagaStateMachine InMemoryRepository + ConfigureSaga
+A-04.41,StageGraph metadata 10 fields,DONE,Application/Orchestration/StageGraph.cs:StageNode 10 fields; Nodes 17; ValidateDag
+A-04.42,Stage DAG edges 17 stages,DONE,StageGraph.cs:41-57; BarrierService Completed+Skipped satisfy; StageGraphTests DAG
+A-04.43,Scopes run/project speaker window segment,DONE,StageGraph Project×11 Speaker×1 Window×1 Segment×4; ScopeType.cs; saga Run≡Project normalization
+A-04.44,Eligible unit states Completed/Skipped,DONE,BarrierService.cs counted flag only Completed|Skipped
+A-04.45,Terminal states 5,DONE,BarrierService.cs:24-26 Completed|Skipped|Failed|ManualReviewRequired|Cancelled
+A-04.46,RunStageSummary per stage/scope,DONE,RunStageSummary.cs + config unique (Tenant Run Stage) + EnsureSummaryAsync
+A-04.47,StageUnitCompletion ledger + counter no COUNT(*),DONE,StageUnitCompletion.cs + config unique + RecordUnitCompletionAsync guarded UPDATE; grep COUNT(*) src → zero
+A-04.48,On completion insert+counter+publish StageCompleted,DONE,BarrierService.RecordUnitCompletionAsync + workers publish (TranscriptionWorker.cs:198)
+A-04.49,Duplicate fan-in prevented via ledger unique,DONE,unique + catch IsDuplicate no-counter; BarrierTests Duplicate + Exactly_Once
+A-04.50,Dispatcher bounded batches + concurrency/rate/cost,DONE,WorkDispatcher.cs DispatchSegment batch50 +Speaker|Window|Single check TenantFairnessGate|IRateGate|ICostGate (RealGates CostRateGates)
+A-04.51,Delayed StageLeaseTimeout at start + stale-only recovery,DONE,BaseConsumer ScheduleLeaseTimeoutAsync TTL5m+30s MassTransitDeferredSender maintenance; StageLeaseTimeoutConsumer verifies token+Running+expiry else RecoverStale
+A-04.52,WorkerRecoverySweeper 60s + partial index + registered,DONE,Workers/Services/WorkerRecoverySweeper.cs 60s RecoverStale; Workers/Program.cs:208 hosted; backstop-only docs
+A-04.53,Retry ownership 5 layers,DONE,RETRY_OWNERSHIP.md + UseMessageRetry 3×5s + saga FailFast|Delayed + RateLimiter|CostGateAdapter + RetryService
+A-04.54,Retry budgets per stage/capability,DONE,RetryOptions.cs Transport|ProviderRequest|Fallback|LogicalStage|ManualRetryMax +RateLimitDelaySec +PerStageMaxAttempts; enforced MaxAttemptsFor|saga|dispatcher
+A-04.55,Rate-limit delayed retry,DONE,RetryOptions.RateLimitDelaySec=30; saga:316-317 DelayedRetryErrorCodes; 429 path doc
+A-04.56,Invalid/config fail fast,DONE,saga:54 FailFastErrorCodes VALIDATION|PROVIDER_CONFIGURATION|POLICY|CONSENT|PIPELINE_INVARIANT
+A-04.57,Cancellation blocks new scheduling,DONE,ClaimCoreAsync ConflictException Cancelling|Cancelled; MessageDisposition AckWithoutWork; SchedulingBlocked; Cancellation_Blocks_New_Work test
+A-04.58,Workers re-check run state before commit,DONE,BaseConsumer pre-claim + post-Handle lease re-check; fenced Complete|Fail
+A-04.59,DLQ poison→_skipped exhausted→_error + depth alert,DONE,DecideFailure transient→Error else Skipped; poison→skipped cross-tenant→error; MessagingMeters.DlqDepth; DeadLetterQueueName; deploy/README.md:333
+A-04.60,Each StageGraph stage registered consumer,PARTIAL,16/17 via BaseConsumer + Program.cs:218-233; MediaValidation ingestion-only — see GAP-013
+A-04.61,Validation duplicate message → one execution,DONE,BarrierTests Live_Duplicate_Claim_Returns_Existing; RecoveryTests Duplicate_Completion (PG-gated) + LeaseSqlTests
+A-04.62,Validation dup completion no double-count barrier once,DONE,guarded increment; Duplicate_Completion_Does_Not_Double_Count + Barrier_Advances_Exactly_Once
+A-04.63,Validation expired/active/cancel/DLQ/schema,DONE,Expired_Recovered Active_Not Takeover_Redrive Cancellation_Blocks Schema→Skipped Dlq_Routes Scheduler_Delayed Saga_First_Stage + RecoveryTests crash|stale-fence
+A-05.01,ContentObject immutable tenant SHA size format status key dates,DONE,Domain/Entities/ContentObject.cs + config unique (Tenant ContentHash) + ContentObjectStatus
+A-05.02,Artifact logical ownership type content provider hashes status schema,DONE,Domain/Entities/Artifact.cs + config jsonb MetadataJson
+A-05.03,ArtifactParent + ArtifactChild tables,PARTIAL,ArtifactParent DONE (+config unique Child Parent); ArtifactChild MISSING grep zero — see GAP-014
+A-05.04,StageInputArtifact + StageOutputArtifact,DONE,both entities + configs; Lineage_Query_Returns_Parents asserts StageOutput
+A-05.05,No JSON-only lineage source of truth,DONE,GetParentsAsync uses ArtifactParent table never JSON
+A-05.06,JSONB only non-relational metadata,DONE,ArtifactConfiguration MetadataJson jsonb; no lineage JSON cols
+A-05.07,Storage key tenant/project/run/stage/type/hash+ext,DONE,Storage/StorageKeyBuilder.cs:BuildKey N-GUIDs 64-hex ext-validation anti-traversal + TenantKeyBuilder; StorageKeyBuilderTests + Matrix
+A-05.08,IArtifactStorage 6 ops,DONE,Abstractions/IArtifactStorage.cs 7 methods (6 + GetStorageChecksum extra)
+A-05.09,S3 adapter,DONE,Infrastructure/Storage/S3ArtifactStorage.cs + StorageRegistration; S3ArtifactStorageTests
+A-05.10,Streaming uploads/downloads no buffering,DONE,S3 UploadAsync InputStream DownloadAsync ResponseStream; BufferWithHashAsync single-pass spill /tmp + cap
+A-05.11,SHA-256 streaming compute,DONE,ArtifactService.cs:643|698|733 SHA256.Create streaming
+A-05.12,Authoritative storage checksum used,DONE,S3 GetStorageChecksumAsync ChecksumSHA256 (ETag/MD5 ignored); ArtifactService:153-167 verifies IsLowerHex64 only
+A-05.13,Never download solely to hash,DONE,ArtifactService comment + S3 docs :14-17
+A-05.14,Atomic publish reserve→upload→verify→commit+stage+outbox same txn,PARTIAL,single-txn commit DONE (CommitNewAsync/CreateArtifactRowAsync) + concurrent-winner + orphan-on-failure; NO Pending reserve; stage+publish separate txn — see GAP-014
+A-05.15,Orphan-blob reconciler + registered,DONE,Workers/Services/OrphanObjectReconciler.cs pass1 BlobOrphanAge 24h Quarantine; hosted Program.cs:209
+A-05.16,Dangling-content reconciler + registered,DONE,same class pass2 Committed+LastReferenced<7d no-refs → Orphaned; delete deferred Retention|ContentObjectService.CanDelete (combined not split — acceptable)
+A-05.17,Tenant-scoped dedup + new artifact row on reuse,DONE,unique (Tenant ContentHash); PublishAsync FindCommitted+Touch+CreateArtifactRow ReusedContent=true; concurrent-winner
+A-05.18,No cross-tenant dedup default,DONE,dedup filters TenantId; Duplicate_Across_Tenants_No_Reuse asserts separate rows + prefixed keys
+A-05.19,Authz before presigned URL,DONE,GetDownloadUrlAsync Tenant+Project check else Forbidden; uncommitted ARTIFACT_UNAVAILABLE; AssertOwnedBy
+A-05.20,Project ownership before download,DONE,same (artifact.ProjectId != projectId → Forbidden)
+A-05.21,Integrity revalidation option,DONE,VerifyIntegrityAsync streams+recomputes ARTIFACT_CHECKSUM_MISMATCH; Upload_Produces_Committed_Rows:104
+A-05.22,Retention hooks logical-first physical-after-0+retention,DONE,ContentObjectService.CanDelete RetentionService.CanPhysicallyDelete ExecutePending|Sweep RetentionSweeper hosted Program.cs:210
+A-05.23,Retention hold support,DONE,RetentionHold.cs + config; IsDeleteBlockedByHold; service blocks both phases
+A-05.24,Deletion job support,DONE,DeletionJob.cs + config + migration; Pending|Running|Completed|Failed|Cancelled; DeletionJobWorker:IConsumer<DeletionJobRequested> maintenance Program.cs:237
+A-05.25,Artifact schema version metadata,DONE,SchemaVersion=1 every PublishAsync; tests assert 1
+A-05.26,Integration tests MinIO,DONE,IntegrationTests/Storage/ArtifactStorageTests.cs Testcontainers PG16+MinIO 7 SkippableFacts
+A-05.27,Validation upload → committed rows,DONE,Upload_Produces_Committed_Rows
+A-05.28,Validation dup in-tenant reuse / cross-tenant not,DONE,Duplicate_Within_Tenant_Reuses + Duplicate_Across_Tenants_No_Reuse
+A-05.29,Validation presigned requires ownership,DONE,Presigned_Requires_Ownership
+A-05.30,Validation failed commit → no artifact,DONE,Failed_Commit_Leaves_No_Committed_Artifact
+A-05.31,Validation orphan reconciler detects blobs,DONE,Orphan_Reconciler_Detects_Blob quarantine + MarkOrphaned
+A-05.32,Validation lineage returns parents,DONE,Lineage_Query_Returns_Parents ArtifactParent + StageOutput
+A-05.33,Validation retention hold prevents deletion,PARTIAL,code DONE; zero tests grep RetentionHold|CanDelete|RetentionService tests — see GAP-019
+A-06.1,8 capability interfaces,DONE,Abstractions/Providers IVad|Diarization|Transcription|Translation|Tts|SourceSeparation|VideoIntelligence|LocalInference (+ILipSync extra)
+A-06.2,Request/response DTOs,DONE,Abstractions/Providers/Dtos 9 files (Language Duration Timestamps Speaker Confidence Model ModelVersion Deployment Usage RawMetadata)
+A-06.3,Capability descriptor 16 fields + version + store,DONE,ProviderCapabilityDescriptor.cs:6-50 + DescriptorStore merge config+DB version-wins + mock synthesis
+A-06.4,11 outcome classes + matrix,DONE,OutcomeClass.cs:6-14 + OutcomePolicy.Decide; ResolverTests:135 Quality_Not_As_Transport
+A-06.5,ProviderRouteSnapshot hash fields,DONE,ProviderRouteSnapshot.cs:5-20 + Builder + config + DbSet:113
+A-06.6,ProcessingPolicy per tenant + routing enforcement,DONE,7 fields DONE; enforces external|allowed|residency|local only; sensitive|voice|retention hashed-not-blocked — see GAP-006 | FIX PolicyChecker blocks restrictive Sensitive/Voice/Retention (restricted/local-only/no-external/deny/private/confidential/no-clone) for external; ResolverTests 11 passed; GAP-006 DONE b49797b
+A-06.7,Resolver order capability→policy→priority→health→cost,DONE,ProviderResolver.cs:27-110 fixed order; RoutePriority only; No_Hardcoded_Precedence:84 +57 +19 +35 +107 tests
+A-06.8,Health config vs runtime + circuit + error-rate + pressure,DONE,ProviderHealthTracker GetState|IsHealthy|ValidateConfig|Record* error>20% min5 circuit-after-5 RateLimitedUntil; ValidateConfig throws PROVIDER_CONFIGURATION_ERROR
+A-06.9,ProviderExecutionRecorder 24 fields,PARTIAL,20/24 present; missing UsageDimensions|SystemInstructionHash|SafetySettingsHash|PromptTemplateVersion|OutputContentHash — see GAP-011
+A-06.10,Idempotency keys at-least-once reconcile,PARTIAL,BuildIdempotencyKey run:N:stage:scope:attempt + RecordAsync:72-88 dedup+CONFLICT DONE; reconcile uses ResponseHash proxy (no OutputContentHash) — see GAP-011
+A-06.11,Mock adapters 8 deterministic + failures,DONE,Mock 8 providers + MockDeterminism StableSeed|Hex|ContentHash|SineWav + BehaviorEvaluator + AsyncJobStore; MockDeterminismTests + Duplicate_Request_Reconciled
+A-06.12,Azure adapters STT+diar translation TTS,DONE,Azure AzureSttProvider:24 (+StartBatch:117 GetBatch:151) Translation:21 Tts:23; wired ProviderRegistration:145-148
+A-06.13,OpenAI adapters STT translation TTS,DONE,OpenAiStt:21 (+StartBatch:84 GetBatch:116) Translation:23 Tts:20; wired :149-151
+A-06.14,Google adapters STT Translation Gemini TTS,DONE,GoogleStt:18 Translation:18 GeminiLlm:21 GoogleTts:20; wired :152-155 google|gemini
+A-06.15,LocalInference bridge + registry + device + concurrency + warmup,DONE,LocalInferenceProvider:40 POST /infer + X-Sidecar-Protocol:grpc + Warmup + Semaphore GPU1|CPU2 + ModelRegistry 64-hex+capability+device echoed RawMetadata; wired local :156-159
+A-06.16,Long-running job lifecycle all providers,PARTIAL,Azure|OpenAI STT DONE via ProviderJobPoller + ExternalJobId; Google|Local no batch API — see GAP-012
+A-06.17,DI + fail-fast creds + record-on-fallback + fixtures,DONE,ProviderRegistration AddDubbingProviders + StartupValidator throws routed-without-key (mock|local exempt); RecordAsync fallback paths Diar:633 Transcr:984 Transl Tts:964 Vad:293; ProviderContractTests 429|Timeout|Malformed|Async:183|Duplicate:255|Partial:302|Expiry:342|Quota:402 + WireMock fixtures
+A-06.V1,Mock determinism tests,DONE,MockDeterminismTests + MockDeterminism
+A-06.V2,Capability mismatch blocks,DONE,ResolverTests:19 via IsCompatible
+A-06.V3,Privacy blocks disallowed,DONE,ResolverTests:35 + PolicyChecker + PolicyDenied meter
+A-06.V4,Health avoids unhealthy,DONE,ResolverTests:57 + IsHealthy
+A-06.V5,Retryable triggers fallback per budget,DONE,OutcomePolicy Timeout→retry asserted ContractTests:101; Fallback_Budget_Respected:107
+A-06.V6,Quality≠transport,DONE,ResolverTests:135 + QualityBelowThreshold(false|false|true|false)
+A-06.V7,Executions recorded every call,PARTIAL,success+fallback paths recorded; columns missing per GAP-011
+A-06.V8,Contract async+failure cases,DONE,8 theories/facts A-06.17 list
+A-07.1,JWT bearer auth,DONE,Api/Program.cs:349 JwtBearer + ?access_token= SSE :396 + AuthRegistration
+A-07.2,6 roles,DONE,Roles.cs All TenantAdmin|ProjectOwner|ProjectEditor|Reviewer|ProjectViewer|Service + AuthPolicies|Permissions|RoleMatrix
+A-07.3,Auth matrix + tenant/project ownership,DONE,controllers [Authorize] + per-action Require* (Projects:76 Processing:139|359 Reviews:135 Admin:96) + ProjectOwnershipHandler + TenantGuard; 401|403 tests IdempotencyTests:302|319 TenantIsolationTests
+A-07.4,Idempotency record+atomic+replay+409+concurrent+retention,DONE,IdempotencyRecord fields + TryClaimAsync INSERT ON CONFLICT replay/409/Started<5min 409+Retry-After + IdempotencyFilter hash + Retention 7d|24h ExpiryFor; tests :181|:206|:238; Processing bespoke + review service-level (alternate wiring OK)
+A-07.5,8 controllers,DONE,Controllers Projects|Uploads|Processing|Segments|Reviews|Exports|Output|Admin (+Auth|Dashboard|Me|Notifications|Speakers|Workspace extras)
+A-07.6,32 endpoints,DEVIATED,30/32 DONE; cancel|retry shape deviates processing/cancel|retry + processing/{runId}/* — see GAP-026
+A-07.7,Pagination envelope,DONE,PaginatedResult.Create + ProjectListResponse:97-115 + ProcessingRunListResponse:63-80 items|page|pageSize|total|hasMore
+A-07.8,OpenAPI schemas+envelope+JWT+Idempotency+pagination,DONE,OpenApiConfiguration.cs:33 JWT|?access_token|Idempotency-Key|pagination 65 codes; ApiError envelope; IdempotencyTests:349 OpenApiCoverageTests
+A-07.9,Signed URLs 15-min default,DONE,SignedUrlService DefaultExpiry 15m clamp 1m–1h + SignedUrlPolicy + S3 presigned + PartUrlExpiry 15m; TenantIsolationTests:282|305 ExportTests:178
+A-07.10,Audit privileged ops + correlation all endpoints,DONE,AuditService.LogAsync Project:130|432|473|513|563 Upload:166|320|361 Export:171|280|782 Processing:Start; CorrelationIdMiddleware + ErrorMapping:50 + AuthEnvelopeWriter:41
+A-07.V,401|403|idempotent|409|concurrent|expiry|OpenAPI tests,DONE,same tests A-07.3|A-07.4|A-07.8|A-07.9
+A-08.1,Project create validate+hash+persist+publish,DONE,ProjectService.cs:49 CreateAsync:62 ValidateLanguage :76 ConfigHash :118 + ProjectsUploadsApiTests:226|:258
+A-08.2,Upload create validate+session+MPU+partSize,DONE,UploadService.cs:110 :453 ceil/8MiB PartSizeBytes 8MiB:65 MaxUploadBytes:463 Quota:470; POST→201
+A-08.3,S3 MPU authoritative DB reconcile,DONE,UploadService:239 GetStatus +546 ListAuthoritative +575 Reconcile; Complete :290|:295|:302 UPLOAD_INCOMPLETE
+A-08.4,Part URL presigned 15min,DONE,UploadService:176 GetPartUrls; POST parts→PartUrlsResponse; PartUrlExpiry:67
+A-08.5,Status completed/missing authoritative,DONE,UploadStatusResult/Response completedParts|missingParts|partSize|declaredSize|expiresAt; GET uploadId
+A-08.6,Complete validate+MPU+mark+publish MediaUploaded,DONE,UploadService:275 CompleteAsync + PublishMediaUploadedAsync best-effort; tests :287|:353
+A-08.7,Abort MPU + mark aborted,DONE,UploadService:331 AbortAsync; POST abort
+A-08.8,Ingestion validate+SHA+content+artifact,DONE,MediaIngestionWorker:IConsumer<MediaUploaded> → MediaIngestionService.IngestAsync DownloadHashToTemp SHA256 ClientSha256 check ARTIFACT_CHECKSUM_MISMATCH storage-checksum content-addressed dedup
+A-08.9,Dedup same-project link / cross-project reuse,DONE,FindSameProjectAssetAsync→MarkDuplicate TouchContent IsDuplicate no-rows; cross-project reuse ContentObject + new Asset; Worker:107; IngestionTests
+A-08.10,Sniffing+FFprobe+allowlist+artifacts+stage,DONE,FFprobeService.ProbeAsync MEDIA_CORRUPT + MediaValidator size 1..Max duration 1000..MaxDurationMs container/codec allowlist MEDIA_UNSUPPORTED + MediaAsset+Artifact FfprobeAnalysis + StageExecution MediaValidation:449 + MediaValidated Worker:115; MediaValidationTests + IngestionTests:346|:94|:152
+A-08.11,Storage + duration quota on completion,DONE,CheckStorageAsync:293 QuotaExceeded + UploadService:470; duration via MediaValidator MaxDurationMs 7200000 (rejection not byte-quota per IQuotaGate:6-7)
+A-08.12,tus/resumable + refresh recovery,DEVIATED,S3-multipart resumable per plan Actions (partUrls+reconcile+complete/abort); no tus impl or plan text — see §2 ambiguity; refresh = GET reconcile DONE
+A-08.V1,Valid MP4 → media ready,DONE,IngestionTests + ProjectsUploadsApiTests:287
+A-08.V2,Text-renamed MP4 rejected,DONE,MediaValidationTests + MEDIA_UNSUPPORTED|CORRUPT paths
+A-08.V3,Incomplete completion fails,DONE,UPLOAD_INCOMPLETE :295|:302; test :353
+A-08.V4,Same-project dup links,DONE,MarkDuplicate + Worker:107 + test
+A-08.V5,Cross-project reuses content new asset,DONE,FindSameProjectAsset|ContentObject paths MediaIngestionService
+A-08.V6,Storage quota rejection,DONE,A-08.11 + 429 QUOTA_EXCEEDED
+A-08.V7,FFprobe artifact exists,DONE,IngestionTests:346
+A-09.1,POST processing start,DONE,ProcessingController Start POST processing + ProcessingStartService.StartAsync
+A-09.2,Validate media-ready|no-active|quota|cost|privacy,DONE,LoadValidAsset MediaReady EnsureNoActiveRun EnsureQuota LoadPolicy EnsurePrivacy + CanProceedAsync:195
+A-09.3,ProcessingRun pending/attempt/1.0.0/hashes,DONE,PipelineVersion NextAttempt ProviderRouteSnapshotBuilder ExecutionSnapshotCalculator + ProcessingRun + AppDbContext:57
+A-09.4,Saga start + RunStarted,DONE,PublishRunStartedAsync(RunStarted); Orchestration saga
+A-09.5,MediaAnalyzerWorker claim|hash|artifact|plan,DONE,MediaAnalyzerWorker ShouldProcess(MediaAnalysis) → MediaAnalysisService.AnalyzeAsync VerifySourceHash+Probe+Publish FfprobeAnalysis+Complete
+A-09.6,AudioPreparation 48k/24b FLAC layout verify args,DONE,AudioPreparationWorker → AudioPreparationService ExtractCanonicalAudio+ProbeLocal+VerifyCanonical+Publish CanonicalAudio metadata ffmpegArgs + FFmpegService BuildCanonicalArgs -ar48000 -sample_fmt s32 -c:a flac -vn no -ac
+A-09.7,Optional 32b float working file,PARTIAL,BuildFloatArgs|needsFloatWork exists; no caller true — see GAP-030
+A-09.8,Resource limits cpu|mem|temp|timeout|concurrency,DONE,"CpuThreads|FfmpegTimeoutSec|MaxConcurrentMediaJobs + MediaJobGate + timeout+retry-once + DiskSpaceChecker DONE; memory|temp-quota MISSING — see GAP-009 | FIX AudioPreparation honors max(2*Size,MinDiskFreeBytes) + EnsureMemoryAvailable(RESOURCE_EXHAUSTED) + temp cleanup; MediaResourceEnforcementTests 3 passed; GAP-009 DONE 6a539dd"
+A-09.9,Disk check before FFmpeg + clean temp,DONE,EnsureFree(2*SizeBytes)+CreateTempWorkingDir/DeleteWorkDirQuietly finally
+A-09.10,Stage executions + publish next,DONE,CompleteAsync both services + StageCompleted both workers
+A-09.V1,One active run second 409,DONE,EnsureNoActiveRunAsync→ConflictException + partial-unique + force gate → RUN_ALREADY_ACTIVE
+A-09.V2,FFprobe rate/layout duration±tol args,DONE,VerifyCanonical 48000 + DurationToleranceMs=100 + metadata ffmpegArgs
+A-09.V3,Resource exhaustion fails fast,DONE,"disk RESOURCE_EXHAUSTED + gate DONE; memory|temp not — see GAP-009 | FIX Disk RESOURCE_EXHAUSTED + memory RESOURCE_EXHAUSTED + temp cleanup, no partial commit; GAP-009 DONE 6a539dd"
+A-10.1,Separation policy disabled→skip,DONE,SeparationPolicyParser disabled|enabled|auto + DecideAsync→SkipAsync + SourceSeparationWorker
+A-10.2,Enabled→provider stems raw confidence,DONE,DecideAsync provider DialogueStem|BackgroundStem Publish parents=[canonical]
+A-10.3,Normalized confidence threshold 0.70,DONE,NormalizeConfidence + MediaOptions.SeparationThreshold=0.70 + validator
+A-10.4,Below fallback canonical warning,DONE,FallbackAsync IsFallback SEPARATION_FALLBACK QC warning + threshold compare
+A-10.5,ProviderExecution + outputs + fallback queryable,DONE,Recorder even on fallback; SeparationDecision record; first-output selected dialogue
+A-10.V,Disabled skip low fallback high select,DONE,StageGraph skippable-when-disabled one-unit-or-skipped
+A-11.1,VadWorker provider + VadRegions,DONE,VadWorker IVadProvider.DetectAsync ProviderExecution VadRegions v1 parents=[dialogue]
+A-11.2,SegmentBuilder merge|split|bounds|overlaps|words,DONE,SegmentBuilderWorker → SegmentBuilderService MergePauseMs+SpansSpeakerBoundary Split MaxSegmentMs ValidateHints BuildOverlaps
+A-11.3,Stable IDs deterministic sequence,DONE,GuidUtility.SegmentId + OrderBy StartMs|EndMs + BuiltSegment
+A-11.4,Persist segment fields,DONE,SpeechSegment.cs + worker single-txn replace + AppDbContext:69
+A-11.5,OverlapGroup + SegmentOverlap relational,DONE,OverlapGroup.cs SegmentOverlap.cs BuildOverlaps cluster|relation|order; no OverlapGroupId on segment
+A-11.6,Timeline validation,DONE,ValidateHints + negative-overlap guards + TimelineAssemblyService QC_BLOCKED overflow; quota before insert
+A-11.7,VAD+segment artifacts publish next max-quota,DONE,Segments JSON parents=[vad] + EnsureSummary ExpectedUnits Transcr|Transl|VoiceGen|Timing + MaxSegments + MaxSegmentCount:162
+A-12.1,DiarizationWorker provider artifact,DONE,DiarizationWorker ai.provider DiarizeAsync DiarizationMap v1 parents=[segments] → DiarizationService
+A-12.2,Label→ID Speaker persisted,DONE,NormalizeLabel|BuildSpeakerKey|SpeakerIdFor|BuildMappingMethod|Plan|MapAsync Speaker(key|display|first|last|method|version|confidence|provenance) + UpdateMapping
+A-12.3,Segment refs derived history preserved,DONE,MapAsync AssignSpeaker; never delete; retry reassigns; history via RunId
+A-12.4,Permanent fail → single-speaker fallback or fail,DONE,FallbackToSingleSpeaker Media:Diarization + DIARIZATION_FALLBACK PlanFallback|MapFallback else PROVIDER_FAILED
+A-13.1,TranscriptionWorker segment-scoped batches,DONE,ScopeType.Segment per-segment Completed|ReviewRequired|retryable-Failed; WorkDispatcher batching
+A-13.2,Provider per segment TranscriptVersion persisted,DONE,TranscriptionService TranscribeSegmentAsync + TranscriptVersion Add (provider|model|lang|text|conf|words|selected|review)
+A-13.3,Low conf retry|fallback|review never fail run,DONE,PickBest + fallback + CreateReviewAsync ManualReviewRequired LOW_CONFIDENCE; worker low-conf → retryable StageFailed
+A-13.4,Deterministic best + alternatives + barrier,DONE,PickBest|SelectBestAsync + alternatives + ProviderExecution per call; saga barrier
+A-14.1,ContextBuilder windows bounded,DONE,ContextBuilderWorker → ContextBuilderService LoadInputs|Plan|BuildWindows + ContextOptions MaxSegmentsPerWindow|MaxTokens
+A-14.2,ContextWindow + Assignment hash reusable,DONE,ContextWindow ContextHash|Sequence|TokenCount + Assignment + ComputeHash SHA256 + WindowIdFor|AssignmentIdFor EstimateTokens chars/4; one artifact/window reuse same-hash
+A-14.3,Window executions gate translation prompt hash,DONE,EnsureSummary(ContextBuild) + SummaryPrompt(PromptText|PromptHash|SystemHash)+TemplateId|Version recorded metadata
+A-14.4,Not one-artifact-per-segment,DONE,Plan token-overflow splits split|overflow flags; many-to-one overlapping
+A-15.1,TranslationWorker prompt context,DONE,TranslationWorker → TranslationService TranslateSegmentAsync BuildPrompt source|context|glossary|speaker|duration|style
+A-15.2,TranslationVersion primary|alts persisted,DONE,TranslationVersion.cs + BuildCandidates|Persist (sem|nat|timing|provider|prompt|selected)
+A-15.3,Budgets + deterministic scoring no judge,DONE,TranslationOptions MaxCandidates3|MaxTokens4000|MaxCost2|MaxWallClock60 + ScoreCandidate|ComputeTimingScore|SelectBest glossary-filtered; grep judge → zero
+A-15.4,Below-quality → review after fallback,DONE,TRANSLATION_QUALITY + MarkReviewRequiredAsync
+A-16.1,VoiceAssignmentWorker speaker-scoped,DONE,ScopeType.Speaker → VoiceAssignmentService ResolveVoice|SelectCandidate|ParseVoiceOverrides lang|style|inventory|policy
+A-16.2,SpeakerVoiceAssignment stable idempotent,DONE,SpeakerVoiceAssignment Run|Speaker|VoiceProfile|Reason|PolicyHash + AssignAsync project-stable reuse|copy override-replaces txn
+A-16.3,Metadata provider|voice|version|reason|policy,DONE,VoiceProfile Provider|VoiceId|VoiceVersion|Language|Type + ComputePolicyHash
+A-16.4,Cloning default-off consent+audit,DONE,VoiceOptions.CloningEnabled=false:8-19 + ValidateClonedUse|EnsureClonedConsentLive|AauditCloned + ConsentService ValidateForVoice|Grant|Revoke + ConsentRecord full fields
+A-17.1,VoiceGenerationWorker segment translation+voice,DONE,ai.gpu → TtsService.GenerateAsync
+A-17.2,Deterministic estimator + SSML pre-adjust,DONE,DurationEstimator EstimateMs perChar en70|es75|de80|fr75 rate300..30000 ComputeRate clamp .85..1.15 BuildSsml ComputeHash + TtsOptions.EstimatorEnabled
+A-17.3,Preview vs final distinct GeneratedAudioArtifact,DONE,GeneratedAudioArtifact.cs + ArtifactType Preview|Final + IsPreview rows never-selected-finals
+A-17.4,Attempts budget + reservation + executions,DONE,TtsOptions MaxAttempts3|PreviewEnabled + CanProceedAsync+Reserve|Reconcile|Release + ProviderExecution per call
+A-18.1,TimingOptimizationWorker dimensions,PARTIAL,onset fixed segment-start; no lead|lag knobs — see GAP-029
+A-18.2,Defaults ±50|±100 ±15% 1.15x bounded loop,DONE,TimingOptions Preferred50|Max100|MaxRate15|MaxStretch1.15|MaxCandidates3|MaxTtsPreview3|MaxRewrites2 + TimingPlan|RateFor|StretchFor|BuildStretchArgs atempo
+A-18.3,syncScore classify SyncResult selection attempts review,DONE,ComputeSyncScore 100-(w1|dur|+w2|onset|+rate|+stretch|+silence) Classify SyncResult 0..1 Status RateDelta StretchFactor
+A-19.1,TimelineAssembler place|silence|overlaps|invalid|overflow,DONE,TimelineAssemblerWorker → TimelineAssemblyService BuildTimeline|BuildJson|AssembleAsync LoadOverlaps OverlapGroup|SegmentOverlap
+A-19.2,Timeline JSON schema version publish next,DONE,ArtifactType.Timeline SchemaVersion1 OverflowToleranceMs100 parents audios+background + StageCompleted
+A-20.1,AudioMixerWorker complex_filter no C# mixer,DONE,AudioMixerWorker media.render Project → FFmpegMixer BuildPremixFilter|BuildFinalFilter|MixAsync; grep custom-mix|SampleMixer → zero
+A-20.2,Loudnorm|peak|clip|duck|rate|channels profiles,DONE,FFmpegMixer ResolveTarget web-16|broadcast-23 TruePeak-1 ToleranceLu1.0 48kHz s16 stereo sidechaincompress duck + two-pass loudnorm + MixResult FilterGraph; crossfade missing — see GAP-017
+A-21.1,QC segment8 + project11 + signal6,DONE,QualityControlWorker ai.provider Project → QualityControlService RunSegmentChecks|RunTerminologyProjectChecks|RunSignalChecksAsync|RunChecksumChecksAsync codes incl ROUTING|PLACEMENT|ATTENUATION|LOUDNESS|SILENCE_BOUNDARY|CROSSFADE
+A-21.2,QualityResult classify block render report review,DONE,QualityResult scope|status|code|severity|message|details|artifact + Classify + QcReport + ReviewReasonBlocked|Review + Blocked→StageFailed(BlockFailsRun) else ReviewRequired; RenderWorker QC_BLOCKED gate
+A-22.1,RenderWorker copy|re-encode tolerances OutputAsset run events,DONE,RenderService IsCopySafe H264 BuildVideoArgs copy|re-encode BuildAudioArgs Extension|ContentType|Container ToleranceMs 1frame|40ms|audio100ms IsWithinTolerance RenderAsync + OutputAsset + RenderedOutput metadata args|copyVideo|reencodeReason + MarkRunCompleted|Failed + RunCompleted|RunFailed
+A-22.V,MP4 tolerance copy-recorded download,DONE,OutputController GET download → 302 ≤15min signed URL SignedUrlPolicy
+A-23.1,Export removed from DAG formats 7,DONE,StageGraph no-Export + ExportJob Format|Status|CompletenessJson|IsPartial + ExportFormatParser srt|webvtt|json-timeline|speaker-metadata|transcript|translation|quality-report + 7 generators
+A-23.2,ExportService snapshots partial rules,DONE,RequestAsync|GenerateAsync|BuildSnapshotAsync|GenerateContent + ExportRunData|ExportCompleteness + OUTPUT_INCOMPLETE|EXPORT_INCOMPLETE→allowPartial
+A-23.3,Completeness immutable audit signed URLs ownership endpoints,DONE,CompletenessJson + ExportArtifact immutable + Audit export.create|download + GetDownloadUrlAsync 15m 410 URL_EXPIRED + ExportsController POST|GET|detail|download + ownership 404 + ExportWorker maintenance plain-consumer cancelled-run partials
+A-24.1,Progress service full snapshot,DONE,ProgressService BuildSnapshot ComputePercentageIndicator DerivePhase BuildWarnings; GET progress ProcessingController:614
+A-24.2,Percentage not ETA,DONE,unit-state ratio only; no ETA fields
+A-24.3,Realtime SSE|WS + Redis|outbox push,PARTIAL,poll-SSE DONE 2s; Redis push future comment :46-56 — see GAP-031
+A-24.4,Cancellation full lifecycle,DONE,CancellationService; cancel routes legacy+per-run ProcessingController
+A-24.5,Retry stage|segment invalidation new-attempts,DONE,RetryService; POST segments/{id}/retry SegmentsController:190; run retry ProcessingController
+A-24.6,Review APIs + resolve-with-edit versions,DONE,ReviewsController:81-267 all verbs; ReviewService ResolveVersionKind manual markers; ReviewMutationService ReviewContextService
+A-24.7,Review resolution run-state + blocking,DONE,BuildWarnings unresolved-required-block; ReviewResolved flow; IntegrationTests/Reviews
+A-24.8,Audit manual decisions,DONE,AuditService; AdminController audit; decision rows reviewer|reason
+A-25.1,CostService price|estimate|usage|reconcile,DONE,CostService.cs:22-230 PriceTable Estimate EstimatePipeline Reserve Reconcile Preflight:422
+A-25.2,Atomic budget reservation,DONE,ReserveAsync BeginTransaction :264-298; QUOTA_EXCEEDED on failure
+A-25.3,Quotas 7 dims,DONE,QuotaService CheckAsync|ActiveProjects|PerDay|CostProject|SegmentCount|ConcurrentStages; QuotaOptions MaxActive10 MaxConcurrentStages20; Cost|QuotaTests
+A-25.4,Storage quota transactional with commit,DONE,"pre-check only QuotaService:188 — see GAP-005 | FIX CommitNewAsync pg_advisory_xact_lock(tenant)+same-txn SUM committed bytes vs MaxStorageBytes, 429 QUOTA_EXCEEDED; ArtifactQuotaTransactionTests 3 passed; GAP-005 DONE 70c40db"
+A-25.5,Provider rate limiters 5 dims Redis-only,DONE,RateLimiter.lua atomic INCRBY+EXPIRE key ratelimit:{tenant:N}:{provider}:{dim} fail-open; PG never consulted
+A-25.6,Preflight at start + expensive stages,DONE,PreflightAsync; ProcessingStartService:49-88 ICostGate; ProcessingController:195
+A-25.7,Tenant fairness 2 caps,PARTIAL,stage cap DONE; provider-concurrency cap MISSING — see GAP-016
+A-25.8,Cost|quota metrics + rejections,DONE,PlatformMetrics quota.rejections cost.reserved|reconciled; RateLimitMeters.Rejections; dashboards cost.json
+A-26.1,JWT + RBAC + repo tenant scoping,DONE,AuthController|AuthService RoleMatrix policies RequireTenantAdmin; AdminController:25-40 diagnostics policy
+A-26.2,RLS prod + session ctx + BYPASSRLS + filters,DONE,rls_policies.sql fail-closed app.tenant_id + TenantSessionInterceptor; TenantIsolationTests RLS negatives
+A-26.3,Tenant keys + ownership + msg validation + metric,DONE,StorageKeyBuilder SignedUrlPolicy Security/RedisKeys SecurityMeters; TenantIsolationTests ConsentTests
+A-26.4,Secrets manager-only + rotation,DONE,SecretRedactor SecretPolicy; docs/security/secret-rotation.md; secrets.yaml ExternalSecret only; rotation-drill-log.md
+A-26.5,mTLS conditional + NetworkPolicies,DONE,[DONE conditional] docs/security/mtls.md MtlsEnabled=false default validator fail-fast; networkpolicies.yaml default-deny
+A-26.6,Container hardening + scan|SBOM|sign,DONE,USER app all Dockerfiles; api-deployment:58-92 readOnlyRootFilesystem runAsNonRoot; container-hardening.md; CI scan|SBOM|sign A-29.1
+A-26.7,Append-only audit 7+ event classes,DONE,Sql/audit_appendonly.sql REVOKE UPDATE|DELETE; AuditService; RetentionOptions.AuditDays=365
+A-26.8,Retention 30|90|365 logical→physical + sweeper,DONE,RetentionOptions:14-20; RetentionService; RetentionSweeper; DeletionJobWorker
+A-26.9,Consent lifecycle + cloning-off + privacy routing,DONE,ConsentService:112|169|227 Grant|Revoke + ConsentTests; VoiceOptions.CloningEnabled=false Application/Options/VoiceOptions.cs:19 (claim of missing refuted); routing privacy PolicyChecker
+A-27.1,SLOs 10,DONE,docs/observability/slos.md targets + queries
+A-27.2,Alert thresholds,DONE,deploy/observability/alerts.yml DLQ|lease|provider|p95|orphan|export|pipeline
+A-27.3,Dashboards 9,DONE,deploy/observability/dashboards pipeline-health|provider-health|cost|queues|reviews.json
+A-27.4,Metrics 11 families,DONE,PlatformMetrics frozen names + EnrichmentMetrics + LocalInferenceMetrics; /metrics
+A-27.5,Trace enrichment + correlation,DONE,TraceEnricher.cs:20-59; CorrelationIdMiddleware; ObservabilitySetup
+A-27.6,Diagnostics endpoints operator-only,DONE,AdminController:95-366 stages|provider-executions|dlq|leases|review-backlog|queues|provider-health|routes; support-access.md
+A-27.7,Runbooks 8 + escalation,DONE,docs/runbooks dlq|lease|provider-outage|storage-outage|db-failover|orphan|quota-cost|review-backlog +review-surge +escalation +index
+A-27.8,Validation metrics|alerts|dashboards|runbooks,DONE,slos.md test procedure; ObservabilityTests.cs
+A-28.1,Tiers unit|integration|contract|workflow|E2E|recovery|load|soak,DONE,tests 6 projects + cross-layer; LoadTests SoakTests RecoveryTests FullPipelineTests SmokeTests; 147 source test files
+A-28.2,Deterministic FFmpeg fixtures 10,DONE,scripts/generate-fixtures.sh seed42 <5MB|<15s; fixtures 10 + valid-2s|invalid-text.mp4
+A-28.3,Testcontainers + WireMock + mocks-in-CI,DONE,backend workflow FFmpeg+fixtures+Testcontainers; ProviderContractTests WireMock async|429|malformed; deterministic mocks
+A-28.4,State|idempotency|dup|fanin|fence|stale|cancel|retry|failover|contract|tenant|RLS|cost|quota|ratelimit,DONE,StateMachineMatrix IdempotencyMath Barrier Recovery chaos-log-9-pass TenantIsolation RLS CostReserv Enrichment ArtifactStorage-Orphan
+A-28.5,Media exhaustion|disk|orphan|review|partial-export|loudness goldens,PARTIAL,SignalTests Golden QcSignal Mixing Loudness review+export DONE; disk-pressure|media-bomb files MISSING — see GAP-018
+A-28.6,Backup|migration-compat|load|soak,DONE,BackupRestoreTests MigrationCompatTests LoadTests 200-seg fanout 5-proj isolation SoakTests; drill-log load-log PASS
+A-29.1,CI all tiers + warnings-fail + scan|SBOM|sign + caches,DONE,ci.yml aggregator + backend.yml warnings-as-errors unit|integration+FFmpeg|contract migration-compat image-scan|sbom|sign:365 + frontend.yml:499-539 Trivy|SBOM|cosign + contract.yml; NuGet|Docker caches
+A-29.2,K8s + Helm all workloads,DONE,deploy/k8s api|control|media-prep|media-render|ai|gpu|export|maintenance ns|cm|secrets|ingress|netpols|pdb|migration-job|backup-cronjob + helm/dubbing chart+values|prod|staging
+A-29.3,Managed refs no self-hosted prod state,DONE,ha-topology.md; secrets.yaml managed keys; compose Production-uses-managed comment
+A-29.4,Probes + resources + PVC scratch,DONE,HealthRegistration live-vs-ready FFmpeg|provider|warmup|migration; api-deployment:145-152 probes; workers-media-prep 50Gi RWX + MaxConcurrentMediaJobs2; requests|limits
+A-29.5,KEDA queue|cpu|leases|GPU + media bound + GPU taint,DONE,keda-scalers.yaml rabbitmq|cpu postgres-leases DCGM dcgm_gpu_utilization fallback; workers-gpu + gpu-worker replicas0 nodeSelector nvidia NoSchedule nvidia.com/gpu:1
+A-29.6,Secrets manager + env config + migrate-first + rollout + staging|prod,DONE,secrets external; migration-job ArgoCD-PreSync+Helm-pre-upgrade+kubectl-wait; rollout.md + rollback.md + rehearse-rollback.sh values-staging|prod (blue/green deferred by design)
+A-30.1,HA topology managed deps,DONE,docs/operations/ha-topology.md multi-AZ sync-replica versioning+CRR quorum-queues clustered-Redis replica-counts+PDBs
+A-30.2,Backups PITR RPO5m RTO1h,DONE,docs/dr/backup-restore.md daily-base+WAL 7d-PITR finals90d intermediates30d audit365d; deploy/backup dump|policy|scope|seed + backup-cronjob
+A-30.3,Restore|failover|failback tested,DONE,drill-log BackupRestoreTests PASS 2026-09-17; db-failover.md backup-restore.md
+A-30.4,Chaos 7 + load + media-bomb + rotation,PARTIAL,RecoveryTests + chaos-log crash|lease|stale|dup|cancel PASS; Load|Soak + load-log; rotation-drill-log; media-bomb file MISSING — see GAP-018
+A-30.5,Runbooks + dashboards + zero-downtime + compat + support,DONE,runbooks; slos dashboards; migration-compat.md; compat-matrix.json + compat-smoke.sh; support-access.md TenantAdmin|Service-only test-pinned
+A-31.1,VideoIntelligenceWorker + artifacts,DONE,Workers/Consumers/VideoIntelligenceWorker.cs; IVideoIntelligenceProvider
+A-31.2,LipSyncWorker score|transform|post-validate,DONE,LipSyncWorker.cs:97-232 dual-gate score post-validation Core-untouched logging
+A-31.3,Flags default-false after-render never-fail-core,DONE,FeatureOptions:13-15 VideoIntelligence|LispSync false; enrichment.failed{kind} counters; EnrichmentTests + EnrichmentGateTests
+A-31.4,Validation disabled|mock|failure-isolation,DONE,same test files gate tests
+A-32.1,LocalInference adapter non-HTTP-assuming,DONE,LocalInferenceProvider.cs semaphore GPU1|CPU2
+A-32.2,Python contract grpc-or-http,DONE,proto/local_inference.proto Infer|Health|Warmup artifact_hash device_profile; services/local-inference/app.py /health|/warmup|/infer; Dockerfile.worker.gpu
+A-32.3,Model registry,DONE,ModelRegistry.cs 64-hex cpu|cuda:N capability-check legacy-synthesis
+A-32.4,GPU workers + queue + metrics + concurrency + warmup,DONE,workers-gpu + gpu-worker; keda ai.gpu + DCGM; LocalInferenceWarmupCheck readiness HealthRegistration:101; compose gpu nvidia reservation :232-265
+A-32.5,Local executions recorded + privacy route + mock + failure tests,DONE,LocalInferenceMetrics; IntegrationTests/Providers/LocalInferenceTests; ProviderContractTests LocalInference; Resolver privacy routing
+A-FV.1,Functional 30,DONE,all services|controllers|workers; FullPipelineTests + signal|loudness|QC; progress-push partial GAP-031 only
+A-FV.2,Error/edge 32,DONE,[DONE w notes] Fencing RecoveryTests outbox|inbox AI-bounds retry-budgets quota|ratelimit orphans; exceptions GAP-005 GAP-018
+A-FV.3,Tests 33,DONE,[DONE w notes] all tiers; exceptions disk|bomb GAP-018; soak|load|chaos|backup|compat files+logs
+A-FV.4,Integration/deps 24,DONE,migrations durable-queues QueueNames KEDA ha-topology Redis-ephemeral MinIO FFmpeg-media-only outbox|inbox Serilog|OTel|Prom health-split compose-fast|full K8s|KEDA|GPU CI secrets 15min-URLs audit sweepers-hosted
+A-FV.5,Security/privacy 23,DONE,[DONE w note] JWT|RBAC|tenant|repo|RLS|storage|Redis|URL|consumers negatives; secrets|rotation; mTLS-conditional; netpols; non-root; Trivy|SBOM|cosign; append-audit; consent; privacy-routing; hold-aware deletion
+A-FV.6,Observability/ops 16,DONE,correlation-E2E enriched-logs|traces frozen-metrics SLOs|alerts|dashboards DLQ|lease|orphan|cost|review runbooks+escalation L1-15m|L2-1h|L3-4h protected-diagnostics incident-tested
+A-FV.7,Deployment 19,DONE,managed-services migrate-before-API expand|contract probes limits scratch-PVC KEDA-workload GPU-isolation secret-manager netpols ingress backup|DR-tested rollback-rehearsed staging-validated launch-gates deploy/README
+A-FV.8,Completion 24,DONE,[DONE w notes] journeys + traceability + enforcement + extensibility wired; subject to GAP-001..036
+B-8.1.1,TenantUser 8 fields + unique + RLS,DONE,Domain/Entities/TenantUser.cs + TenantUserConfiguration unique(Tenant External) + migration 20260921093301 tenant_users + DbSet + RLS + MeController:Get + PublicIdMapper usr_
+B-8.1.2,UserPreference 6 keys no-secrets,DONE,UserPreference.cs AllowedKeys-6 MaxValueBytes4096 secret-guard + config composite-PK jsonb + migration user_preferences + DbSet + RLS + Me Get|PutPreferences (400 PREFERENCE_KEY_UNKNOWN 413 TOO_LARGE)
+B-8.2.1,DubbingProject 9 ext fields archive≠processing,DONE,DubbingProject.cs Archive|Unarchive|Rename|SetOwnership|UpdateProcessingSettings + config jsonb defaults indexes IsArchived|OwnerUserId + migration AddColumn×8 + ProjectsController PATCH|archive|unarchive|DELETE IsDeleted-shadow; Status untouched
+B-8.2.2,ProjectProcessingSettings 8 fields + lock|hash|audit rules,PARTIAL,validator schemaVersion1 8-fields glossary≤1000 style≤4000 DONE; PatchAsync language-immutable + SETTINGS_LOCKED_ACTIVE_RUN + expectedSettingsVersion→CONFLICT + ConfigHash recompute + audit DONE; reviewThreshold string-vs-number DEVIATION — see GAP-027
+B-8.2.3,ProjectMembership 4 roles + unique + RLS,DONE,ProjectMembership.cs + ProjectRole.cs 4 roles + config unique(Project User) + migration project_memberships + DbSet + RLS + Me roles union + PublicIdMapper mbr_
+B-8.3.1,Notification 14 fields 9 types dedup durable,DONE,Notification.cs MarkAsRead URL|token-guard + NotificationType 9 + config filtered-unique(SourceEvent) + read-index + migration 20260921100912 notifications + NotificationProjector dedup-race + NotificationsController + ProjectionConsumer + DI Program AddScoped + ntf_
+B-8.4.1,ActivityEvent 13 fields append-only,DONE,ActivityEvent.cs SupportedSchemaVersion1 secret|URL-guard + config index(Tenant Project OccurredAt) + migration activity_events + DbSet + RLS + ActivityProjector|Mapper + WorkspaceController activity paged-newest + DI AddScoped + act_; no mutator (insert-only)
+B-8.5.1,Selection state + version counter + conflict,DONE,SegmentSelection.cs ApplySelection bumps + config unique(Tenant Segment) + migration 20260921112258 segment_selections + DbSet + RLS + SegmentSelectionService expectedSelectionVersion→SELECTION_CONFLICT-409 + audit + invalidation + SegmentsController selection×2|edits×2 409{currentSelectionVersion|currentVersionIds}
+B-8.6.1,VoicePreviewJob 13 fields 5 statuses,DONE,[DONE w drift] statuses Pending|Running|Completed|Failed|Cancelled + Mark* PREVIEW_STATE_CONFLICT + config filtered-unique(Tenant IdempotencyKey) + migration 20260921115016 + VoicePreviewService consent VOICE_CONSENT_REQUIRED quota 429 text 400 execution-link isolated-failure + SpeakersController previews + PreviewRegistration + vpv_; field-name drift — see GAP-027
+B-8.7,Preview artifacts 5 types immutable tenant peaks,DONE,ArtifactType MediaPreviewAudio|WaveformPeaks|VideoPreview|VoicePreviewAudio|QcEvidenceArtifact + MediaPreviewGenerator BuildWaveformPeaksJson multi-res 64|256 idempotent VideoPreviewEnabled-gate PreviewOptions false-default + VoicePreviewService + QcEvidenceLinker + content-addressed immutability + tenant scoping + signed-URL-only + DI PreviewRegistration Program:428
+B-8.8,Provider health|diagnostics reads 8,DONE,[DONE 7/8] AdminController usage|quotas|provider-health|provider-routes|diagnostics queues|dlq|leases|orphans|review-backlog RequireTenantAdmin secret-free correlation; services ProviderHealthQuery|QueueDiagnostics+EfQueueBacklogStore|LeaseOrphan|ReviewBacklog|WorkerHealth + DiagnosticsRegistration Program:429; worker-health endpoint MISSING — see GAP-020
+B-8.9,Extension validation checklist,PARTIAL,"migrations current RLS-7-tables tenant-isolation 404 idempotency-mutations projections dedup-activity stale-409 preview-quota|consent signed-URLs≤15m; gaps GAP-020 GAP-001 GAP-027 GAP-021 | FIX GAP-001 DONE 61d0b32 (remaining GAP-020/027/021 still open, stays PARTIAL)"
+B-9.1,Auth login|refresh|logout + /me + prefs + 12 perms,PARTIAL,AuthController + MeController Get|GetPreferences|PutPreferences [Authorize] tenant-from-claim; Permissions.cs exact-12; MeResponse user|tenant|roles|permissions|locale|flags|session but NO timezone — see GAP-021; idempotency correctly absent (reads|idempotent-PUT)
+B-9.2,Dashboard 10 fields + projects CRUD|list|filters|sort,PARTIAL,"DashboardController summary + DashboardService counts|recent|cost|quota|provider-warnings (DTO parity unverified); ProjectsController POST|GET|detail|PATCH|archive|unarchive|DELETE status|ownerId|search|archived page20|max100 sort|sortDir IdempotencyFilter; date-filter unverified → GAP-007 scope | FIX GAP-007 DONE e509670 (targetLanguage/from/to/reviewRequired server-side; dashboard DTO parity still unverified, stays PARTIAL)"
+B-9.3,Uploads transfer≠validation dup actionable,DONE,UploadsController init|parts|complete|abort|status + services; DUPLICATE_MEDIA|UPLOAD_INCOMPLETE; no-new-arch per plan
+B-9.4,Processing + progress + workspace|activity|output|quality,DONE,ProcessingController processing×2 cancel×2 retry×2 progress progress/stream + WorkspaceController workspace|activity|output|quality + WorkspaceService 10-section + paged activity + IdempotencyFilter + RequireProjectViewer|Editor
+B-9.5,Segments 7 routes + filters + immutable + conflicts,DONE,SegmentsController exact-7 + SegmentSelectionService immutable new-version expectedVersion 409 SELECTION_CONFLICT auditable-invalidation; list 50|max200 speakerId|reviewStatus|qualityFlag|syncIssue|text|startMs|endMs sort startMs
+B-9.6,Speakers 6 routes + preview + consent|compat|stability,DONE,SpeakersController exact-6 (+list-previews) + SpeakerVoiceService + VoicePreviewService incompatible422 VOICE_INCOMPATIBLE noconsent403 quota429 text400 same200 changed:false stable-default
+B-9.7,Review context 13 + mutations idempotent|versioned,DONE,ReviewsController GetContext 11-section + mutations approve|reject|requeue|resolve|dismiss|reopen|resolve-with-edit IdempotencyFilter + ReviewMutationService expectedVersion reason-required 409{currentVersion} replay200 Idempotent-Replayed resolve-with-edit-manual-version; superset additive OK
+B-9.8,Output 13 + exports + signed-URL rules,DONE,WorkspaceController output + OutputService OutputDtos Ready|Generating|Failed|Partial|Unavailable generationState-alias completeness items warnings updatedAt NO_RUNS_YET + OutputController download ≤15m never-keys + ExportsController POST-Idempotency-7d 202|replay 409 EXPORT|OUTPUT_INCOMPLETE list|detail|download-302 409 NOT_READY 410 URL_EXPIRED
+B-9.9,Notifications 4 routes scoping lightweight,DONE,NotificationsController exact-4 page newest-first unreadOnly expired-excluded PaginatedResult + count; projector recipient-scoping; deep-links resourceType|resourceId|projectId; short-summary payloads
+B-9.10,Admin 9 reads elevated secret-free,DONE,[DONE read-side] all-9 AdminController RequireTenantAdmin DiagnosticsAccessChecker destructive reason+audit (leases|orphans spotted); worker-health missing → GAP-020
+B-9.11,SSE stream + envelope + 14 types + payload rules,DONE,"envelope SseEnvelope eventId|schemaVersion|eventType|tenant|project|run|occurredAt|payload(+correlationId) + SseEventTypes.All frozen-14 + SseEventBuffer last-100 Last-Event-ID replayTruncated at-least-once dedupe invalidation-only + SsePayloadPolicy forbids signedUrl|token|secret|apiKey|connStr|internalPath|rawPayload|leaseToken; frontend header-only compliant; backend ?access_token= DEVIATION — see GAP-001 | FIX Header-only Bearer (no ?access_token=); bundle AccessToken removed, client regen 88a0ffab; query->401/header->200 tests; GAP-001 DONE 61d0b32"
+B-9.12,Error envelope + 9-row mapping + public codes,PARTIAL,mapping DONE ErrorCodes.cs All-65 ApiError Map 400|401|403|404|409|429|502|504|500 correlationId redaction; frontend normalizeError errorKindByCode-65 recoveryHintByCode throwForResponse; shape drift flat-vs-nested — see GAP-028
+B-10.1,Frontend tech baseline,DONE,package.json react18 router6 query5 zustand5 tailwind3 msw2 vitest2 storybook8 playwright1.63; tsconfig strict noUncheckedIndexedAccess; vite coverage 80×4
+B-10.2,Project structure §10.2,PARTIAL,domains all present app|api|features14|components30+|stores|hooks|lib|styles|i18n|telemetry|types; grouping deviates flat-components single-stores app/session-vs-auth — cosmetic
+B-10.3,State rules + query-key factory,DONE,api/queryKeys/keys.ts factory + scopedTenantKey isTenantScoped + queryKeyRegistry keysForEvent + queryKeys.test fails-inline-keys; server-Query client-zustand (useAppStore authStore uploadStore playerStore workspaceStore wizardStore)
+B-10.4,Generated OpenAPI client + CI drift,DONE,api/generated client|schemas|index|OPENAPI_VERSION sha5050cd; tools/generate-client|check-api-drift; Makefile:36; prebuild check-drift; frontend.yml build git-diff---exit-code + contract.yml oasdiff|version-bump|canary
+B-10.5,SSE authenticated-fetch no-URL-token + polling fallback,DONE,useProgressStream.ts header-only Authorization+Last-Event-ID no-EventSource validateSseEnvelope frozen-14 SseCursorTracker backoff-1s→30s+jitter INVALIDATION-DEBOUNCE-500 keysForEvent useProgressPoll 3s|20s terminal-stop; negative tests not.toContain access_token
+B-10.6,Resumable upload + refresh recovery,DONE,useResumableUpload.ts 8MiB PART MAX_CONCURRENCY3 authorize|put|reconcile|pump|pollValidation|runToCompletion pause|resume|cancel|retryPart|reattach 401|403-refresh-once auto-pause zero-byte-reject fingerprint uploaded→validating→analyzing→ready|rejected; uploadStore UPLOADS_STORAGE_KEY metadata-only fileRegistry-memory sanitizeSession needsReattach; tests resumable|store|states|fingerprint + e2e upload
+B-10.7,Media/timeline engine peaks waveform,DONE,Waveform.tsx canvas-from-peaks selectPeaksForWidth multi-res TIMELINE_DEBOUNCE scrub ResizeObserver missing|error|skeleton; useTimelineMedia fetchWaveformPeaks vs fetchPreviewMedia signed-URL queryKeys.timeline.media|peaks; Timeline|Workspace|MediaPlayer lanes|selection|overlap|warnings speed|volume|fullscreen|PiP preview-only-viz; timeline.test:599 virtualized playerMatrix canvas
+B-10.8,Forms 8 states backend-authoritative,PARTIAL,wizard validation|draft|serverErrors|store + useDirtyGuard beforeunload dialog + PreferencesForm DONE; dirty-guard proven wizard|translation|settings only; no repo-wide harness — see GAP-032
+B-10.9,i18n keys + RTL,PARTIAL,infra DONE i18n resources|i18n|direction|format|localePreference|useLocale 19-en-namespaces ar|ru pseudo direction resolve|apply|isRtl ?dir= rtl.css logical-props LocaleProvider dir|lang CI no-copy + physical-side; 939 literals remain ratchet-only — see GAP-022
+B-10.10,a11y WCAG 2.2 AA,PARTIAL,keyboard listbox|waveform|CommandMenu useFocusTrap|useEscape dp-focus-ring landmarks Alert|ErrorState StatusBadge icon+text aria|role Skeleton live-discipline speakerListA11y e2e a11y focus-contrast @a11y job; no full-AA audit artifact; reduced-motion|SR-spam unproven — see GAP-032/036
+B-10.11,Performance split|virtualize|preview|debounce,DONE,app/pages/lazy.ts 19 lazy route-chunks; VirtualizedSegmentList OVERSCAN5 VIEWPORT12 ROW96; Waveform canvas useMemo debounced-seek; Timeline memo; preview-only-viz; e2e perf budgets|measure|probes|fixtures|gate; vite chunkLimit600 sourcemap:false
+B-11.1,IA primary + project tabs + routes,DONE,topNav.ts 5+admin-gated hasAdminPermission; projectTabs.ts 9 state-gated badges; router.tsx:43-108 RequireAuth|RequireAdmin ProjectLayout outlets routePaths; RequireAdmin→403; admin *Panel consolidated /admin (nav-vs-panel confirm); e2e per-screen 21 specs
+B-11.2,Design tokens,PARTIAL,tokens.css:6-150 brand|neutral|surface|text|border 8-status spacing type radius shadow focus dark; tailwind token-backed check-no-hex; missing --icon-size|--control-height|--motion-* elevation-via-shadow — see GAP-033
+B-11.3,Core + product components,PARTIAL,barrel 34 primitives each .stories+.test; MISSING SplitPane|ResizablePanel; Ring≠ProgressRing; PipelineStepper|StageProgress|SpeakerBadge|ArtifactPanel|ProviderExecutionPanel names unmatched (BacklogCard|StatCard|QualityIssue|SpeakerList equiv) — see GAP-033
+B-11.4,Required UX states 17 per screen,PARTIAL,pattern DONE Dashboard loading|skeleton|empty|per-card-retry|global|stale|quota; Waveform pending|error|missing; Matrix per-feature; mocks taxonomy 401..stale; RequireAuth|Skeleton|Forbidden|NotFound|LoggedOut; no per-screen×17 matrix — see GAP-032
+B-11.5,Responsive 1280|768-1279|<768 degraded-timeline,PARTIAL,bands e2e matrix desktop|tablet1024|mobile390 + visual baselines; AppShell hidden-md sidebar only; ZERO breakpoint classes features per screens.spec:17-19 + responsive-layout pins — see GAP-023
+B-11.6,Error-code→UX mapping,DONE,normalizeError errorKindByCode-65 recoveryHintByCode kindForStatus|hintForStatus kinds AppError plain-text retryable hint; ErrorState + product CorrelationId Ref; raw-traces never ordinary-users
+B-12.1,Auth/session UX,DONE,router /login|/logged-out RequireAuth|RequireAdmin SessionSkeleton permissions hasAdminPermission useSession authStore; sessionFlow.test e2e auth
+B-12.2,Dashboard UX,DONE,DashboardPage→features StatCard|BacklogCard|QuotaCard|StorageCostCard|ProviderWarnings|RecentOutputs; tests dashboard|cardsMatrix; e2e dashboard; visual baselines
+B-12.3,Project list UX,DONE,ProjectsPage ProjectTable|Filters useProjectsQuery e2e projects tests urlSync DONE; server-side only status|ownerId|archived|sort; language|date in-memory review-required unverified — see GAP-007 | FIX Server targetLanguage/from/to/reviewRequired (ManualReviewRequired) + frontend toServerQuery; client identity; urlSync+projectsMatrix2 36 passed; GAP-007 DONE e509670
+B-12.4,Project creation wizard,DONE,router /projects/new CreateWizard 5-steps validation|draft|serverErrors immutability-notice ReviewStep:74; tests wizard|matrix|validation|hiddenFields; e2e project-create
+B-12.5,Resumable upload UX,DONE,MediaUploader UploadProgress useResumableUpload uploadStore uploadStates fingerprint phases uploading|paused|validating|analyzing|ready|rejected; tests resumable|store|states|fingerprint; e2e upload; cross-layer seam-upload-storage
+B-12.6,Processing start UX,PARTIAL,PreflightDialog usePreflight CostEstimateCard WorkspacePage tests preflight|dialog|load e2e processing-start DONE; estimate client-mirror usePreflight:4 no-server-endpoint — see GAP-008
+B-12.7,Workspace UX,DONE,router projects/:id/* 9-tabs ProjectLayout WorkspacePage useWorkspace workspaceStore getProjectTabs; tests workspace|matrix projectLayoutMatrix; e2e workspace
+B-12.8,Live progress UX,DONE,useProgressStream header-only 14-types resolveInvalidations shouldInvalidateNotifications; tests envelope|stream|invalidation|polling|backoff|cursor; e2e progress; seam-processing-sse; structural-not-pixel visual
+B-12.9,Transcript workspace UX,DONE,TranscriptEditor SegmentRow Inspector VirtualizedSegmentList useTranscript provider|model|version-advanced Inspector:167; tests transcript|matrix; e2e transcript; perf segment-search
+B-12.10,Translation workspace UX,DONE,TranslationWorkspace useDirtyGuard:185 beforeunload:116 modal:534 TranslationEditor useTranslations; tests translation|matrix:306|474; e2e translation
+B-12.11,Voice assignment UX,DONE,VoicesWorkspace SpeakerList VoiceSelector PreviewPlayer phases idle|requesting|ready|pending|quota|consent|expired|error:18 ImpactDialog useVoices; tests voices|matrix speakerListA11y; e2e voices; seam-voice-invalidation
+B-12.12,Media player/timeline UX desktop,DONE,MediaPlayer Waveform Timeline TimelineWorkspace playerStore useTimelineMedia canvas-peaks playerMatrix:657; tests timeline|matrix|playerMatrix; e2e timeline; perf media-seek|timeline-interaction; responsive caveat GAP-023
+B-12.13,Review studio UX,DONE,ReviewQueue ReviewStudio ReviewCard useDisposition idempotency+409|412:20|151 useReviewQueue; 409 CONFLICT|ALREADY_RESOLVED stale-banner tests :211|:494 matrix:197|287|502; e2e review; seam-review-mutation|seam-stale-conflict
+B-12.14,QC interface UX,DONE,QualityWorkspace QualitySummary QualityIssue useQuality; tests quality|matrix; e2e quality
+B-12.15,Output/export UX,DONE,OutputsPage ExportCard ExportRow useOutputs signedDownload click-302 410-retry-once 15m never-logged|cached|keyed; tests exports|matrix; e2e exports; seam-export-download
+B-12.16,Notifications UX,DONE,NotificationBell|Center|List|Item useNotifications|UnreadCount|MarkRead|NotificationStream notificationLinks; tests notifications|matrix; e2e notifications; seam-notification
+B-12.17,Activity/audit UX,DONE,ActivityFilters AuditTimeline useActivity types ActivityPage; tests activity|matrix; e2e activity; advanced via admin (GAP-024 caveat)
+B-12.18,Cost/usage/quota UX,PARTIAL,CostSummary QuotaBadge QuotaBanner useCostQuota CostEstimateCard tests cost|matrix DONE; same server-estimate gap — see GAP-008
+B-12.19,Admin/operator frontend,PARTIAL,/admin RequireAdmin topNav-admin-only AdminPage OpsDashboard HealthRoutes UsageQuotas DestructiveAction Flags Tenants UsersRoles RetentionAudit LocalGpu adminGuard tests admin|matrix e2e admin DONE; reads unprovisioned placeholders 5 panels — see GAP-024
+B-12-nav,Routes + gated nav + states,PARTIAL,routePaths full + getTopNavItems RequireAdmin getProjectTabs state-badges; EmptyState|ErrorState|Skeleton|ProgressBar|Ring|StatusBadge + ChunkErrorBoundary + VersionMismatchBanner; no global offline banner — see GAP-035
+B-13.1,AuthZ frontend hints-only,DONE,permissions ADMIN_ALIASES hasAdminPermission guards useSession /me; cards gated DashboardPage hasAdminPermission; DestructiveAction reason+confirm+audit UsersRolesPanel canAssignRole|sanitizeReasonText
+B-13.2,Tenant isolation E2E + negatives,DONE,frontend scopedTenantKey queryKeys SSE validateSseEnvelope tenantId activity|notif scoped; backend TenantKeyBuilder RLS MessagingMeters.CrossTenantRejects; TenantIsolationTests + StorageKeyMatrixTests
+B-13.3,Token/session security,DONE,authStore memory-only no-persist-test httpClient setTokenProvider getTokenOrUndefined requireAccessToken coreFetch Bearer X-Correlation-ID GET-retry 401→auth:expired useProgressStream:632-641 header; silent-refresh 80% single-flight offline-wait; logout clears queryClient cross-tab; zero access_token URLs; no-cookies → CSRF N/A (confirm)
+B-13.4,Signed URL security,DONE,S3 15m default :15-18; signedDownload click-302 transient-var 410-refetch-once never-keys|state|DOM locationOf opaqueredirect-guard; telemetry scrub url|signedurl|downloadUrl; isSafeDisplayUrl rejects access_token
+B-13.5,Content security CSP sanitized,DONE,index.html:16-17 CSP self no-unsafe-inline|eval; nginx security-headers:48 + cdn viewer-request:41 frame-ancestors-none; hosting-config.test:171-173; zero dangerouslySetInnerHTML; AppError plain-text sanitizeRoute scrub-blanket
+B-13.6,CORS allowlist,DONE,CorsOptions rejects empty|wildcard|non-absolute|path; Program:210-231|469 dubbing-cors cleaned AllowAnyHeader|Method AllowCredentials; frontend ingress enable-cors:false API-owns
+B-13.7,Consent/voice-cloning UX,DONE,consentStateFor valid|required|revoked|unavailable voicesMatrix2:170-187 badges VoiceSelector|SpeakerList PreviewPlayer:17|102|133|250-257 consent-phase 403 VOICE_CONSENT_REQUIRED normalizeError hints; VoicePreviewQuotaConsentTests POLICY_DENIED
+B-13.8,Secrets never frontend,DONE,config/env DEPLOY_CONFIG_ALLOWLIST .env.example VITE_*-public SENTRY-disabled; admin health secret-free names|ids|hashes; telemetry scrub|assertAllowlisted token|secret|password|authorization|bearer
+B-14.1,Backend + frontend-supporting metrics,PARTIAL,base DONE PlatformMetrics StorageMeters MessagingMeters DlqDepth|SchemaMismatches|CrossTenantRejects QuotaMeters alerts dashboards slos; 8 supporting meters (SSE conns|reconnect notif-fail read-latency upload-funnel review|export|preview-latency) MISSING grep SseActive zero — see GAP-034
+B-14.2,Frontend telemetry + redaction,PARTIAL,redaction DONE telemetry emit assertAllowlisted forbidden token|url|transcript|translation|media|audio|video|body|payload|details trackPageView|RouteChange|ApiFailure|UnknownStatus|MissingTranslation|VersionMismatch sanitizeRoute resolveTelemetryCorrelation scrub assertNoSensitive RouteTracker kill-switch + opt-out; browser|OS|env fields partial — see GAP-034
+B-14.3,Analytics separated allowlisted disableable,PARTIAL,separation DONE analytics.ts allowlist-17 scrubbed isAnalyticsEnabled build-flag+opt-out guard vs ops channel; verb drift export.requested vs plan export.created|downloaded + extras — see GAP-034
+B-14.4,Correlation API→SSE→errors,DONE,httpClient X-Correlation-ID new|getLast|emitAuthExpired generated ApiError uniform useProgressStream validateSseEnvelope requires-correlationId resolveTelemetryCorrelation ErrorState|Alert Ref surfacing
+B-15.1,Unit tests,DONE,153 files dates|formatting queryKeys|normalizeError|tenantKeys uploadStates|fingerprint preflight env; 0 skip greps (1 legit vi.mock projectLayoutMatrix:12)
+B-15.2,Component tests + Storybook,DONE,39 stories .storybook main|preview build-storybook; per-primitive tests; stateMatrix + feature matrices real-assertions
+B-15.3,MSW/API-mock taxonomy,DONE,mocks taxonomy 11-outcomes handlers fixtures server opt-in conformance|handlers httpMatrix|infraMatrix|normalizeMatrix|keysMatrix
+B-15.4,Backend-extension integration,DONE,MePreferencesTests IdentityPreferencesTests ProjectsApiTests-archive WorkspaceProgressTests 9-SkippableFact NotificationActivityTests:195-Dedup NotificationsApiTests ReviewContextTests VoiceApiTests ConsentTests PreviewArtifactTests AdminAuthzTests AdminSseErrorContractTests OpenApiCoverageTests; backend.yml no-skipped gate fail-closed
+B-15.5,Cross-layer seams,DONE,tests/cross-layer/seams 7-specs ~1575 lines upload|processing-sse|review|export|voice|stale|notification + seamContext harness apiClient|seed|sseClient|objectStorage|mockAi
+B-15.6,Playwright E2E mock-tier,DONE,frontend/e2e 21-specs 5854-lines auth→admin + optional-enrichment:570 page.route dev-5173
+B-15.7,Full product smoke real-stack,DONE,cross-layer harness.spec 040A boot→seed→start→SSE→workspace→artifacts→teardown assertRunPersisted|Artifacts|MockPipelineConsistent + e2e/support/smoke tier1|tier2 stack-absent-FAILS + docker-compose.cross globalSetup wait_stack.sh
+B-15.8,Visual regression,PARTIAL,screens.spec matrix support/matrix baselines __screenshots__ progress.structural role|label frontend.yml visual-job DONE; responsive self-declared gap screens:R4 responsive-layout ZERO-breakpoints — see GAP-023
+B-15.9,Accessibility tests,DONE,e2e/a11y 6-specs axe|keyboard:355|focus-contrast|dialogs-media|live-region|motion|waivers + support axe|waivers; CSS reduced-motion globals:176 Skeleton|Ring|ProgressBar safe; speakerListA11y; frontend.yml a11y-job; waivers-register review at sign-off (GAP-036d)
+B-15.10,Performance tests,DONE,e2e/perf budgets:315 app-interactive|project-list|workspace|timeline|segment-search|media-seek|practices + measure|probes|fixtures|gate|budgets generate-media preview-60s.mkv; frontend.yml perf-job; test:perf
+B-16.1,Backend CI,DONE,backend.yml restore→build→unit→integration→contract→migration-compat→imagescan|SBOM|sign|publish TreatWarningsAsErrors fail-closed-skips ci-branch-protection required-checks via ci.yml
+B-16.2,Frontend CI,DONE,frontend.yml install-locked→lint→typecheck→unit|coverage→presence|no-hex|no-copy→build→codegen-verify→storybook→E2E→visual→a11y→audit→image; vite 80%-gate coverage-gap.mjs
+B-16.3,Contract drift,DONE,contract.yml oasdiff-breaking + version-bump + canary; check-api-drift regen→diff + OPENAPI_VERSION prebuild + CI diff---exit-code; generate-client make-generate-api generated client|schemas|version
+B-17.1,Frontend hosting,DONE,Dockerfile.frontend build→precompress→scratch-nginx-unprivileged; k8s/frontend deployment|service-ClusterIP|ingress|configmap; nginx default|security-headers; cdn origin|viewer-request; frontend README hosting-config|topology tests hosting-policy config-inject verify.sh
+B-17.2,Topology no-direct-deps,DONE,docs/topology.md + hosting.test.sh + verify.sh + check-frontend-topology.mjs no-store-refs
+B-17.3,Backend-ext deployment,DONE,migrations 20260921* + migration-job PreSync|pre-upgrade|initContainer backoff3 + rollout compat-matrix|flags|contract-ledger|rehearse-rollback check-rollout-window migration-compat.md
+B-17.4,Env config allowlist,DONE,config/*.ts DEPLOY_CONFIG_ALLOWLIST 11-VITE_* + lib/env sole-reader .env.example configmap-asserted vite-env-audit blacklist-second-check never-secrets
+B-18.1,Frontend ops,DONE,alerts.yml DLQ|lease|provider|latency|orphan + dashboards cost|pipeline|provider|queues|reviews; slos.md; telemetry events|scrub|RouteTracker; operations docs
+B-18.2,Support diagnostics,PARTIAL,panels exist degrade-EmptyState; authorized paths AdminAuthzTests DestructiveAction audit-panels; operator sees only provisioned reads — see GAP-024
+B-18.3,Incident runbooks product 8,DONE,runbooks/product auth|cdn|sse|deploy|notification|drift|upload|review-backlog + index symptom→mechanism degraded-triage L1|L2|L3 + mechanism docs; product-runbooks|runbooks-index tests enforce
+B-18.4,Backup/restore coverage,DONE,backup scope.json 7-groups tables order retention + policy.json RPO|RTO|escalation|cadence|gap-register|release-block + backup-cronjob dump drill-seed; backup.md dr/backup-restore|drill-log runbooks/backup-restore; check-backup-policy backup-coverage|backup-policy tests
+B-19,Enrichment/GPU UX,PARTIAL,EnrichmentGate EnrichmentStates VideoIntelPanel LipSyncPanel useEnrichmentQueries enrichmentFlags LocalGpuPanel|States|Types tests enrichment e2e optional-enrichment DONE; reads FRONTEND-ANTICIPATED 404|501→NotAvailableState core-independent privacy-note; no provisioned reads — see GAP-024
+B-20,State ownership matrix,DONE,§20 + enforcement queryKeys-factory inline-scan WorkspacePage invalidateQueries uploadStates-authority signedDownload-no-cache stores-ui|editor|player-only telemetry-scrub
+B-21,Async completeness,DONE,uploadStates uploading|paused|validating|ready|rejected + UploadSession; WorkspacePage useWorkspace pending|running|review|failed|cancelling|cancelled|completed; useDisposition open|resolved|requeued|rejected|approved; export pending|running|completed|failed|cancelled; PreviewPlayer pending|running|completed|failed|+quota|consent|expired; EnrichmentStates pending|running|completed|failed|skipped
+B-22,Implementation order B-1..B-8,DONE,[DONE process] execution_tasks_B 001..049 + tasks_report_B matches §22 phases
+B-23.1,Product completeness,PARTIAL,"journeys wired except GAP-023 GAP-007 GAP-008 GAP-024 inherited | FIX GAP-007 DONE e509670 (remaining GAP-023/008/024 still open, stays PARTIAL)"
+B-23.2,Backend-extension completeness,DONE,[DONE*] MePreferences archive membership dedup-notifs paged-activity workspace review-ctx SSE-contract stale-409 consent|quota preview-artifacts diagnostics-auth RLS|migrations; *confirm tenant-negative + RLS test names at sign-off
+B-23.3,Frontend-arch completeness,PARTIAL,codegen-sync server|client-split keys SSE→invalidate polling resume|retry|refresh preview-media unsaved-guard error-mapping permission-visibility a11y flags DONE; responsive GAP-023; gating projectTabs acceptable-note
+B-23.4,Security/privacy completeness,DONE,[DONE*] in-memory-tokens HttpOnly|SAME|CSRF-posture 15m-signed-URLs CORS|CSP scrub consent-cloning no-FE-secrets RequireAdmin|403 DestructiveAction; *confirm CORS allowlist file + cross-tenant negative IDs at sign-off
+B-23.5,Testing/deployment completeness,PARTIAL,unit|component|mock|integration|cross-layer|smoke|a11y|perf drift-fail container|static SPA|cache rollback-rehearsal dashboards backup DONE; visual-responsive GAP-023; rollback-tested = rehearsal-harness not prod-record (GAP-036d)
+B-24,Completion criteria journey,PARTIAL,legs exist code+tests B-12 B-15.5|15.6|15.7; no cited green run — see GAP-036c
+B-25,Architecture boundary,DONE,topology.md frontend-README diagram check-frontend-topology hosting-policy; projection-only workspace|pipeline estimate-labeling SSE-as-hint preview-over-archival comments
