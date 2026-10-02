@@ -49,10 +49,14 @@ public sealed class AuthOptionsValidator : IValidateOptions<AuthOptions>
             return ValidateOptionsResult.Fail($"{nameof(AuthOptions)}.{nameof(AuthOptions.Audience)} must not be empty.");
         }
 
-        if (!string.IsNullOrEmpty(options.Authority) &&
-            !Uri.TryCreate(options.Authority, UriKind.Absolute, out _))
+        if (!string.IsNullOrEmpty(options.Authority))
         {
-            return ValidateOptionsResult.Fail($"{nameof(AuthOptions)}.{nameof(AuthOptions.Authority)} must be an absolute URI when set.");
+            if (!Uri.TryCreate(options.Authority, UriKind.Absolute, out var authorityUri)
+                || (!string.Equals(authorityUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(authorityUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+            {
+                return ValidateOptionsResult.Fail($"{nameof(AuthOptions)}.{nameof(AuthOptions.Authority)} must be an absolute URI when set.");
+            }
         }
 
         if (options.RequireHttps &&
