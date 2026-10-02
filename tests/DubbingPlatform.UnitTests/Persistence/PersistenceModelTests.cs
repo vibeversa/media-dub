@@ -102,6 +102,21 @@ public sealed class PersistenceModelTests : IDisposable
     }
 
     [Fact]
+    public void Stage_Executions_Have_Stale_Lease_Covering_Partial_Index()
+    {
+        var entity = _context.Model.FindEntityType(typeof(StageExecution));
+        Assert.NotNull(entity);
+
+        var index = entity.GetIndexes().FirstOrDefault(i =>
+            i.Properties.Select(p => p.Name).SequenceEqual(["Status", "LeaseExpiresAt"])
+            && i.GetFilter() is not null
+            && i.GetFilter()!.Contains("Running", StringComparison.Ordinal));
+        Assert.NotNull(index);
+        Assert.DoesNotContain("NOW()", index.GetFilter()!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("now()", index.GetFilter()!, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MassTransit_Outbox_Tables_Exist_With_Snake_Case_Names()
     {
         var tables = _context.Model.GetEntityTypes()

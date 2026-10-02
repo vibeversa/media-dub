@@ -26,6 +26,12 @@ public sealed class StageExecutionConfiguration : IEntityTypeConfiguration<Stage
         builder.HasIndex(e => new { e.ProcessingRunId, e.StageType, e.Status });
         builder.HasIndex(e => new { e.ProcessingRunId, e.Status, e.LeaseExpiresAt });
         builder.HasIndex(e => e.Status).HasFilter("status = 'Running'");
+        // GAP-004 (rule-compliant): stale-lease sweeper scans
+        // status='Running' AND lease_expires_at < @now. The predicate must stay
+        // immutable (no NOW()), so the time comparison lives in the query, not
+        // the index. This covering partial index lets the sweeper use an
+        // index-only scan without violating Postgres immutability.
+        builder.HasIndex(e => new { e.Status, e.LeaseExpiresAt }).HasFilter("status = 'Running'");
         builder.HasIndex(e => new { e.TenantId, e.ProjectId });
     }
 }
