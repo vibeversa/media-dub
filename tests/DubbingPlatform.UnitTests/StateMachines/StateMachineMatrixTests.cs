@@ -32,7 +32,10 @@ public sealed class StateMachineMatrixTests
         var allowed = Allowed<ContentObjectStatus>(
             (ContentObjectStatus.Pending, ContentObjectStatus.Committed),
             (ContentObjectStatus.Committed, ContentObjectStatus.Orphaned),
-            (ContentObjectStatus.Orphaned, ContentObjectStatus.Deleted));
+            (ContentObjectStatus.Orphaned, ContentObjectStatus.Deleted),
+
+            // GAP-015: direct delete for dereferenced content past final retention.
+            (ContentObjectStatus.Committed, ContentObjectStatus.Deleted));
 
         AssertFullMatrix((from, to) => ContentObjectStateMachine.CanTransition(from, to), allowed);
         AssertForbiddenThrow((from, to) => ContentObjectStateMachine.EnsureCanTransition(from, to), allowed);
