@@ -59,4 +59,16 @@ public sealed class LeaseSqlTests
         Assert.Contains("RetryPending", StageExecutionSql.TakeoverSql, StringComparison.Ordinal);
         Assert.Contains("stage_executions", StageExecutionSql.TakeoverSql, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Takeover_Sql_Increments_Lease_Token_Version()
+    {
+        Assert.Contains("lease_token_version", StageExecutionSql.TakeoverSql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Renew_Sql_Does_Not_Rotate_Token_Or_Version()
+    {
+        Assert.DoesNotContain("lease_token_version", StageExecutionSql.RenewLeaseSql, StringComparison.Ordinal);
+    }
 }

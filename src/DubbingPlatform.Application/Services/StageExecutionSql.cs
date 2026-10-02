@@ -53,10 +53,11 @@ public static class StageExecutionSql
     /// RetryPending row whose lease already expired is taken over, fenced on
     /// the previous owner+token so concurrent claimants serialize and exactly
     /// one wins; the token rotation keeps the dead worker fenced out of
-    /// future commits. Active leases are never stolen.
+    /// future commits. <c>lease_token_version</c> increments atomically on
+    /// every grant/takeover (renew never rotates). Active leases are never stolen.
     /// </summary>
     public const string TakeoverSql =
-        "UPDATE stage_executions SET status = {0}, lease_owner = {1}, lease_token = {2}, lease_expires_at = {3}, updated_at = {4} " +
+        "UPDATE stage_executions SET status = {0}, lease_owner = {1}, lease_token = {2}, lease_token_version = lease_token_version + 1, lease_expires_at = {3}, updated_at = {4} " +
         "WHERE id = {5} AND lease_owner = {6} AND lease_token = {7} AND status IN ('Running', 'RetryPending') AND lease_expires_at < {8}";
 
     /// <summary>
