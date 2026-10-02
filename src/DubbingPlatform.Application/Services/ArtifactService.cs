@@ -2,6 +2,7 @@ using DubbingPlatform.Application.Abstractions;
 using DubbingPlatform.Application.Errors;
 using DubbingPlatform.Application.Exceptions;
 using DubbingPlatform.Application.MultiTenancy;
+using DubbingPlatform.Application.Options;
 using DubbingPlatform.Application.Services;
 using DubbingPlatform.Application.Storage;
 using DubbingPlatform.Domain.Entities;
@@ -48,14 +49,16 @@ public sealed class ArtifactService
     private readonly IStageExecutionContextFactory _contextFactory;
     private readonly IArtifactStorage _storage;
     private readonly IQuotaGate? _quotaGate;
+    private readonly QuotaOptions? _quotaOptions;
 
-    public ArtifactService(IStageExecutionContextFactory contextFactory, IArtifactStorage storage, IQuotaGate? quotaGate = null)
+    public ArtifactService(IStageExecutionContextFactory contextFactory, IArtifactStorage storage, IQuotaGate? quotaGate = null, Microsoft.Extensions.Options.IOptions<QuotaOptions>? quotaOptions = null)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         ArgumentNullException.ThrowIfNull(storage);
         _contextFactory = contextFactory;
         _storage = storage;
         _quotaGate = quotaGate;
+        _quotaOptions = quotaOptions?.Value;
     }
 
     /// <summary>
@@ -435,9 +438,32 @@ public sealed class ArtifactService
                     throw new ConflictException("Content object already exists.");
                 }
 
-                // Task 036 storage hook: new bytes only (dedup-reuse above skips).
-                // Fail-closed: a denying gate throws QUOTA_EXCEEDED before rows.
-                if (_quotaGate is not null
+                // GAP-005: storage quota joined to the artifact-commit transaction.
+                // Per-tenant advisory xact lock serializes concurrent committers
+                // (mirrors CostService per-project lock) so the usage SUM below
+                // observes committed rows in this txn; the loser sees
+                // QUOTA_EXCEEDED (429) instead of over-admitting. Dedup-reuse
+                // above skips (no new bytes). When QuotaOptions is wired, the
+                // check runs on this DbContext/transaction (no TOCTOU via a
+                // separate connection); otherwise fall back to the IQuotaGate
+                // pre-check for backward compatibility (tests/mocks).
+                await db.Database.ExecuteSqlRawAsync(
+                    "SELECT pg_advisory_xact_lock(hashtext({0}))",
+                    tenantId.ToString("D")).ConfigureAwait(false);
+
+                if (_quotaOptions is not null)
+                {
+                    var used = await db.Set<ContentObject>()
+                        .Where(c => c.TenantId == tenantId && c.Status == ContentObjectStatus.Committed)
+                        .SumAsync(c => (long?)c.SizeBytes, cancellationToken).ConfigureAwait(false) ?? 0L;
+                    if (QuotaService.IsStorageExceeded(used, size, _quotaOptions.MaxStorageBytes))
+                    {
+                        QuotaMeters.Rejections.Add(1, new System.Collections.Generic.KeyValuePair<string, object?>("dimension", QuotaDimensions.Storage));
+                        throw new QuotaExceededException(
+                            $"Storage quota would be exceeded by {size.ToString(System.Globalization.CultureInfo.InvariantCulture)} bytes (dimension storage, max {_quotaOptions.MaxStorageBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)} bytes).");
+                    }
+                }
+                else if (_quotaGate is not null
                     && !await _quotaGate.CheckStorageAsync(tenantId, size, cancellationToken).ConfigureAwait(false))
                 {
                     throw new QuotaExceededException(

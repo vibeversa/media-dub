@@ -44,7 +44,8 @@ public static class StorageRegistration
         services.AddScoped<ArtifactService>(provider => new ArtifactService(
             provider.GetRequiredService<IStageExecutionContextFactory>(),
             provider.GetRequiredService<IArtifactStorage>(),
-            provider.GetService<IQuotaGate>()));
+            provider.GetService<IQuotaGate>(),
+            provider.GetService<Microsoft.Extensions.Options.IOptions<QuotaOptions>>()));
         services.AddHostedService<StorageBucketInitializer>();
     }
 
