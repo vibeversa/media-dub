@@ -1056,7 +1056,7 @@
         "operationId": "cancelProcessingRun",
         "tags": ["processing"],
         "summary": "Cancel a run (idempotent, 202)",
-        "description": "Terminal runs are 409 RUN_ALREADY_TERMINAL. Idempotency-Key supported.",
+        "description": "Canonical per-run cancel (GAP-026: the plan's POST /projects/{id}/cancel is implemented as this run-scoped route plus the compat route processing/cancel). Terminal runs are 409 RUN_ALREADY_TERMINAL. Idempotency-Key supported.",
         "parameters": [
           {
             "$ref": "#/components/parameters/ProjectId"
@@ -1099,7 +1099,7 @@
         "operationId": "retryProcessingRun",
         "tags": ["processing"],
         "summary": "Retry a run as a new linked run",
-        "description": "Creates a new run linked via retryOfRunId, copying the config hash. Idempotency-Key supported.",
+        "description": "Canonical per-run retry (GAP-026: the plan's POST /projects/{id}/retry is implemented as this run-scoped route plus the compat route processing/retry). Creates a new run linked via retryOfRunId, copying the config hash. Idempotency-Key supported.",
         "parameters": [
           {
             "$ref": "#/components/parameters/ProjectId"
@@ -1141,8 +1141,9 @@
       "post": {
         "operationId": "cancelActiveProcessingRun",
         "tags": ["processing"],
-        "summary": "Cancel the active run (legacy)",
-        "description": "Legacy per-project cancel; prefers per-run cancel. Idempotency-Key supported.",
+        "deprecated": true,
+        "summary": "Cancel the active run (compat)",
+        "description": "Compat route kept for pre-existing clients (GAP-026): cancels whichever run is active for the project. Prefer the canonical POST /projects/{projectId}/processing/{runId}/cancel, which names the run and is unambiguous. Idempotency-Key supported.",
         "parameters": [
           {
             "$ref": "#/components/parameters/ProjectId"
@@ -1181,8 +1182,9 @@
       "post": {
         "operationId": "retryActiveProcessingRun",
         "tags": ["processing"],
-        "summary": "Retry the active run (legacy)",
-        "description": "Legacy per-project retry; prefers per-run retry. Idempotency-Key supported.",
+        "deprecated": true,
+        "summary": "Retry the active run (compat)",
+        "description": "Compat route kept for pre-existing clients (GAP-026): retries whichever run is active for the project. Prefer the canonical POST /projects/{projectId}/processing/{runId}/retry, which names the run and is unambiguous. Idempotency-Key supported.",
         "parameters": [
           {
             "$ref": "#/components/parameters/ProjectId"

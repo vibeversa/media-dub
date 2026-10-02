@@ -1315,6 +1315,25 @@ Implement secure API endpoints for projects, uploads, processing, segments, revi
    - `GET /api/v1/projects/{projectId}/processing`
    - `POST /api/v1/projects/{projectId}/cancel`
    - `POST /api/v1/projects/{projectId}/retry`
+
+   **Errata (GAP-026).** `cancel` and `retry` are implemented as run-scoped
+   canonical routes plus project-scoped compat routes; both pairs exist, so the
+   implemented endpoint count is a superset of the 32 endpoints listed here
+   (30 canonical + 2 compat):
+
+   | Plan route | Canonical implementation | Compat implementation (deprecated) |
+   |---|---|---|
+   | `POST /projects/{projectId}/cancel` | `POST /projects/{projectId}/processing/{runId}/cancel` | `POST /projects/{projectId}/processing/cancel` |
+   | `POST /projects/{projectId}/retry` | `POST /projects/{projectId}/processing/{runId}/retry` | `POST /projects/{projectId}/processing/retry` |
+
+   The run-scoped routes are canonical: they name the run, so a cancel/retry can
+   never hit an unintended "latest run" and they are the pair the frontend
+   generates from the OpenAPI bundle. The project-scoped pair resolves the
+   currently active run for backwards compatibility; it is marked
+   `deprecated: true` in `openapi.v1.json` and its operationIds
+   (`cancelActiveProcessingRun`, `retryActiveProcessingRun`) are frozen because
+   renaming them would break existing clients. No behaviour was changed to
+   close this errata.
    - `GET /api/v1/projects/{projectId}/progress`
    - `GET /api/v1/projects/{projectId}/segments`
    - `GET /api/v1/projects/{projectId}/segments/{segmentId}`

@@ -39,8 +39,9 @@ namespace DubbingPlatform.Api.Controllers;
 /// via <c>retryOfRunId</c>, copies config hash; changed settings → 409
 /// <c>CONFIG_CHANGED_SINCE_RUN</c>; reuse of a start key → 422
 /// <c>IDEMPOTENCY_KEY_REUSED</c>),
-/// legacy <c>POST .../processing/cancel</c> and <c>POST .../processing/retry</c>
-/// (selective stage retry) are preserved,
+/// compat <c>POST .../processing/cancel</c> (deprecated: cancels the active
+/// run) and <c>POST .../processing/retry</c> (selective stage retry) are
+/// preserved; the run-scoped cancel/retry pair above is canonical (GAP-026),
 /// <c>GET .../progress</c> (durable unit-state progress with
 /// <c>percentApproximate</c> alias, indicator only),
 /// <c>GET .../progress/stream</c> (SSE <c>text/event-stream</c>, 2s poll,
@@ -354,6 +355,8 @@ public sealed class ProcessingController : ControllerBase
     /// Cancels a specific run (202, idempotent: cancel twice → 202 both, single
     /// terminal transition). Cancel on a terminal run → 409
     /// <c>RUN_ALREADY_TERMINAL</c>. Archived projects may still cancel.
+    /// Canonical cancel route (GAP-026); the project-scoped
+    /// <c>processing/cancel</c> is the deprecated compat pair.
     /// </summary>
     [HttpPost("processing/{runId}/cancel")]
     [Authorize(Policy = AuthPolicies.RequireProjectOwner)]
@@ -407,7 +410,9 @@ public sealed class ProcessingController : ControllerBase
 
     /// <summary>
     /// Run-level retry: creates a new run linked via <c>retryOfRunId</c> from a
-    /// failed run, copying the config hash. Requires a fresh
+    /// failed run, copying the config hash. Canonical retry route (GAP-026);
+    /// the project-scoped <c>processing/retry</c> (selective stage retry) is
+    /// the compat pair. Requires a fresh
     /// <c>Idempotency-Key</c> (missing → 400 <c>IDEMPOTENCY_KEY_REQUIRED</c>;
     /// reuse of a completed-start key for a different payload → 422
     /// <c>IDEMPOTENCY_KEY_REUSED</c>). Settings changed since the run → 409
@@ -504,6 +509,9 @@ public sealed class ProcessingController : ControllerBase
     /// reaching <c>Cancelled</c> only after the sweeper observes zero running
     /// executions. Idempotent for 24h via <c>Idempotency-Key</c> plus
     /// service-level idempotency (cancel twice → 202 both).
+    /// Deprecated compat route (GAP-026): it resolves "the active run", so it
+    /// can hit an unintended run once several are in flight. New clients use
+    /// the canonical <c>processing/{runId}/cancel</c>.
     /// </summary>
     [HttpPost("processing/cancel")]
     [Authorize(Policy = AuthPolicies.RequireProjectOwner)]

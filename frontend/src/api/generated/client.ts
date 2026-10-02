@@ -532,7 +532,7 @@ export class ApiClient {
     return this.request<S.ProcessingRun>('GET', filled, { query, body: undefined, options });
   }
 
-  /** cancelActiveProcessingRun — Cancel the active run (legacy) */
+  /** cancelActiveProcessingRun — Cancel the active run (compat) */
   public async cancelActiveProcessingRun(params: CancelActiveProcessingRunParams, options?: RequestOptions): Promise<S.ProcessingRun> {
     const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
     const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;
@@ -540,7 +540,7 @@ export class ApiClient {
     return this.request<S.ProcessingRun>('POST', filled, { query, body: undefined, options });
   }
 
-  /** retryActiveProcessingRun — Retry the active run (legacy) */
+  /** retryActiveProcessingRun — Retry the active run (compat) */
   public async retryActiveProcessingRun(params: RetryActiveProcessingRunParams, options?: RequestOptions): Promise<S.ProcessingRun> {
     const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
     const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;
