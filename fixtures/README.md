@@ -36,6 +36,8 @@ then upsampled to 48kHz to exercise the low-quality path.
 | `non-english.wav` | 4.0s | 1 (`[0..4000)`) | 1 | 520Hz marker tone, tagged `language=es`. Language-marker path selects the es pipeline. |
 | `valid-2s.mp4` | 2.0s | n/a | n/a | Legacy Task 19 ingestion-positive control (testsrc + sine, h264/aac). |
 | `invalid-text.mp4` | n/a | 0 | 0 | Legacy Task 19 ingestion-negative control (plain text renamed to .mp4; probe must fail). |
+| `zip-bomb.zip` | n/a | 0 | 0 | GAP-018 media-bomb negative control: 64KiB of zeros whose zip entry declares ~4GiB uncompressed. The media path never accepts archives, so it is rejected by the container gate. |
+| `media-bomb-truncated.mp4` | n/a | 0 | 0 | GAP-018 media-bomb negative control: first 8KiB of `valid-2s.mp4` (moov atom dropped), so probe/decode fails as `MEDIA_CORRUPT`. |
 
 ## Sizes (bytes, all < 5MB / < 15s gate enforced by the script)
 

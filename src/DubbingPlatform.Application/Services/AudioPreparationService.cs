@@ -117,11 +117,7 @@ public sealed class AudioPreparationService
 
         try
         {
-            var requiredBytes = checked(source.Asset.SizeBytes * 2L);
-            if (_media.MinDiskFreeBytes > requiredBytes)
-            {
-                requiredBytes = _media.MinDiskFreeBytes;
-            }
+            var requiredBytes = RequiredScratchBytes(source.Asset.SizeBytes, _media.MinDiskFreeBytes);
 
             EnsureMemoryAvailable(requiredBytes);
             _disk.EnsureFree(workDir, requiredBytes);
@@ -381,6 +377,27 @@ public sealed class AudioPreparationService
         {
             // Best effort; OS temp cleaners cover leftovers.
         }
+    }
+
+    /// <summary>
+    /// Scratch bytes required before FFmpeg runs: twice the source bytes
+    /// (download + decode buffers) floored by
+    /// <c>Media:MinDiskFreeBytes</c>. Pure (GAP-009/GAP-018).
+    /// </summary>
+    public static long RequiredScratchBytes(long sourceSizeBytes, long minDiskFreeBytes)
+    {
+        if (sourceSizeBytes < 0)
+        {
+            throw new DomainException("SourceSizeBytes must be >= 0.");
+        }
+
+        if (minDiskFreeBytes < 0)
+        {
+            throw new DomainException("MinDiskFreeBytes must be >= 0.");
+        }
+
+        var doubled = checked(sourceSizeBytes * 2L);
+        return doubled > minDiskFreeBytes ? doubled : minDiskFreeBytes;
     }
 
     public static void EnsureMemoryAvailable(long requiredBytes)

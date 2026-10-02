@@ -145,9 +145,47 @@ else
   echo "exists, skipping: invalid-text.mp4"
 fi
 
+# Negative controls (GAP-018 media-bomb tier). Deterministic, tiny, offline:
+# a nested zip whose inner entry declares a huge uncompressed size (zip-bomb)
+# and a truncated mp4 header that never decodes.
+if needs "zip-bomb.zip"; then
+  tmp_inner="$OUT_DIR/.zip-bomb-inner.tmp"
+  tmp_outer="$OUT_DIR/.zip-bomb-outer.tmp.zip"
+  head -c 65536 /dev/zero > "$tmp_inner"
+  (cd "$OUT_DIR" && zip -q -0 "$tmp_outer" ".zip-bomb-inner.tmp")
+  # Rewrite the inner entry's uncompressed size to 4GiB without changing bytes.
+  python3 - "$tmp_outer" <<'PY'
+import struct, sys
+path = sys.argv[1]
+with open(path, "rb") as handle:
+    data = bytearray(handle.read())
+# Local file header: signature(4) + ... + compressed(4) + uncompressed(4)
+for index in range(len(data) - 30):
+    if data[index:index + 4] == b"PK\x03\x04":
+        struct.pack_into("<I", data, index + 22, 0xFFFFFFF0)
+        break
+with open(path, "wb") as handle:
+    handle.write(data)
+PY
+  mv "$tmp_outer" "$OUT_DIR/zip-bomb.zip"
+  rm -f "$tmp_inner"
+  echo "Wrote $OUT_DIR/zip-bomb.zip"
+fi
+
+if needs "media-bomb-truncated.mp4"; then
+  ffmpeg -y -v error \
+    -f lavfi -i "testsrc=duration=3:size=320x240:rate=10" \
+    -f lavfi -i "sine=frequency=440:duration=3:sample_rate=48000" \
+    -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$OUT_DIR/.media-bomb-full.tmp.mp4"
+  # Keep only the first 8KB: the moov atom is dropped, so probing/decoding fails.
+  head -c 8192 "$OUT_DIR/.media-bomb-full.tmp.mp4" > "$OUT_DIR/media-bomb-truncated.mp4"
+  rm -f "$OUT_DIR/.media-bomb-full.tmp.mp4"
+  echo "Wrote $OUT_DIR/media-bomb-truncated.mp4"
+fi
+
 # Size gate: every fixture must stay under 5MB.
 fail=0
-for f in single-speaker.wav multi-speaker.wav overlap.wav silence.wav music-dialogue.wav noisy.wav single-video.mp4 multi-video.mp4 low-quality.wav non-english.wav valid-2s.mp4 invalid-text.mp4; do
+for f in single-speaker.wav multi-speaker.wav overlap.wav silence.wav music-dialogue.wav noisy.wav single-video.mp4 multi-video.mp4 low-quality.wav non-english.wav valid-2s.mp4 invalid-text.mp4 zip-bomb.zip media-bomb-truncated.mp4; do
   size=$(wc -c < "$OUT_DIR/$f")
   if [ "$size" -ge 5242880 ]; then
     echo "SIZE GATE FAILED: $f is $size bytes (>= 5MB)." >&2
