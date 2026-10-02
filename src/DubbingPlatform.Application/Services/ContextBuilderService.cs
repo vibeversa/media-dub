@@ -814,7 +814,12 @@ public sealed class ContextBuilderService
             usage?.EstimatedCostUsd, usage?.EstimatedCostUsd, null,
             outcome, null,
             string.Concat(prompt.TemplateId, ":", prompt.TemplateVersion), prompt.PromptHash,
-            null, null, idempotencyKey, now);
+            null, null, idempotencyKey, now,
+            promptTemplateVersion: prompt.TemplateVersion,
+            systemInstructionHash: prompt.SystemHash,
+            safetySettingsHash: null,
+            outputContentHash: null,
+            usageDimensionsJson: ProviderExecutionRecorder.BuildUsageDimensionsJson(usage, rawMetadata: null));
         await _recorder.RecordAsync(row, cancellationToken).ConfigureAwait(false);
     }
 

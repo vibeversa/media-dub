@@ -699,7 +699,8 @@ public sealed class VoicePreviewService
             response?.Usage?.TokensIn, response?.Usage?.TokensOut, response?.Usage?.AudioSeconds,
             response?.Usage?.EstimatedCostUsd, response?.Usage?.EstimatedCostUsd, null,
             outcome, null, null, null, voice.VoiceVersion, externalJobId, idempotencyKey,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            usageDimensionsJson: ProviderExecutionRecorder.BuildUsageDimensionsJson(response?.Usage, response?.RawMetadata));
         return await _recorder.RecordAsync(row, cancellationToken).ConfigureAwait(false);
     }
 

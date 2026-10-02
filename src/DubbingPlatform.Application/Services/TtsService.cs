@@ -979,7 +979,12 @@ public sealed class TtsService
             response?.Usage?.TokensIn, response?.Usage?.TokensOut, response?.Usage?.AudioSeconds,
             response?.Usage?.EstimatedCostUsd, response?.Usage?.EstimatedCostUsd, null,
             outcome, isFallback ? "tts-fallback" : null,
-            SsmlTemplateId, ssmlHash, voiceVersion, externalJobId, idempotencyKey, now);
+            SsmlTemplateId, ssmlHash, voiceVersion, externalJobId, idempotencyKey, now,
+            promptTemplateVersion: SsmlTemplateVersion,
+            systemInstructionHash: null,
+            safetySettingsHash: null,
+            outputContentHash: ProviderExecutionRecorder.HashContent(response?.ContentObjectId),
+            usageDimensionsJson: ProviderExecutionRecorder.BuildUsageDimensionsJson(response?.Usage, response?.RawMetadata));
         await _recorder.RecordAsync(row, cancellationToken).ConfigureAwait(false);
     }
 

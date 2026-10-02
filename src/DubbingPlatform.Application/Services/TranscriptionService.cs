@@ -980,7 +980,9 @@ public sealed class TranscriptionService
             response?.Usage?.TokensIn, response?.Usage?.TokensOut, response?.Usage?.AudioSeconds,
             response?.Usage?.EstimatedCostUsd, response?.Usage?.EstimatedCostUsd, null,
             outcome, null,
-            null, null, null, externalJobId, idempotencyKey, now);
+            null, null, null, externalJobId, idempotencyKey, now,
+            outputContentHash: ProviderExecutionRecorder.HashContent(response?.Text),
+            usageDimensionsJson: ProviderExecutionRecorder.BuildUsageDimensionsJson(response?.Usage, response?.RawMetadata));
         await _recorder.RecordAsync(row, cancellationToken).ConfigureAwait(false);
     }
 

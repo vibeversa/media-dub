@@ -55,7 +55,17 @@ public sealed class ProviderExecution
 
     public string? PromptTemplateId { get; private set; }
 
+    public string? PromptTemplateVersion { get; private set; }
+
     public string? PromptHash { get; private set; }
+
+    public string? SystemInstructionHash { get; private set; }
+
+    public string? SafetySettingsHash { get; private set; }
+
+    public string? OutputContentHash { get; private set; }
+
+    public string? UsageDimensionsJson { get; private set; }
 
     public string? VoiceProfileVersion { get; private set; }
 
@@ -101,7 +111,12 @@ public sealed class ProviderExecution
         string? voiceProfileVersion,
         string? externalJobId,
         string? providerIdempotencyKey,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        string? promptTemplateVersion = null,
+        string? systemInstructionHash = null,
+        string? safetySettingsHash = null,
+        string? outputContentHash = null,
+        string? usageDimensionsJson = null)
     {
         Id = id;
         TenantId = tenantId;
@@ -128,7 +143,12 @@ public sealed class ProviderExecution
         Outcome = outcome;
         FallbackReason = fallbackReason;
         PromptTemplateId = promptTemplateId;
+        PromptTemplateVersion = promptTemplateVersion;
         PromptHash = promptHash;
+        SystemInstructionHash = systemInstructionHash;
+        SafetySettingsHash = safetySettingsHash;
+        OutputContentHash = outputContentHash;
+        UsageDimensionsJson = usageDimensionsJson;
         VoiceProfileVersion = voiceProfileVersion;
         ExternalJobId = externalJobId;
         ProviderIdempotencyKey = providerIdempotencyKey;
@@ -252,6 +272,31 @@ public sealed class ProviderExecution
         if (PromptHash is not null && string.IsNullOrWhiteSpace(PromptHash))
         {
             throw new DomainException("ProviderExecution PromptHash must not be empty when set.");
+        }
+
+        if (PromptTemplateVersion is not null && string.IsNullOrWhiteSpace(PromptTemplateVersion))
+        {
+            throw new DomainException("ProviderExecution PromptTemplateVersion must not be empty when set.");
+        }
+
+        if (SystemInstructionHash is not null && string.IsNullOrWhiteSpace(SystemInstructionHash))
+        {
+            throw new DomainException("ProviderExecution SystemInstructionHash must not be empty when set.");
+        }
+
+        if (SafetySettingsHash is not null && string.IsNullOrWhiteSpace(SafetySettingsHash))
+        {
+            throw new DomainException("ProviderExecution SafetySettingsHash must not be empty when set.");
+        }
+
+        if (OutputContentHash is not null && string.IsNullOrWhiteSpace(OutputContentHash))
+        {
+            throw new DomainException("ProviderExecution OutputContentHash must not be empty when set.");
+        }
+
+        if (UsageDimensionsJson is not null && string.IsNullOrWhiteSpace(UsageDimensionsJson))
+        {
+            throw new DomainException("ProviderExecution UsageDimensionsJson must not be empty when set.");
         }
 
         if (VoiceProfileVersion is not null && string.IsNullOrWhiteSpace(VoiceProfileVersion))

@@ -909,7 +909,8 @@ public sealed class SourceSeparationService
             response.Usage?.EstimatedCostUsd, response.Usage?.EstimatedCostUsd, null,
             outcome,
             string.IsNullOrWhiteSpace(fallbackReason) ? null : Truncate(fallbackReason),
-            null, null, null, externalJobId, idempotencyKey, now);
+            null, null, null, externalJobId, idempotencyKey, now,
+            usageDimensionsJson: ProviderExecutionRecorder.BuildUsageDimensionsJson(response.Usage, response.RawMetadata));
         await _recorder.RecordAsync(row, cancellationToken).ConfigureAwait(false);
     }
 
@@ -945,7 +946,8 @@ public sealed class SourceSeparationService
             usage?.TokensIn, usage?.TokensOut, usage?.AudioSeconds,
             usage?.EstimatedCostUsd, usage?.EstimatedCostUsd, null,
             outcome, Truncate(reason),
-            null, null, null, null, idempotencyKey, now);
+            null, null, null, null, idempotencyKey, now,
+            usageDimensionsJson: ProviderExecutionRecorder.BuildUsageDimensionsJson(usage, rawMetadata: null));
         await _recorder.RecordAsync(row, cancellationToken).ConfigureAwait(false);
     }
 

@@ -629,7 +629,8 @@ public sealed class DiarizationWorker : BaseConsumer<StageWorkRequested>
             response?.Usage?.EstimatedCostUsd, response?.Usage?.EstimatedCostUsd, null,
             outcome,
             string.IsNullOrWhiteSpace(fallbackReason) ? null : Truncate(fallbackReason),
-            null, null, null, externalJobId, idempotencyKey, now);
+            null, null, null, externalJobId, idempotencyKey, now,
+            usageDimensionsJson: ProviderExecutionRecorder.BuildUsageDimensionsJson(response?.Usage, response?.RawMetadata));
         await _recorder.RecordAsync(row, cancellationToken).ConfigureAwait(false);
     }
 

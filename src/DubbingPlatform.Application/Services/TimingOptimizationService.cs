@@ -1026,7 +1026,8 @@ public sealed class TimingOptimizationService
                 execution.Attempt, requestHash, responseHash, Math.Max(0, stopwatch.ElapsedMilliseconds),
                 null, null, probedMs / 1000.0, null, null, null,
                 OutcomeClass.Success, "timing-stretch",
-                StretchTemplateId, argsHash, null, null, idempotencyKey, now), cancellationToken).ConfigureAwait(false);
+                StretchTemplateId, argsHash, null, null, idempotencyKey, now,
+                promptTemplateVersion: StretchTemplateVersion), cancellationToken).ConfigureAwait(false);
 
             var generatedId = Guid.NewGuid();
             using (TenantContext.BeginScope(tenantId))

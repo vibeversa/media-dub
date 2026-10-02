@@ -117,6 +117,34 @@ public sealed class PersistenceModelTests : IDisposable
     }
 
     [Fact]
+    public void Provider_Executions_Have_Audit_Columns_With_Expected_Types_And_Lengths()
+    {
+        var entity = _context.Model.FindEntityType(typeof(ProviderExecution));
+        Assert.NotNull(entity);
+
+        var expected = new Dictionary<string, (string Column, int Length)>(StringComparer.Ordinal)
+        {
+            ["PromptTemplateVersion"] = ("prompt_template_version", 64),
+            ["SystemInstructionHash"] = ("system_instruction_hash", 64),
+            ["SafetySettingsHash"] = ("safety_settings_hash", 64),
+            ["OutputContentHash"] = ("output_content_hash", 64),
+            ["UsageDimensionsJson"] = ("usage_dimensions_json", 2048),
+        };
+
+        foreach (var (propertyName, (column, length)) in expected)
+        {
+            var property = entity.FindProperty(propertyName);
+            Assert.NotNull(property);
+            Assert.Equal(typeof(string), property!.ClrType);
+            Assert.Equal(column, property.GetColumnName());
+            Assert.Equal(length, property.GetMaxLength());
+            // Expand-only migration: new audit columns are nullable.
+            Assert.True(property.IsNullable);
+            Assert.False(property.IsPrimaryKey());
+        }
+    }
+
+    [Fact]
     public void MassTransit_Outbox_Tables_Exist_With_Snake_Case_Names()
     {
         var tables = _context.Model.GetEntityTypes()

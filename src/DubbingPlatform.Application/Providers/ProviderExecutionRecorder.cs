@@ -1,3 +1,7 @@
+using System.Text;
+using System.Text.Json;
+using DubbingPlatform.Application.Abstractions.Providers.Dtos;
+using DubbingPlatform.Application.Configuration;
 using DubbingPlatform.Application.Exceptions;
 using DubbingPlatform.Application.MultiTenancy;
 using DubbingPlatform.Application.Services;
@@ -9,11 +13,13 @@ namespace DubbingPlatform.Application.Providers;
 
 /// <summary>
 /// Persists every provider call, including fallback attempts. Callers build the
-/// full <see cref="ProviderExecution"/> (all 25 execution fields) and record it;
-/// duplicates on <c>ProviderIdempotencyKey</c> reconcile by request+response
-/// hash (same hashes return the existing id without double billing; differing
-/// hashes throw <c>CONFLICT</c>). Idempotency keys use
+/// full <see cref="ProviderExecution"/> (all execution fields) and record it;
+/// duplicates on <c>ProviderIdempotencyKey</c> reconcile by request+response+
+/// output-content hash (same hashes return the existing id without double
+/// billing; differing hashes throw <c>CONFLICT</c>). Idempotency keys use
 /// <c>{run:N}:{stage}:{scope}:{attempt}</c> where the provider supports them.
+/// GAP-011: <c>OutputContentHash</c> is the distinct output-body hash used for
+/// reconcile (separate from the <c>ResponseHash</c> envelope hash).
 /// </summary>
 public sealed class ProviderExecutionRecorder
 {
@@ -54,6 +60,98 @@ public sealed class ProviderExecutionRecorder
     }
 
     /// <summary>
+    /// SHA-256 (lowercase hex, 64 chars) of provider content, used for
+    /// <see cref="ProviderExecution.OutputContentHash"/> (reconcile) and for
+    /// <see cref="ProviderExecution.SystemInstructionHash"/> /
+    /// <see cref="ProviderExecution.SafetySettingsHash"/>. Same encoding as
+    /// <c>RequestHash</c>/<c>PromptHash</c> (raw SHA-256 over UTF-8), so the
+    /// hashes are directly comparable. Null or whitespace content yields null,
+    /// so capabilities without a system prompt or safety settings stay null
+    /// rather than hashed-empty. Only hashes are persisted — never the content
+    /// itself, so prompt text and provider payloads never reach the table.
+    /// </summary>
+    public static string? HashContent(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return null;
+        }
+
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(content));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Canonical JSON of provider usage dimensions beyond the fixed columns:
+    /// provider-reported <c>usage.*</c> metadata keys plus the metered
+    /// <see cref="ProviderUsage"/> fields. Null when nothing is present. Secret-
+    /// looking keys and large values are dropped so telemetry never carries
+    /// credentials or payloads.
+    /// </summary>
+    public static string? BuildUsageDimensionsJson(
+        ProviderUsage? usage,
+        IReadOnlyDictionary<string, string>? rawMetadata)
+    {
+        var dimensions = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        if (usage is null)
+        {
+            usage = new ProviderUsage(null, null, null, null);
+        }
+
+        if (usage.TokensIn.HasValue)
+        {
+            dimensions["tokens_in"] = usage.TokensIn.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (usage.TokensOut.HasValue)
+        {
+            dimensions["tokens_out"] = usage.TokensOut.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (usage.AudioSeconds.HasValue && !double.IsNaN(usage.AudioSeconds.Value) && !double.IsInfinity(usage.AudioSeconds.Value))
+        {
+            dimensions["audio_seconds"] = usage.AudioSeconds.Value.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (usage.EstimatedCostUsd.HasValue && !double.IsNaN(usage.EstimatedCostUsd.Value) && !double.IsInfinity(usage.EstimatedCostUsd.Value))
+        {
+            dimensions["estimated_cost_usd"] = usage.EstimatedCostUsd.Value.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (rawMetadata is not null)
+        {
+            foreach (var pair in rawMetadata)
+            {
+                if (string.IsNullOrWhiteSpace(pair.Key) || string.IsNullOrWhiteSpace(pair.Value))
+                {
+                    continue;
+                }
+
+                // Only provider-declared usage dimensions; never payloads,
+                // base64 audio, or job handles (recorded separately).
+                if (!pair.Key.StartsWith("usage.", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (ConfigurationHashCalculator.IsSecretKey(pair.Key) || pair.Value.Length > 128)
+                {
+                    continue;
+                }
+
+                dimensions[pair.Key] = pair.Value;
+            }
+        }
+
+        if (dimensions.Count == 0)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Serialize(dimensions);
+    }
+
+    /// <summary>
     /// Records one execution, reconciling idempotency-key duplicates.
     /// Returns the persisted (or pre-existing) row id.
     /// Trace enrichment mirrors <c>Infrastructure.Observability.TraceEnricher</c>
@@ -79,7 +177,8 @@ public sealed class ProviderExecutionRecorder
                 if (existing is not null)
                 {
                     if (string.Equals(existing.RequestHash, execution.RequestHash, StringComparison.Ordinal)
-                        && string.Equals(existing.ResponseHash, execution.ResponseHash, StringComparison.Ordinal))
+                        && string.Equals(existing.ResponseHash, execution.ResponseHash, StringComparison.Ordinal)
+                        && string.Equals(existing.OutputContentHash, execution.OutputContentHash, StringComparison.Ordinal))
                     {
                         return existing.Id;
                     }

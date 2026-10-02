@@ -224,7 +224,8 @@ public sealed class VideoIntelligenceWorker : BaseConsumer<EnrichmentRequested>
             response.Usage?.TokensIn, response.Usage?.TokensOut, response.Usage?.AudioSeconds,
             response.Usage?.EstimatedCostUsd, response.Usage?.EstimatedCostUsd, null,
             OutcomeClass.Success, null, null, null, null, externalJobId, idempotencyKey,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            usageDimensionsJson: ProviderExecutionRecorder.BuildUsageDimensionsJson(response.Usage, response.RawMetadata));
         await _recorder.RecordAsync(row, cancellationToken).ConfigureAwait(false);
     }
 

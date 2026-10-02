@@ -24,6 +24,11 @@ public sealed class ProviderExecutionConfiguration : IEntityTypeConfiguration<Pr
         builder.Property(e => e.Outcome).HasConversion<string>().HasMaxLength(32);
         builder.Property(e => e.FallbackReason).HasMaxLength(1024);
         builder.Property(e => e.PromptHash).HasMaxLength(64);
+        builder.Property(e => e.PromptTemplateVersion).HasMaxLength(64);
+        builder.Property(e => e.SystemInstructionHash).HasMaxLength(64);
+        builder.Property(e => e.SafetySettingsHash).HasMaxLength(64);
+        builder.Property(e => e.OutputContentHash).HasMaxLength(64);
+        builder.Property(e => e.UsageDimensionsJson).HasMaxLength(2048);
         builder.Property(e => e.VoiceProfileVersion).HasMaxLength(64);
         builder.Property(e => e.ExternalJobId).HasMaxLength(256);
         builder.Property(e => e.ProviderIdempotencyKey).HasMaxLength(256);

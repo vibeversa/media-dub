@@ -1434,7 +1434,12 @@ public sealed class TranslationService
             response?.Usage?.EstimatedCostUsd, response?.Usage?.EstimatedCostUsd, null,
             outcome, isFallback ? "fallback" : null,
             string.Concat(PromptTemplateIdText, ":", PromptTemplateVersion), promptHash,
-            null, externalJobId, idempotencyKey, now);
+            null, externalJobId, idempotencyKey, now,
+            promptTemplateVersion: PromptTemplateVersion,
+            systemInstructionHash: null,
+            safetySettingsHash: null,
+            outputContentHash: ProviderExecutionRecorder.HashContent(response?.PrimaryText),
+            usageDimensionsJson: ProviderExecutionRecorder.BuildUsageDimensionsJson(response?.Usage, response?.RawMetadata));
         await _recorder.RecordAsync(row, cancellationToken).ConfigureAwait(false);
     }
 
