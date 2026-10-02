@@ -198,9 +198,22 @@ public sealed class ProcessingController : ControllerBase
                 throw new QuotaExceededException("Cost budget would be exceeded by starting processing.");
             }
 
+            // GAP-025: the preflight figures are surfaced, not discarded — the
+            // estimate rides the 202 start response, and a refusal is a 429 whose
+            // details carry estimate / current spend / cap.
+            double? costEstimateUsd = null;
             if (_costs is not null)
             {
-                await _costs.PreflightAsync(tenantId, projectGuid, runId, cancellationToken).ConfigureAwait(false);
+                var preflight = await _costs
+                    .PreflightEstimateAsync(tenantId, projectGuid, runId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (preflight.IsOverBudget)
+                {
+                    QuotaMeters.Rejections.Add(1, new KeyValuePair<string, object?>("dimension", CostPreflightEstimate.Dimension));
+                    throw new CostBudgetExceededException(preflight);
+                }
+
+                costEstimateUsd = preflight.EstimateUsd;
             }
 
             ProcessingStartResult started;
@@ -229,7 +242,8 @@ public sealed class ProcessingController : ControllerBase
                 started.CreatedAt,
                 started.StartedAt,
                 null,
-                started.ConfigurationHash);
+                started.ConfigurationHash,
+                costEstimateUsd);
 
             await _processingIdempotency.CompleteAsync(
                 tenantId, key, StatusCodes.Status202Accepted, started.RunId,

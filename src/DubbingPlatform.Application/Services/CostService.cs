@@ -60,6 +60,57 @@ public sealed record PriceTable(string Version, Dictionary<string, double> UnitP
 }
 
 /// <summary>
+/// Start-preflight result (GAP-025): the figures behind the cost gate so the
+/// estimate can be surfaced on start and a refusal can state budget-vs-estimate
+/// instead of a bare boolean. All amounts are USD and must be finite;
+/// <see cref="LimitUsd"/> is <c>Quota:MaxCostPerProject</c>.
+/// </summary>
+public sealed record CostPreflightEstimate(
+    double EstimateUsd,
+    double CurrentSpendUsd,
+    double LimitUsd,
+    bool IsOverBudget)
+{
+    /// <summary>Spend already committed plus this estimate.</summary>
+    public double ProjectedTotalUsd => CurrentSpendUsd + EstimateUsd;
+
+    /// <summary>Quota dimension reported to the client on refusal.</summary>
+    public const string Dimension = "cost-per-project";
+
+    /// <summary>
+    /// Builds the figure set for the project budget: applies the same
+    /// <see cref="CostService.IsOverBudget"/> decision the gate uses, so a
+    /// reported estimate can never disagree with the refusal. Pure.
+    /// </summary>
+    public static CostPreflightEstimate Create(double estimateUsd, double currentSpendUsd, double limitUsd)
+    {
+        foreach (var value in new[] { estimateUsd, currentSpendUsd, limitUsd })
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                throw new ArgumentException("Cost figures must be finite.", nameof(estimateUsd));
+            }
+        }
+
+        return new CostPreflightEstimate(
+            estimateUsd,
+            currentSpendUsd,
+            limitUsd,
+            CostService.IsOverBudget(currentSpendUsd, estimateUsd, limitUsd));
+    }
+
+    /// <summary>Structured envelope details (never media, text, or secrets).</summary>
+    public IReadOnlyDictionary<string, object?> ToDetails() => new Dictionary<string, object?>(StringComparer.Ordinal)
+    {
+        ["dimension"] = Dimension,
+        ["estimateUsd"] = EstimateUsd,
+        ["currentSpendUsd"] = CurrentSpendUsd,
+        ["limitUsd"] = LimitUsd,
+        ["projectedTotalUsd"] = ProjectedTotalUsd,
+    };
+}
+
+/// <summary>
 /// Usage dimensions for one estimate. All values must be >= 0 (negative usage
 /// is a validation error). Only ids, capabilities, and amounts are logged —
 /// never media, text, or secrets.
@@ -433,6 +484,22 @@ public sealed class CostService
         Guid runId,
         CancellationToken cancellationToken = default)
     {
+        return (await PreflightEstimateAsync(tenantId, projectId, runId, cancellationToken).ConfigureAwait(false)).EstimateUsd;
+    }
+
+    /// <summary>
+    /// Figure-carrying variant of <see cref="PreflightAsync"/> (GAP-025): the
+    /// estimate, current project spend, cap, and the over-budget decision, all
+    /// from the same pure arithmetic. Never throws for an over-budget project —
+    /// the caller surfaces the figures and decides (the controller converts an
+    /// over-budget result into <see cref="CostBudgetExceededException"/>).
+    /// </summary>
+    public async Task<CostPreflightEstimate> PreflightEstimateAsync(
+        Guid tenantId,
+        Guid projectId,
+        Guid runId,
+        CancellationToken cancellationToken = default)
+    {
         RequireTenant(tenantId);
         RequireId(projectId, nameof(projectId));
         RequireId(runId, nameof(runId));
@@ -468,12 +535,12 @@ public sealed class CostService
 
         if (IsOverBudget(current, estimate, _quota.MaxCostPerProject))
         {
-            QuotaMeters.Rejections.Add(1, new KeyValuePair<string, object?>("dimension", "cost-per-project"));
-            throw new QuotaExceededException(
-                $"Processing preflight estimate {estimate.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)} USD plus current {current.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)} USD exceeds project cap {_quota.MaxCostPerProject.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)} USD (dimension cost-per-project).");
+            QuotaMeters.Rejections.Add(1, new KeyValuePair<string, object?>("dimension", CostPreflightEstimate.Dimension));
+            throw new CostBudgetExceededException(
+                CostPreflightEstimate.Create(estimate, current, _quota.MaxCostPerProject));
         }
 
-        return estimate;
+        return CostPreflightEstimate.Create(estimate, current, _quota.MaxCostPerProject);
     }
 
     private static void RequireTenant(Guid tenantId)

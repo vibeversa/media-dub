@@ -194,6 +194,7 @@ export type PreferencesResponse = Record<string, string>;
 
 export type ProcessingRun = {
   readonly "configHash"?: string;
+  readonly "costEstimateUsd"?: number | null;
   readonly "createdAt"?: string;
   readonly "retryOfRunId"?: string | null;
   readonly "runId": string;

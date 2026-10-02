@@ -18,7 +18,12 @@ public sealed class StartProcessingRequest
 /// <summary>
 /// Processing-run response body. <c>RetryOfRunId</c> is set only for run-level
 /// retries (new run linked to the failed run); <c>ConfigHash</c> echoes the
-/// run configuration hash for transparency.
+/// run configuration hash for transparency. <c>CostEstimateUsd</c> is the
+/// start-preflight estimate in USD (transcription + translation + TTS from the
+/// validated duration) — it is returned on start so the UI can show the figure
+/// before any spend lands (GAP-025). It is null on list/get reads and on
+/// idempotent replays of a previous start (the replay returns the stored run
+/// summary, which carries no estimate).
 /// </summary>
 public sealed record ProcessingRunResponse(
     string RunId,
@@ -28,7 +33,8 @@ public sealed record ProcessingRunResponse(
     DateTimeOffset CreatedAt,
     DateTimeOffset? StartedAt,
     string? RetryOfRunId = null,
-    string? ConfigHash = null);
+    string? ConfigHash = null,
+    double? CostEstimateUsd = null);
 
 /// <summary>
 /// Durable progress response body. <c>PercentageIndicator</c> is

@@ -4404,6 +4404,12 @@
           "configHash": {
             "type": "string"
           },
+          "costEstimateUsd": {
+            "type": "number",
+            "format": "double",
+            "nullable": true,
+            "description": "Start-preflight cost estimate in USD (transcription + translation + TTS from the validated media duration). Returned on start so the UI can show the figure before spend lands; null on list/get reads and on idempotent replays. When the project cost cap would be exceeded, start returns 429 QUOTA_EXCEEDED whose details carry estimateUsd, currentSpendUsd, limitUsd, projectedTotalUsd, and dimension."
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
