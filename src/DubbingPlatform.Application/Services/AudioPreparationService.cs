@@ -117,7 +117,14 @@ public sealed class AudioPreparationService
 
         try
         {
-            _disk.EnsureFree(workDir, checked(source.Asset.SizeBytes * 2L));
+            var requiredBytes = checked(source.Asset.SizeBytes * 2L);
+            if (_media.MinDiskFreeBytes > requiredBytes)
+            {
+                requiredBytes = _media.MinDiskFreeBytes;
+            }
+
+            EnsureMemoryAvailable(requiredBytes);
+            _disk.EnsureFree(workDir, requiredBytes);
 
             var extension = ExtensionFor(source.Asset.FileName);
             var sourcePath = Path.Combine(workDir, string.Concat("source", extension));
@@ -373,6 +380,33 @@ public sealed class AudioPreparationService
         catch (Exception)
         {
             // Best effort; OS temp cleaners cover leftovers.
+        }
+    }
+
+    public static void EnsureMemoryAvailable(long requiredBytes)
+    {
+        if (requiredBytes < 0)
+        {
+            throw new DomainException("RequiredBytes must be >= 0.");
+        }
+
+        long available;
+        try
+        {
+            available = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        }
+#pragma warning disable CA1031 // Memory probe: any failure means skip the check (disk gate still applies).
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return;
+        }
+
+        if (available > 0 && available < requiredBytes)
+        {
+            throw new ErrorCodeException(
+                ErrorCodes.ResourceExhausted,
+                $"Available memory ({available} bytes) is below required ({requiredBytes} bytes); failing fast with no partial artifact.");
         }
     }
 
