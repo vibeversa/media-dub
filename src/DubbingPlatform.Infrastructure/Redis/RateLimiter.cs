@@ -47,6 +47,14 @@ public sealed class RateLimiter
 {
     public const string KeyPrefix = "ratelimit:";
 
+    /// <summary>
+    /// Tenant-wide provider-call dimension (GAP-016). Distinct from the
+    /// per (tenant, provider) <c>concurrency</c> window; the key uses
+    /// <see cref="TenantFairnessGate.TenantConcurrencySegment"/> so every
+    /// provider shares one tenant budget.
+    /// </summary>
+    public const string TenantConcurrencyDimension = "tenantConcurrency";
+
     public const string LuaScript =
         "local current = redis.call('INCRBY', KEYS[1], ARGV[1]) " +
         "if current == tonumber(ARGV[1]) then redis.call('EXPIRE', KEYS[1], 60) end " +
@@ -83,6 +91,7 @@ public sealed class RateLimiter
             "chars" or "char" or "characters" => "chars",
             "audiosecs" or "audioseconds" or "audiosec" or "audio" or "seconds" => "audioSecs",
             "concurrency" or "concurrent" or "inflight" => "concurrency",
+            "tenantconcurrency" or "tenant-concurrency" or "tenantconcurrent" => TenantConcurrencyDimension,
             _ => throw new DomainException($"Unknown rate dimension '{dimension}'."),
         };
     }
@@ -101,6 +110,7 @@ public sealed class RateLimiter
             "chars" => limits.CharsPerMin,
             "audioSecs" => limits.AudioSecondsPerMin,
             "concurrency" => limits.Concurrency,
+            TenantConcurrencyDimension => limits.TenantConcurrency,
             _ => throw new DomainException($"Unknown rate dimension '{normalizedDimension}'."),
         };
     }
@@ -253,16 +263,23 @@ public sealed class RateLimiter
 /// <summary>
 /// Tenant fairness gate (same Redis as rate limiting; R3). Two caps:
 /// <c>maxActiveSegmentStages = Quota:MaxConcurrentStagesPerTenant</c> (PG
-/// execution counts — durable, correct across restarts) and
-/// <c>maxConcurrentProviderCalls = RateLimit:Concurrency</c> (Redis admissions
-/// per minute — ephemeral, never blocks on outage). The dispatcher calls
-/// <see cref="TryAcquireDispatchAsync"/> before publish; workers call
+/// execution counts — durable, correct across restarts) and the provider-call
+/// caps: <c>RateLimit:Concurrency</c> per (tenant, provider) plus the
+/// tenant-wide <c>RateLimit:TenantConcurrency</c> (GAP-016), both Redis
+/// admissions per minute — ephemeral, never blocks on outage. The dispatcher
+/// calls <see cref="TryAcquireDispatchAsync"/> before publish; workers call
 /// <see cref="TryAcquireProviderCallAsync"/> before provider calls. Denials
 /// surface as the frozen <c>concurrency-exhausted</c> / <c>rate-limited</c>
 /// dispatcher reasons and 429 RATE_LIMITED at the API boundary.
 /// </summary>
 public sealed class TenantFairnessGate
 {
+    /// <summary>
+    /// Reserved key segment for the tenant-wide provider-call window, so all
+    /// providers share one tenant budget.
+    /// </summary>
+    public const string TenantConcurrencySegment = "_tenant";
+
     private readonly IConnectionMultiplexer? _redis;
     private readonly QuotaOptions _quota;
     private readonly RateLimitOptions _rates;
@@ -352,18 +369,45 @@ public sealed class TenantFairnessGate
     }
 
     /// <summary>
-    /// Whether the tenant may start one more provider call (Redis
-    /// <c>concurrency</c> admissions; fail-open). Delegates to
-    /// <see cref="RateLimiter"/> so Redis + in-memory behavior stay uniform.
+    /// Whether the tenant may start one more provider call. Two windows are
+    /// charged, both fail-open (Redis + in-memory fallback):
+    /// the per (tenant, provider) <c>concurrency</c> window and the tenant-wide
+    /// <c>tenantConcurrency</c> window (GAP-016) that spans every provider.
+    /// The tenant window is charged first so a tenant already at its cap does
+    /// not consume its per-provider budget on a call that will be rejected.
     /// </summary>
-    public Task<bool> TryAcquireProviderCallAsync(
+    public async Task<bool> TryAcquireProviderCallAsync(
         Guid tenantId,
         string provider,
         CancellationToken cancellationToken = default)
     {
         _ = cancellationToken;
         ArgumentException.ThrowIfNullOrWhiteSpace(provider);
-        return _limiter.TryAcquireAsync(tenantId, provider, "concurrency", 1, cancellationToken);
+
+        var tenantAdmitted = await _limiter.TryAcquireAsync(
+            tenantId, TenantConcurrencySegment, RateLimiter.TenantConcurrencyDimension, 1, cancellationToken).ConfigureAwait(false);
+        if (!tenantAdmitted)
+        {
+            return false;
+        }
+
+        return await _limiter.TryAcquireAsync(
+            tenantId, provider, "concurrency", 1, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Tenant-wide provider-call headroom check without charging the window.
+    /// Pure. Used by diagnostics/tests; enforcement is
+    /// <see cref="TryAcquireProviderCallAsync"/>.
+    /// </summary>
+    public static bool IsTenantProviderCallAllowed(long tenantWindowUsed, long tenantMax)
+    {
+        if (tenantWindowUsed < 0 || tenantMax < 1)
+        {
+            throw new DomainException("Fairness counts must be non-negative and max positive.");
+        }
+
+        return tenantWindowUsed < tenantMax;
     }
 
     /// <summary>

@@ -24,6 +24,18 @@ public sealed class RateLimitOptions
 
     [Range(1, 10000)]
     public int Concurrency { get; set; } = 10;
+
+    /// <summary>
+    /// Per-tenant cap on in-flight provider calls, counted across every
+    /// provider (GAP-016 second fairness cap). <see cref="Concurrency"/> is the
+    /// per (tenant, provider) window; this is the tenant-wide budget that keeps
+    /// one tenant from consuming the whole shared provider quota while other
+    /// tenants wait. Must be greater than or equal to
+    /// <see cref="Concurrency"/> so the tenant cap never binds before the
+    /// per-provider window does.
+    /// </summary>
+    [Range(1, 10000)]
+    public int TenantConcurrency { get; set; } = 50;
 }
 
 /// <summary>
@@ -54,6 +66,17 @@ public sealed class RateLimitOptionsValidator : IValidateOptions<RateLimitOption
         if (options.Concurrency < 1 || options.Concurrency > 10000)
         {
             return ValidateOptionsResult.Fail($"{nameof(RateLimitOptions)}.{nameof(RateLimitOptions.Concurrency)} must be in 1..10000.");
+        }
+
+        if (options.TenantConcurrency < 1 || options.TenantConcurrency > 10000)
+        {
+            return ValidateOptionsResult.Fail($"{nameof(RateLimitOptions)}.{nameof(RateLimitOptions.TenantConcurrency)} must be in 1..10000.");
+        }
+
+        if (options.TenantConcurrency < options.Concurrency)
+        {
+            return ValidateOptionsResult.Fail(
+                $"{nameof(RateLimitOptions)}.{nameof(RateLimitOptions.TenantConcurrency)} must be at least {nameof(RateLimitOptions.Concurrency)}.");
         }
 
         return ValidateOptionsResult.Success;
