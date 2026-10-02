@@ -238,6 +238,7 @@ public sealed class AdminSseErrorContractTests
             "GET /api/v1/admin/diagnostics/leases",
             "GET /api/v1/admin/diagnostics/orphans",
             "GET /api/v1/admin/diagnostics/review-backlog",
+            "GET /api/v1/admin/diagnostics/workers",
         })
         {
             Assert.True(RoleMatrix.IsAllowed(route, ["TenantAdmin"]));
@@ -342,6 +343,15 @@ public sealed class AdminSseErrorContractTests
 
             using var backlog = await client.GetAsync("/api/v1/admin/diagnostics/review-backlog").ConfigureAwait(true);
             Assert.Equal(HttpStatusCode.OK, backlog.StatusCode);
+
+            using var workers = await client.GetAsync("/api/v1/admin/diagnostics/workers").ConfigureAwait(true);
+            Assert.Equal(HttpStatusCode.OK, workers.StatusCode);
+            using var workersDoc = JsonDocument.Parse(await workers.Content.ReadAsStringAsync().ConfigureAwait(true));
+            Assert.Equal(JsonValueKind.Array, workersDoc.RootElement.ValueKind);
+            foreach (var worker in workersDoc.RootElement.EnumerateArray())
+            {
+                Assert.Contains(worker.GetProperty("status").GetString(), new[] { "Active", "Stale", "Unknown" });
+            }
 
             using var health = await client.GetAsync("/api/v1/admin/provider-health").ConfigureAwait(true);
             Assert.Equal(HttpStatusCode.OK, health.StatusCode);

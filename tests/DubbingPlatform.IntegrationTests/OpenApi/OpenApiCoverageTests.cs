@@ -120,6 +120,7 @@ public sealed class OpenApiCoverageTests
         "GET /api/v1/admin/diagnostics/leases",
         "GET /api/v1/admin/diagnostics/orphans",
         "GET /api/v1/admin/diagnostics/review-backlog",
+        "GET /api/v1/admin/diagnostics/workers",
     ];
 
     // Naturally-idempotent POSTs that intentionally omit Idempotency-Key docs.

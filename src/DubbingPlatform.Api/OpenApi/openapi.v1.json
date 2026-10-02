@@ -3370,6 +3370,35 @@
         }
       }
     },
+    "/admin/diagnostics/workers": {
+      "get": {
+        "operationId": "getDiagnosticsWorkers",
+        "tags": ["admin"],
+        "summary": "Worker health (derived from runtime lease state)",
+        "description": "Elevated (admin.manage or diagnostics.view). Per-worker status: Active (at least one unexpired running lease), Stale (running leases, all expired), Unknown (roster entry with no runtime state, null heartbeat). Names, statuses, counts, and timestamps only; never lease tokens or payloads. Roster entries with no state read Unknown, so an idle tenant returns a 200 list, never 404.",
+        "responses": {
+          "200": {
+            "description": "Worker health list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkerHealth"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
     "/admin/diagnostics/dlq": {
       "get": {
         "operationId": "getDiagnosticsDlq",
@@ -5165,6 +5194,34 @@
           },
           "enabled": {
             "type": "boolean"
+          }
+        }
+      },
+      "WorkerHealth": {
+        "type": "object",
+        "description": "Per-worker health derived from runtime lease state (counts and timestamps only; never lease tokens).",
+        "properties": {
+          "correlationId": {
+            "type": "string"
+          },
+          "worker": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Active", "Stale", "Unknown"]
+          },
+          "lastHeartbeatAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "activeJobs": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "string",
+            "nullable": true
           }
         }
       },

@@ -459,6 +459,16 @@ export interface VoicePreviewResponse {
 
 export type VoicePreviewStatus = "Queued" | "Running" | "Completed" | "Failed" | "Cancelled";
 
+/** Per-worker health derived from runtime lease state (counts and timestamps only; never lease tokens). */
+export type WorkerHealth = {
+  readonly "activeJobs"?: number;
+  readonly "correlationId"?: string;
+  readonly "lastHeartbeatAt"?: string | null;
+  readonly "status"?: "Active" | "Stale" | "Unknown";
+  readonly "version"?: string | null;
+  readonly "worker"?: string;
+};
+
 /** Workspace aggregate: project, media, run, phase, stage, progress, review, warnings, output, cost, activity, permissions. */
 export interface Workspace {
   readonly "permissions"?: (string)[];

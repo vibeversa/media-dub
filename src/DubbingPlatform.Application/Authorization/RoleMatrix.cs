@@ -55,6 +55,10 @@ public static class RoleMatrix
             ["GET /api/v1/admin/diagnostics/leases"] = [Roles.Service, Roles.TenantAdmin],
             ["GET /api/v1/admin/diagnostics/orphans"] = [Roles.Service, Roles.TenantAdmin],
             ["GET /api/v1/admin/diagnostics/review-backlog"] = [Roles.Service, Roles.TenantAdmin],
+
+            // GAP-020: worker health (lease-derived roster) is operator
+            // infrastructure state, same gate as the other diagnostics reads.
+            ["GET /api/v1/admin/diagnostics/workers"] = [Roles.Service, Roles.TenantAdmin],
             // Task 044 (Plan B §19.3): operator-only local-GPU health. Device
             // inventory — accelerator model, model revision, device count,
             // per-device latency — is infrastructure detail. It is not secret,

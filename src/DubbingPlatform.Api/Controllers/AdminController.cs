@@ -57,6 +57,7 @@ public sealed class AdminController : ControllerBase
     private readonly LeaseOrphanService _leases;
     private readonly ReviewBacklogService _reviews;
     private readonly ProviderHealthQueryService _providers;
+    private readonly WorkerHealthService _workers;
     private readonly IPermissionResolver _permissions;
     private readonly QuotaOptions _quota;
     private readonly DashboardService _dashboard;
@@ -68,6 +69,7 @@ public sealed class AdminController : ControllerBase
         LeaseOrphanService leases,
         ReviewBacklogService reviews,
         ProviderHealthQueryService providers,
+        WorkerHealthService workers,
         IPermissionResolver permissions,
         IOptions<QuotaOptions> quotaOptions,
         DashboardService dashboard)
@@ -78,6 +80,7 @@ public sealed class AdminController : ControllerBase
         ArgumentNullException.ThrowIfNull(leases);
         ArgumentNullException.ThrowIfNull(reviews);
         ArgumentNullException.ThrowIfNull(providers);
+        ArgumentNullException.ThrowIfNull(workers);
         ArgumentNullException.ThrowIfNull(permissions);
         ArgumentNullException.ThrowIfNull(quotaOptions);
         ArgumentNullException.ThrowIfNull(dashboard);
@@ -87,6 +90,7 @@ public sealed class AdminController : ControllerBase
         _leases = leases;
         _reviews = reviews;
         _providers = providers;
+        _workers = workers;
         _permissions = permissions;
         _quota = quotaOptions.Value;
         _dashboard = dashboard;
@@ -432,6 +436,29 @@ public sealed class AdminController : ControllerBase
             tenantId, null, User.GetSubject(), "admin.access",
             "admin", "diagnostics/review-backlog", null, cancellationToken).ConfigureAwait(false);
         return Ok(backlog);
+    }
+
+    /// <summary>
+    /// Worker health (GAP-020): per-worker status derived from runtime lease
+    /// state — <c>Active</c> (at least one unexpired running lease),
+    /// <c>Stale</c> (running leases, all expired), <c>Unknown</c> (roster entry
+    /// with no runtime state). Counts, names, and timestamps only; never lease
+    /// tokens or payload. Roster entries with no state read <c>Unknown</c>, so
+    /// the response is a 200 zero/list shape, never 404.
+    /// </summary>
+    [HttpGet("diagnostics/workers")]
+    [ProducesResponseType(typeof(IReadOnlyList<WorkerHealthDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetDiagnosticsWorkers(CancellationToken cancellationToken)
+    {
+        var tenantId = User.GetTenantId();
+        var userId = RequireUserId(User);
+        await RequireElevatedAsync(tenantId, userId, cancellationToken).ConfigureAwait(false);
+        var correlationId = CorrelationIdMiddleware.GetCorrelationId(HttpContext);
+        var workers = await _workers.GetWorkerHealthAsync(tenantId, userId, correlationId, cancellationToken).ConfigureAwait(false);
+        await _audit.LogAsync(
+            tenantId, null, User.GetSubject(), "admin.access",
+            "admin", "diagnostics/workers", null, cancellationToken).ConfigureAwait(false);
+        return Ok(workers);
     }
 
     /// <summary>

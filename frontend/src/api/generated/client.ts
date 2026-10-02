@@ -229,6 +229,14 @@ export class ApiClient {
     return this.request<S.ReviewBacklog>('GET', filled, { query, body: undefined, options });
   }
 
+  /** getDiagnosticsWorkers — Worker health (derived from runtime lease state) */
+  public async getDiagnosticsWorkers(params?: GetDiagnosticsWorkersParams, options?: RequestOptions): Promise<(S.WorkerHealth)[]> {
+    const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
+    const query = ((params ?? {}) as { query?: Record<string, string | number | boolean | undefined> }).query;
+    const filled = "/admin/diagnostics/workers".replace(/\{([^}]+)\}/g, (_m, key) => encodeURIComponent(String(pathParams[key as string])));
+    return this.request<(S.WorkerHealth)[]>('GET', filled, { query, body: undefined, options });
+  }
+
   /** getAdminDlqSummary — DLQ summary (DB-free operator guidance) */
   public async getAdminDlqSummary(params?: GetAdminDlqSummaryParams, options?: RequestOptions): Promise<S.GetAdminDlqSummaryResponse> {
     const pathParams = (((params ?? {}) as { path?: Record<string, unknown> }).path ?? {});
@@ -886,6 +894,11 @@ export interface GetDiagnosticsQueuesParams {
 }
 
 export interface GetDiagnosticsReviewBacklogParams {
+  readonly path: {
+  };
+}
+
+export interface GetDiagnosticsWorkersParams {
   readonly path: {
   };
 }
