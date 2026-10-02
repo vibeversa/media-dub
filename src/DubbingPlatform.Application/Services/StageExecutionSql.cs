@@ -15,9 +15,11 @@ public static class StageExecutionSql
     /// <summary>
     /// Conditional commit for success. Parameters: {0}=status, {1}=completedAt,
     /// {2}=updatedAt, {3}=outputJson, {4}=id, {5}=leaseOwner, {6}=leaseToken.
+    /// <c>{3}::jsonb</c> is required: the column is <c>jsonb</c> while the
+    /// parameter binds as text, and Postgres rejects text for jsonb (42804).
     /// </summary>
     public const string CompleteSql =
-        "UPDATE stage_executions SET status = {0}, completed_at = {1}, updated_at = {2}, output_artifact_ids_json = {3} " +
+        "UPDATE stage_executions SET status = {0}, completed_at = {1}, updated_at = {2}, output_artifact_ids_json = {3}::jsonb " +
         "WHERE id = {4} AND lease_owner = {5} AND lease_token = {6} AND status = 'Running'";
 
     /// <summary>

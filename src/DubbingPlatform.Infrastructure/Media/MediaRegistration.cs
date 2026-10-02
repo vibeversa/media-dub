@@ -37,6 +37,7 @@ public static class MediaRegistration
         services.AddScoped<QuotaService>();
         services.AddScoped<IQuotaGate>(provider => provider.GetRequiredService<QuotaService>());
         services.AddScoped<MediaIngestionService>();
+        services.AddScoped<MediaValidationService>();
         services.AddScoped<MediaAnalysisService>();
         services.AddScoped<AudioPreparationService>();
         services.AddScoped<SourceSeparationService>();

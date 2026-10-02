@@ -271,7 +271,7 @@ public sealed class StageExecutionService
         {
             using var db = _contextFactory.CreateDbContext();
             var rows = await db.Database.ExecuteSqlRawAsync(
-                "UPDATE stage_executions SET status = {0}, completed_at = {1}, updated_at = {2}, output_artifact_ids_json = {3}, error_message = {4} " +
+                "UPDATE stage_executions SET status = {0}, completed_at = {1}, updated_at = {2}, output_artifact_ids_json = {3}::jsonb, error_message = {4} " +
                 "WHERE id = {5} AND lease_owner = {6} AND lease_token = {7} AND status = 'Running'",
                 StageStatus.Skipped.ToString(),
                 now,

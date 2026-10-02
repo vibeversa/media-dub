@@ -215,6 +215,7 @@ MassTransitConfig.AddDubbingMassTransit(
     configureExtra: x =>
     {
         x.AddConsumer<DubbingPlatform.Workers.Consumers.MediaIngestionWorker>();
+        x.AddConsumer<DubbingPlatform.Workers.Consumers.MediaValidationWorker>();
         x.AddConsumer<DubbingPlatform.Workers.Consumers.MediaAnalyzerWorker>();
         x.AddConsumer<DubbingPlatform.Workers.Consumers.AudioPreparationWorker>();
         x.AddConsumer<DubbingPlatform.Workers.Consumers.SourceSeparationWorker>();
