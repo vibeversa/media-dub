@@ -138,7 +138,7 @@
 
 ### [GAP-010] Prefixed public IDs are API-only; no EF value converters
 - Plan ref: A-§2 Action 5
-- Status: PARTIAL
+- Status: DONE (53c1883; plan amendment recorded in `docs/adr/ADR-010-public-ids-api-only.md` per acceptance criterion "or ADR records rejection")
 - Priority: P1 (ID-mapping split; round-trip risk)
 - Current state: `Domain/Identity/PublicIdMapper.cs:12-33` (16 prefixes + extras) + `Api/Models/PublicIdParser.cs`; `grep HasConversion|ValueConverter|PublicIdMapper Infrastructure/Persistence` → enum→string only; IDs persist as raw Guid.
 - Missing: `ValueConverter<Guid,string>` + `HasConversion` per ID property (or ADR explicitly rejecting prefixed storage).
@@ -148,7 +148,7 @@
 
 ### [GAP-011] `ProviderExecution` missing 4–5 recorder columns
 - Plan ref: A-§6 (`ProviderExecutionRecorder` fields)
-- Status: PARTIAL
+- Status: DONE (7a69ae2)
 - Priority: P1 (audit/reconciliation completeness)
 - Current state: `Domain/Entities/ProviderExecution.cs:8-66` has 20/24; `grep UsageDimensions|SystemInstructionHash|SafetySettingsHash|OutputContentHash|PromptTemplateVersion` → zero (`ResponseHash` proxies output; `ActualCost` proxies usage; `PromptTemplateId:string?` not Id+Version).
 - Missing: `UsageDimensionsJson`, `SystemInstructionHash`, `SafetySettingsHash`, `PromptTemplateVersion`, distinct `OutputContentHash` + migration + population from `ProviderUsage/RawMetadata`.
@@ -158,7 +158,7 @@
 
 ### [GAP-012] Google / LocalInference have no long-running batch job API
 - Plan ref: A-§6 (async job support)
-- Status: PARTIAL
+- Status: DONE (7071bdd; plan scoped to STT-batch-only with `IBatchTranscriptionProvider` + provider README scoping note, per acceptance criterion)
 - Priority: P1 (lease-loss reconcile gap for those providers)
 - Current state: `StartBatch/GetBatchStatus` + `ProviderJobPoller` + `ExternalJobId` exist for Azure/OpenAI STT only; `grep StartBatch|GetBatchStatus Providers/Google/ Providers/LocalInference/` → zero (mock-only `MockAsyncJobStore`).
 - Missing: batch start/poll for Google/Local, or scope plan to STT-batch-only with doc.
@@ -168,7 +168,7 @@
 
 ### [GAP-013] `MediaValidation` has no `StageWorkRequested` / `BaseConsumer` worker
 - Plan ref: A-§4 ("each StageGraph stage must have registered consumer")
-- Status: PARTIAL (pattern deviation; functionally wired)
+- Status: DONE (ca3578a; `MediaValidationWorker` registered — the saga dispatched this stage on `RunStarted` with no consumer, so runs stalled before `MediaAnalysis`)
 - Priority: P1 (uniform retry/lease/instrumentation)
 - Current state: 16/17 stages via `BaseConsumer` + `Workers/Program.cs:218-233` + `ShouldProcess`; MediaValidation only via `MediaIngestionWorker:IConsumer<MediaUploaded>` (`Workers/Consumers/MediaIngestionWorker.cs:27,118`) + `MediaIngestionService.cs:412,451`. `grep ShouldProcess.*MediaValidation` → zero.
 - Missing: `MediaValidationWorker:BaseConsumer<StageWorkRequested>` or explicit plan exception for ingestion-owned MediaValidation.
@@ -178,7 +178,7 @@
 
 ### [GAP-014] Artifact publish deviates: no `Pending` reserve; stage-complete/outbox not in artifact txn; `ArtifactChild` table absent
 - Plan ref: A-§5 Actions 3, 14
-- Status: DEVIATED (functionally safe; needs plan alignment + crash-window proof)
+- Status: DONE (30073ee; as-built recorded in `docs/adr/ADR-014-artifact-publish-as-built.md` incl. W1-W4 crash windows + redrive proof)
 - Priority: P1
 - Current state: `ArtifactParent.cs` + config exist; `grep ArtifactChild src` → plan mention only; `ArtifactService.cs` zero `Pending` refs, commits `Committed` directly post-upload in one txn (`CommitNewAsync`); stage completion + `StageCompleted` publish happen in workers via bus outbox (separate `DbContext`).
 - Missing: (a) decide `ArtifactChild` = second table vs edge-direction alias — implement or amend plan; (b) Pending-reserve or amend to upload-first+reconciler (current is orphan-safe and tested); (c) document two-txn crash windows (artifact-commit vs stage-commit/outbox) with redrive proof.
@@ -188,7 +188,7 @@
 
 ### [GAP-015] `ContentObjectStateMachine` omits direct `Committed → Deleted`
 - Plan ref: A-§2 Action 18 + §3 retention
-- Status: PARTIAL (minor)
+- Status: DONE (84daa7a; `Committed → Deleted` fast path added to the state machine)
 - Priority: P1 (sweeper can throw `DomainException` on legal path)
 - Current state: `ContentObjectStateMachine.cs:21-23` only Pending→Committed→Orphaned→Deleted.
 - Missing: `Committed → Deleted` fast path (empty-ref + retention satisfied) or documented decision that all deletes pass through `Orphaned`.
@@ -198,7 +198,7 @@
 
 ### [GAP-016] No max-concurrent-provider-calls-per-tenant fairness cap
 - Plan ref: A-§25 Action 16 (second fairness cap)
-- Status: MISSING
+- Status: DONE (5ba9315; `RateLimit:TenantConcurrency` + `tenantConcurrency` dimension enforced in `TenantFairnessGate`)
 - Priority: P1 (noisy-neighbor on shared provider quota)
 - Current state: only `MaxConcurrentStagesPerTenant=20` (`QuotaOptions.cs:32`); RateLimiter `concurrency` dimension is per-provider fail-open, not a tenant fairness cap. `grep MaxConcurrentProvider src` (excl obj/bin) → zero.
 - Missing: distinct per-tenant concurrent-provider-call cap + enforcement in dispatcher/gates + metric.
@@ -208,7 +208,7 @@
 
 ### [GAP-017] Mixing `acrossfade` absent (overlapping dialogue has no measured crossfade)
 - Plan ref: A-§20 Action 4
-- Status: MISSING
+- Status: DONE (3c332b7; conditional `acrossfade` chain + `PlanCrossfades`, recorded in `MixResult.PremixFilter`/`FilterGraph`)
 - Priority: P1 (audible overlap seams)
 - Current state: `grep -n crossfade FFmpegMixer.cs` → zero; premix uses `adelay+apad+amix`. QC `CodeCrossfade` check exists (`QualityControlService.cs:119,944-1187`) and will flag silent overlap windows.
 - Missing: conditional `acrossfade` + filter-graph recording + QC wiring.
@@ -218,7 +218,8 @@
 
 ### [GAP-018] Disk-pressure and media-bomb protection tests absent
 - Plan ref: A-§28 Actions 20–21, A-§30 Action 9, Final Verification
-- Status: MISSING (code paths exist; proof absent)
+- Status: DONE (b08ba8d; media-bomb fixtures + validator/scratch/disk/memory exhaustion tests)
+- Priority: P1 (resource-exhaustion safety unverified)
 - Priority: P1 (resource-exhaustion safety unverified)
 - Current state: `grep DiskPressure|MediaBomb tests` (147 files) → zero; only `scripts/generate-fixtures.sh` mentions "media-bomb negative controls".
 - Missing: dedicated tests (quota-exceeded mid-upload, temp-full FFmpeg fail, oversized/corrupt media reject) with fixtures.
@@ -228,7 +229,7 @@
 
 ### [GAP-019] Retention-hold-blocks-deletion untested
 - Plan ref: A-§5 Validation "Retention hold prevents deletion"
-- Status: PARTIAL (code DONE, proof MISSING)
+- Status: DONE (d484fb7; PG-gated `RetentionHoldTests` prove hold blocks delete and release re-enables it)
 - Priority: P1 (legal-hold data loss risk)
 - Current state: `RetentionService.cs`, `ContentObjectService.cs:101,160`, `RetentionHold.cs`, `DeletionJob.cs`, `RetentionSweeper`, `OrphanObjectReconciler` all exist + hosted (`Workers/Program.cs:208-210,237`); `grep RetentionHold|CanDelete|RetentionService tests/` → zero.
 - Missing: integration test — hold placed → `CanDelete==false`/sweep skips; released + expired + refcount 0 → deletable.
@@ -238,7 +239,7 @@
 
 ### [GAP-020] `WorkerHealthService` has no admin endpoint
 - Plan ref: B-8.8 + B-9.10 (Plan B wins)
-- Status: MISSING (service DONE, exposure missing)
+- Status: DONE (74f45a5; `GET /api/v1/admin/diagnostics/workers` + RoleMatrix + OpenAPI + regen client)
 - Priority: P1 (operator blindness)
 - Current state: `Application/Diagnostics/WorkerHealthService.cs:GetWorkerHealthAsync` + DI `DiagnosticsRegistration.cs` exist; `grep WorkerHealth|diagnostics/worker src/DubbingPlatform.Api` → zero endpoints. Other 7/8 diagnostics reads present (`AdminController.cs:95-366`, `RequireTenantAdmin`).
 - Missing: `GET /api/v1/admin/diagnostics/workers` (TenantAdmin, secret-free, audited if destructive-adjacent).

@@ -1,4 +1,4 @@
-# fix_notes.md — P0 gap batch (GAP-001,002,003,004,005,006,007,009)
+# fix_notes.md — gap batches (GAP-001..007,009 P0; GAP-010..020 second batch)
 
 Decisions: no overrides. Plan A wins backend, Plan B wins frontend (per user confirmation).
 
@@ -61,3 +61,86 @@ None. GAP-004 original `NOW()` predicate rejected but gap closed via compliant a
 - GAP-006 b49797bd28cdb2a29ef4863a7594f89cfe72f0b4
 - GAP-007 e5096708b5a28c85d48fb86acdb490df61bef25d
 - GAP-009 6a539dd64c7ebc00b5f7acab9f5cf153f0046d05
+
+# Second batch — GAP-010..GAP-020
+
+Scope: the eleven P1/P2 gaps below. No decision-table overrides; Plan A wins
+backend, Plan B wins frontend.
+
+## GAP-010 — Public IDs stay API-only (DONE, 53c1883)
+- Verified: `PublicIdMapper`/`PublicIdParser` exist; all 50 EF configurations persist raw `uuid` with `gen_random_uuid()`; `PublicIdConverter` exists but is referenced nowhere.
+- Fix: the gap's acceptance criterion allows "or ADR records rejection". Added `docs/adr/ADR-010-public-ids-api-only.md`: applying prefixed-text converters to PK/FK would break `gen_random_uuid()`, uuid indexes/FKs/RLS over 50+ tables, and require a non-expand-only `uuid → text` rewrite (Rule 4/5 violation).
+- Tests: `Persistence/PublicIdStorageTests` pins that no Id/FK property uses `PublicIdConverter` and round-trips `prj_…` (2 passed).
+
+## GAP-011 — `ProviderExecution` audit columns (DONE, 7a69ae2)
+- Verified: 30 properties, missing `UsageDimensionsJson|SafetySettingsHash|SystemInstructionHash|PromptTemplateVersion|OutputContentHash` (`grep` zero); recorder at `Application/Providers/ProviderExecutionRecorder.cs` (not the path the plan cited).
+- Fix: added the 5 nullable columns (+ validation), EF config, expand-only migration `20261002171245_AddProviderExecutionAuditColumns` (AddColumn only), and population helpers `HashContent` (raw SHA-256 hex, same encoding as `PromptHash`/`RequestHash`) and `BuildUsageDimensionsJson` (canonical, secret-stripped, 128-char value cap, `usage.*` keys only). Wired into all 10 recorder call sites (Translation, Transcription, TTS, ContextBuild, Separation ×2, Vad, Diarization, VideoIntelligence, VoicePreview, Timing).
+- Reconcile now compares `OutputContentHash` too, so a distinct output body no longer proxies through `ResponseHash`.
+- Tests: `ProviderExecutionAuditColumnsTests` (11) + `PersistenceModelTests.Provider_Executions_Have_Audit_Columns_With_Expected_Types_And_Lengths`; old 28-arg constructor calls still compile (optional parameters, backward compatible).
+
+## GAP-012 — Batch support is a compiler-checked contract (DONE, 7071bdd)
+- Verified: `StartBatchAsync`/`GetBatchStatusAsync` existed only on Azure/OpenAI STT as duck-typed concrete methods; no interface, no caller; descriptor `AsyncJob` was hardcoded `false`.
+- Fix (option "or plan scoping note", done both ways): `Infrastructure/Providers/IBatchTranscriptionProvider` (extends `ITranscriptionProvider`, returns `ProviderJobPoller.JobStatus`) implemented by Azure/OpenAI STT; `BatchProviderContract.ValidateAsyncJobFlag` + `ProviderStartupValidator.RequireHonestAsyncJobFlags` fail fast when `Providers:Descriptors[].AsyncJob=true` for a provider that does not implement it; `DescriptorStore` now surfaces `option.AsyncJob`; scoping note added to `Providers/README.md` (Google/Local are synchronous by contract).
+- Tests: `BatchProviderContractTests` (12) incl. startup fail-fast.
+
+## GAP-013 — `MediaValidationWorker` registered (DONE, ca3578a)
+- Verified (and worse than reported): `ProcessingRunSaga.OnRunStarted` dispatches `StageWorkRequested(MediaValidation)` on `RunStarted`, but no consumer claimed it (the five `media.preparation` `BaseConsumer`s return `false` from `ShouldProcess`), so the message was acked as a no-op and the barrier never advanced — runs stalled before `MediaAnalysis`. The audit rated this "functionally wired"; on re-check it is a broken pump.
+- Fix: `MediaValidationService` (adoption semantics: re-affirms the ingestion verdict via `SourceMediaLoader`, completes the run's own execution with the source + ingestion probe artifacts, fails permanently `ARTIFACT_UNAVAILABLE` when the media is gone) + `MediaValidationWorker : BaseConsumer<StageWorkRequested>` + DI (`MediaRegistration`) + registration in `Workers/Program.cs`.
+- Collateral fix on the same path (needed for the stage to complete at all): `StageExecutionSql.CompleteSql` and the inline skip SQL bound `output_artifact_ids_json` (jsonb) as text → PG `42804`. Added `::jsonb` casts. Other raw-SQL jsonb writes (e.g. `UPDATE artifacts SET metadata_json = {0}` in `MediaAnalysisService`) have the same defect but are pre-existing and out of scope — recorded here for a follow-up.
+- Tests: `StageConsumerRegistrationTests` (every `StageGraph` stage has a registered consumer; 17 == 17), `MediaValidationServiceTests` (2, PG-gated).
+
+## GAP-014 — Artifact publish as-built (DONE, 30073ee)
+- Verified: publish is upload-first + single-txn commit (no `Pending` rows), stage completion is a separate lease-fenced UPDATE, `ArtifactChild` does not exist.
+- Fix: `docs/adr/ADR-014-artifact-publish-as-built.md` records (a) `ArtifactChild` = reverse query over `artifact_parents` (both directions already relational: `ArtifactService.GetParentsAsync`, `RetentionService.CountLiveReferencesAsync`), (b) upload-first instead of `Pending` reserve (a reserve would need a stale-Pending sweeper and would expose uncommitted bytes), (c) why the stage completion cannot join the artifact transaction (lease fencing), and (d) crash windows W1–W4 with redrive proof.
+- Tests: `ArtifactPublishAsBuiltTests` (5) pins the as-built (no Pending in the publish path, single txn, lineage unique index, no `artifact_children`).
+
+## GAP-015 — `Committed → Deleted` transition (DONE, 84daa7a)
+- Verified: `RetentionService.SweepAsync` deletes dereferenced `Committed` content rows with raw SQL (bypassing the state machine), while the machine only allowed `Pending→Committed→Orphaned→Deleted`.
+- Fix: added the direct transition to `ContentObjectStateMachine` with docs that `Orphaned` stays the zero-reference path and deletion still requires zero live refs + expired window + no hold.
+- Tests: new `ContentObjectStateMachineTests` (12) + existing `StateMachineMatrixTests.ContentObject_Full_Matrix` extended (strengthened, not weakened).
+
+## GAP-016 — Tenant-wide provider-call cap (DONE, 5ba9315)
+- Verified: only `RateLimit:Concurrency` per (tenant, provider); no tenant-wide cap, no `MaxConcurrentProvider*` anywhere.
+- Fix: `RateLimitOptions.TenantConcurrency` (default 50, validated `>= Concurrency`), new `tenantConcurrency` Redis dimension (`RateLimiter.NormalizeDimension`/`LimitForDimension`), `TenantFairnessGate.TenantConcurrencySegment = "_tenant"`, and `TryAcquireProviderCallAsync` now charges the tenant window first, then the per-provider window (fail-open as before; rejections reuse `ratelimit.rejections{provider,dimension}` so the existing dashboard groups them).
+- Tests: `TenantProviderConcurrencyCapTests` (5) incl. "tenant A at cap blocks only A".
+
+## GAP-017 — Measured crossfade for overlapping dialogue (DONE, 3c332b7)
+- Verified: `BuildPremixFilter` emitted `adelay+apad+atrim` + `amix`; `acrossfade` nowhere; QC `QC_CROSSFADE` warned when the overlap window was silent.
+- Fix: `PlanCrossfades` (pure, clamps overlap to the shorter entry) + a crossfade chain in `BuildPremixFilter` used only when overlaps exist: entries are chained in start order, each pair crossfaded over its measured window (`c1=tri:c2=tri`), silent gaps preserved by padding the accumulated stream before `concat`, then `apad/atrim` to the timeline length. Non-overlapping timelines keep the previous `apad`/`amix` graph byte-for-byte, so no existing mixing behaviour changed. The graph is recorded in `MixResult.PremixFilter`/`FilterComplex`.
+- Tests: `FFmpegMixerCrossfadeTests` (7, hermetic: overlap planning, graph content, label balance, non-overlap unchanged) + `MixingTests.Overlapping_Dialogue_Crossfades_And_Stays_Audible` (ffmpeg-gated: mixes a 200ms overlap and asserts the window stays above −60 dBFS). The ffmpeg-gated test is skipped in this env (no ffmpeg); it runs in CI.
+
+## GAP-018 — Media-bomb / disk-pressure proof (DONE, b08ba8d)
+- Verified: `MediaBombTests` covered the validator + `DiskSpaceChecker` only; `scripts/generate-fixtures.sh` claimed "media-bomb negative controls" but generated none; no `PrepareAsync` exhaustion test.
+- Fix: generated the two negative controls deterministically (`fixtures/zip-bomb.zip`: 64KiB of zeros declaring ~4GiB uncompressed; `fixtures/media-bomb-truncated.mp4`: first 8KiB of `valid-2s.mp4`), extended the script to recreate them (with the size gate), documented them in `fixtures/README.md`, and extracted `AudioPreparationService.RequiredScratchBytes` (pure) from the inline `max(2×Size, MinDiskFreeBytes)` so the scratch floor is directly testable.
+- Tests: `MediaBombTests` extended to 11 (zip-bomb fixture rejected, undecodable audio codec, disallowed video codec, scratch floor semantics incl. `OverflowException`, memory exhaustion, disk pressure).
+
+## GAP-019 — Retention hold proof (DONE, d484fb7)
+- Verified: `RetentionHold`/`RetentionService`/`ContentObjectService` gates existed; zero tests referenced them (`grep RetentionHold|CanDelete|IsDeleteBlockedByHold tests` → one typeof assertion).
+- Fix: tests only (no behaviour change) — `IntegrationTests/Storage/RetentionHoldTests` (5, PG-gated): active hold → `POLICY_DENIED` naming the hold id + project not soft-deleted + no deletion job; released hold → deletion completes and audits; sweeper skips a held `Deleted` artifact and deletes it after release; `IsDeleteBlockedByHoldAsync` tracks hold state and fails closed cross-tenant/unknown; `CanDeleteContentObjectAsync` requires dereference + expired window.
+- Noted, not changed: `CanDeleteContentObjectAsync` cannot map a project-scoped hold to a fully dereferenced content object (documented in its comment). Closing that would need a content→project edge; out of scope for this gap.
+
+## GAP-020 — Worker health endpoint (DONE, 74f45a5)
+- Verified: `WorkerHealthService` + DI + DTO existed; `AdminController` injected only 4 of the 5 query services and no route, OpenAPI entry, or RoleMatrix row existed.
+- Fix: `GET /api/v1/admin/diagnostics/workers` returning `IReadOnlyList<WorkerHealthDto>` behind the same elevated check + `admin.access` audit as the other diagnostics reads, `WorkerHealthService` injected into `AdminController`, `RoleMatrix` entry, `WorkerHealth` schema + path in `openapi.v1.json`, regenerated frontend client (`node tools/generate-client.mjs`, `node tools/check-api-drift.mjs` clean).
+- Tests: `WorkerHealthEndpointTests` (5: route, response type, ctor wiring, secret-free DTO shape, frozen status values) + `AdminAuthzTests`/`AdminSseErrorContractTests`/`OpenApiCoverageTests` route lists extended (OpenAPI coverage 8 passed; the authz tests that spin the host still fail in this env for the pre-existing 401-instead-of-403 reason, verified on baseline).
+
+## Second-batch commits
+- GAP-010 53c1883
+- GAP-011 7a69ae2
+- GAP-012 7071bdd
+- GAP-013 ca3578a
+- GAP-014 30073ee
+- GAP-015 84daa7a
+- GAP-016 5ba9315
+- GAP-017 3c332b7
+- GAP-018 b08ba8d
+- GAP-019 d484fb7
+- GAP-020 74f45a5
+
+## Second-batch verification
+- `dotnet build DubbingPlatform.sln`: 0 warnings / 0 errors after every gap.
+- `dotnet test UnitTests`: 3145 passed, 1 failed (`MediaValidationTests.Probe_Real_Files_Via_Ffprobe` — missing `ffprobe` in this env, pre-existing).
+- `dotnet test ContractTests`: 39 passed.
+- `dotnet test IntegrationTests`: new PG-gated tests pass (`MediaValidationServiceTests` 2, `RetentionHoldTests` 5, `MediaBombTests` 11); ffmpeg-gated mixing tests skip here (no ffmpeg, CI runs them).
+- Pre-existing integration failures unrelated to these gaps (verified identical on baseline via `git stash`): WebApplicationFactory-based admin/export suites answer 401 instead of 403, and `metadata_json`/`jsonb` raw-SQL writes raise PG 42804 (see GAP-013 note).
+- Frontend: `npm run typecheck` and `npm run lint` clean; `node tools/check-api-drift.mjs` clean.
