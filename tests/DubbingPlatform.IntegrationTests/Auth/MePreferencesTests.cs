@@ -126,6 +126,28 @@ public sealed class MePreferencesTests
             Assert.DoesNotContain("admin.manage", permissions);
             Assert.All(permissions, p => Assert.True(Permissions.IsKnown(p)));
             Assert.False(string.IsNullOrWhiteSpace(me.RootElement.GetProperty("locale").GetString()));
+
+            // GAP-021: Plan B 9.1 requires a top-level timezone; unset it must
+            // still be present with the UTC default.
+            Assert.True(me.RootElement.TryGetProperty("timezone", out var defaultTimezone));
+            Assert.Equal("UTC", defaultTimezone.GetString());
+
+            using var putWithTimezoneResponse = await client.PutAsync(
+                "/api/v1/me/preferences",
+                JsonContent.Create(new { preferences = new { timezone = "Europe/Paris" } })).ConfigureAwait(true);
+            Assert.Equal(HttpStatusCode.OK, putWithTimezoneResponse.StatusCode);
+
+            using var meAfterTimezone = await client.GetAsync("/api/v1/me").ConfigureAwait(true);
+            Assert.Equal(HttpStatusCode.OK, meAfterTimezone.StatusCode);
+            var meAfterTimezoneDoc = JsonDocument.Parse(await meAfterTimezone.Content.ReadAsStringAsync().ConfigureAwait(true));
+            Assert.Equal("Europe/Paris", meAfterTimezoneDoc.RootElement.GetProperty("timezone").GetString());
+
+            using var prefsAfterTimezone = await client.GetAsync("/api/v1/me/preferences").ConfigureAwait(true);
+            var prefsAfterTimezoneDoc = JsonDocument.Parse(await prefsAfterTimezone.Content.ReadAsStringAsync().ConfigureAwait(true));
+            Assert.Equal(
+                "Europe/Paris",
+                prefsAfterTimezoneDoc.RootElement.GetProperty("preferences").GetProperty("timezone").GetString());
+
             Assert.True(me.RootElement.TryGetProperty("featureFlags", out _));
             Assert.True(me.RootElement.TryGetProperty("session", out var session));
             Assert.True(session.TryGetProperty("expiresAt", out _));

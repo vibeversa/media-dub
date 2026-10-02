@@ -128,6 +128,7 @@ export interface MeResponse {
   readonly "permissions": (string)[];
   readonly "roles"?: (string)[];
   readonly "tenantId": string;
+  readonly "timezone"?: string;
   readonly "userId": string;
 }
 

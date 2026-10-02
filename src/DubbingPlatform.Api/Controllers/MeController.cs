@@ -19,7 +19,7 @@ namespace DubbingPlatform.Api.Controllers;
 /// <summary>
 /// Caller identity and preferences: <c>GET /api/v1/me</c> returns user,
 /// tenant, JWT+membership roles, the full 12-permission hint list, locale,
-/// feature flags, and session expiry in one call; <c>GET|PUT
+/// timezone (Plan B 9.1), feature flags, and session expiry in one call; <c>GET|PUT
 /// /api/v1/me/preferences</c> reads/writes the Task 001 whitelist
 /// (<c>locale, timezone, theme, defaultProjectFilters, timelineZoom,
 /// notificationPreferences</c>). Unknown key → 400
@@ -45,6 +45,13 @@ public sealed class MeController : ControllerBase
 {
     private const string DefaultLocale = "en-US";
 
+    /// <summary>
+    /// Fallback IANA zone when the <c>timezone</c> preference is unset or
+    /// unusable (GAP-021 / Plan B 9.1). UTC keeps formatting deterministic
+    /// server-side; the frontend may still prefer the browser zone.
+    /// </summary>
+    public const string DefaultTimezone = "UTC";
+
     private readonly IStageExecutionContextFactory _contextFactory;
     private readonly IPermissionResolver _permissions;
     private readonly FeatureOptions _features;
@@ -64,7 +71,8 @@ public sealed class MeController : ControllerBase
 
     /// <summary>
     /// Returns the caller's identity, tenant, roles, permissions, locale,
-    /// flags, and session expiry in one call.
+    /// timezone, flags, and session expiry in one call. <c>timezone</c> is the
+    /// stored <c>timezone</c> preference, defaulting to <c>UTC</c>.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(MeResponse), StatusCodes.Status200OK)]
@@ -78,6 +86,7 @@ public sealed class MeController : ControllerBase
         Tenant tenant;
         List<ProjectRole> membershipRoles;
         string? localeValue;
+        string? timezoneValue;
         using (TenantContext.BeginMaintenanceScope())
         {
             using var db = _contextFactory.CreateDbContext();
@@ -102,12 +111,18 @@ public sealed class MeController : ControllerBase
                 .Select(m => m.Role)
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
-            localeValue = await db.Set<UserPreference>()
+            var scalarPreferences = await db.Set<UserPreference>()
                 .AsNoTracking()
-                .Where(p => p.TenantId == tenantId && p.UserId == userId && p.Key == "locale")
-                .Select(p => p.ValueJson)
-                .FirstOrDefaultAsync(cancellationToken)
+                .Where(p => p.TenantId == tenantId
+                    && p.UserId == userId
+                    && (p.Key == "locale" || p.Key == "timezone"))
+                .Select(p => new { p.Key, p.ValueJson })
+                .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
+            localeValue = scalarPreferences
+                .FirstOrDefault(p => string.Equals(p.Key, "locale", StringComparison.Ordinal))?.ValueJson;
+            timezoneValue = scalarPreferences
+                .FirstOrDefault(p => string.Equals(p.Key, "timezone", StringComparison.Ordinal))?.ValueJson;
         }
 
         if (user.Status == TenantUserStatus.Disabled)
@@ -133,6 +148,7 @@ public sealed class MeController : ControllerBase
             roleNames,
             permissions,
             ParseLocale(localeValue),
+            ParseTimezonePreference(timezoneValue),
             new MeFeatureFlags(_features.VideoIntelligenceEnabled, _features.LipSyncEnabled, _features.LocalInferenceEnabled),
             ReadSession(now)));
     }
@@ -300,9 +316,25 @@ public sealed class MeController : ControllerBase
 
     private static string ParseLocale(string? valueJson)
     {
+        return ParseStringPreference(valueJson, DefaultLocale);
+    }
+
+    /// <summary>
+    /// Reads the <c>timezone</c> preference into the top-level
+    /// <see cref="MeResponse.Timezone"/> field (GAP-021). Pure: unset, blank,
+    /// non-string, or unparsable values fall back to
+    /// <see cref="DefaultTimezone"/>.
+    /// </summary>
+    public static string ParseTimezonePreference(string? valueJson)
+    {
+        return ParseStringPreference(valueJson, DefaultTimezone);
+    }
+
+    private static string ParseStringPreference(string? valueJson, string fallback)
+    {
         if (string.IsNullOrWhiteSpace(valueJson))
         {
-            return DefaultLocale;
+            return fallback;
         }
 
         try
@@ -310,15 +342,15 @@ public sealed class MeController : ControllerBase
             using var document = JsonDocument.Parse(valueJson);
             if (document.RootElement.ValueKind == JsonValueKind.String)
             {
-                var locale = document.RootElement.GetString()?.Trim();
-                return string.IsNullOrWhiteSpace(locale) ? DefaultLocale : locale;
+                var value = document.RootElement.GetString()?.Trim();
+                return string.IsNullOrWhiteSpace(value) ? fallback : value;
             }
         }
         catch (JsonException)
         {
         }
 
-        return DefaultLocale;
+        return fallback;
     }
 
     private static PreferencesResponse ToPreferencesResponse(Dictionary<string, string> stored)

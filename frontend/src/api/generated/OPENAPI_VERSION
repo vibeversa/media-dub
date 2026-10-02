@@ -1,4 +1,4 @@
 /* auto-generated — do not edit; run make generate-api */
 openapi.version=v1
-bundle=sha256:ab4857649795766dcce3507338c110406bf36e0ce6dd1caca1dcfbe9e7de4b85
+bundle=sha256:bd863eb5ae1caf4f6a5cb8449eb8d3463f460936740ad4f41b0847dd4e3d3e25
 generator=hermetic-generate-client@1.0.0 (mirrors openapi-typescript-codegen@0.31.0)

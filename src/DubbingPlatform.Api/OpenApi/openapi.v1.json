@@ -202,7 +202,7 @@
         "operationId": "getMe",
         "tags": ["me"],
         "summary": "Current identity with permissions",
-        "description": "Returns tenant/user identity plus resolved UX-hint permission strings (never a security boundary; endpoints re-authorize).",
+        "description": "Returns tenant/user identity plus resolved UX-hint permission strings (never a security boundary; endpoints re-authorize). Includes the caller's IANA `timezone` (default `UTC`) so the frontend can render timestamps without a second preferences round-trip (Plan B 9.1).",
         "responses": {
           "200": {
             "description": "Identity and permissions.",
@@ -4106,6 +4106,10 @@
               "type": "string"
             },
             "description": "12 UX-hint permission strings (never a security boundary)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone from the caller's `timezone` preference; defaults to `UTC` when unset or unusable (Plan B 9.1)."
           }
         }
       },

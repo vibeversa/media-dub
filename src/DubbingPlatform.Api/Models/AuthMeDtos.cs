@@ -59,6 +59,9 @@ public sealed record TokenResponse(
 /// <summary>
 /// Authenticated identity response for <c>GET /api/v1/me</c>. Example roles:
 /// <c>["ProjectOwner"]</c>; permissions are the 12 UX-hint strings.
+/// <see cref="Timezone"/> is the caller's IANA zone (Plan B 9.1), read from the
+/// <c>timezone</c> preference and defaulting to <c>UTC</c> when unset, so the
+/// frontend renders timestamps without a second preferences round-trip.
 /// </summary>
 public sealed record MeResponse(
     MeUser User,
@@ -66,6 +69,7 @@ public sealed record MeResponse(
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Permissions,
     string Locale,
+    string Timezone,
     MeFeatureFlags FeatureFlags,
     MeSession Session);
 
