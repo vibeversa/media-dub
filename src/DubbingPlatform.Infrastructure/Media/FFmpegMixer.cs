@@ -24,6 +24,13 @@ public sealed record MixTimelineEntry(string SegmentId, int Sequence, int StartM
 public sealed record MixTimeline(int SourceDurationMs, IReadOnlyList<MixTimelineEntry> Entries, string? BackgroundArtifactId);
 
 /// <summary>
+/// One measured overlap window between consecutive dialogue entries (GAP-017).
+/// <see cref="OverlapMs"/> is the overlap clamped to the shorter of the two
+/// entries, which is what <c>acrossfade</c> requires.
+/// </summary>
+public sealed record CrossfadePlan(string FromSegmentId, string ToSegmentId, int OverlapMs);
+
+/// <summary>
 /// Loudness measurement from a <c>loudnorm=print_format=json</c> pass.
 /// </summary>
 public sealed record LoudnessMeasurement(
@@ -339,11 +346,60 @@ public sealed class FFmpegMixer
     }
 
     /// <summary>
+    /// Measures the overlap windows between consecutive dialogue entries
+    /// (ordered by start time). Pure (GAP-017). Overlap is clamped to the
+    /// shorter entry so <c>acrossfade</c> never asks for more audio than the
+    /// shorter input carries; non-overlapping neighbours yield nothing.
+    /// </summary>
+    public static IReadOnlyList<CrossfadePlan> PlanCrossfades(IReadOnlyList<MixTimelineEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        if (entries.Count < 2)
+        {
+            return [];
+        }
+
+        var ordered = entries
+            .OrderBy(e => e.StartMs)
+            .ThenBy(e => e.Sequence)
+            .ThenBy(e => e.SegmentId, StringComparer.Ordinal)
+            .ToList();
+
+        var plans = new List<CrossfadePlan>();
+        for (var i = 1; i < ordered.Count; i++)
+        {
+            var previous = ordered[i - 1];
+            var current = ordered[i];
+            var overlap = (previous.StartMs + previous.DurationMs) - current.StartMs;
+            if (overlap <= 0)
+            {
+                continue;
+            }
+
+            var clamped = Math.Min(overlap, Math.Min(previous.DurationMs, current.DurationMs));
+            if (clamped <= 0)
+            {
+                continue;
+            }
+
+            plans.Add(new CrossfadePlan(previous.SegmentId, current.SegmentId, clamped));
+        }
+
+        return plans;
+    }
+
+    /// <summary>
     /// Builds the deterministic premix <c>-filter_complex</c> value (dialogue
     /// placement + duck + amix, no loudnorm). Pure. Dialogue inputs are
     /// <c>0..N-1</c>, background (when present) is <c>N</c>; output label is
     /// <c>[mix]</c>. Throws <c>VALIDATION_FAILED</c> for empty total duration.
     /// </summary>
+    /// <remarks>
+    /// GAP-017: overlapping dialogue is chained with <c>acrossfade</c> over the
+    /// measured overlap window (triangular curves) instead of a bare sum, so
+    /// interleaved speech crossfades rather than summing into a hot overlap.
+    /// Non-overlapping entries keep the <c>apad</c>/<c>amix</c> graph.
+    /// </remarks>
     public static string BuildPremixFilter(
         IReadOnlyList<MixTimelineEntry> entries,
         int sourceDurationMs,
@@ -382,8 +438,17 @@ public sealed class FFmpegMixer
             return builder.ToString();
         }
 
+        var crossfades = PlanCrossfades(entries);
+        var useCrossfadeChain = entries.Count > 1 && crossfades.Count > 0;
         for (var i = 0; i < entries.Count; i++)
         {
+            if (useCrossfadeChain)
+            {
+                // The crossfade chain consumes the raw inputs directly; the
+                // apad/amix per-entry graph would consume the same input pads.
+                continue;
+            }
+
             var entry = entries[i];
             builder.Append(CultureInfo.InvariantCulture, $"[{i}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,adelay={entry.StartMs}|{entry.StartMs}:all=1,apad=whole_dur={totalSec},atrim=0:{totalSec}[dlg{i}];");
         }
@@ -392,6 +457,70 @@ public sealed class FFmpegMixer
         if (entries.Count == 1)
         {
             builder.Append("[dlg0]anull[dialog];");
+            dialogLabel = "[dialog]";
+        }
+        else if (useCrossfadeChain)
+        {
+            // Overlapping dialogue (GAP-017): chain entries in start order and
+            // crossfade each measured overlap window instead of summing.
+            // Each neighbour pair is trimmed so the crossfade starts exactly at
+            // the later entry's first sample: raw audio (no adelay) is trimmed
+            // by (start - previousStart) and crossfaded over the clamped
+            // overlap; silent gaps are preserved by padding the accumulated
+            // stream to the next entry's start before concatenation.
+            var ordered = entries
+                .Select((entry, index) => (Entry: entry, Index: index))
+                .OrderBy(x => x.Entry.StartMs)
+                .ThenBy(x => x.Entry.Sequence)
+                .ThenBy(x => x.Entry.SegmentId, StringComparer.Ordinal)
+                .ToList();
+
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                var entry = ordered[i].Entry;
+                var startMs = entry.StartMs.ToString(CultureInfo.InvariantCulture);
+                if (i == 0)
+                {
+                    // Leading offset for the first entry only; every later entry
+                    // is positioned by the crossfade/concat chain instead.
+                    builder.Append(CultureInfo.InvariantCulture, $"[{ordered[i].Index}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,adelay={startMs}|{startMs}:all=1[r{i}];");
+                    continue;
+                }
+
+                builder.Append(CultureInfo.InvariantCulture, $"[{ordered[i].Index}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[r{i}];");
+            }
+
+            var chainLabel = "r0";
+            var firstStartMs = ordered[0].Entry.StartMs;
+            for (var i = 1; i < ordered.Count; i++)
+            {
+                var previous = ordered[i - 1].Entry;
+                var current = ordered[i].Entry;
+                var nextLabel = $"xf{i}";
+                var overlap = (previous.StartMs + previous.DurationMs) - current.StartMs;
+                if (overlap > 0)
+                {
+                    // The accumulated stream already ends exactly where entry i
+                    // starts, so r{i} needs no offset: acrossfade pairs the tail
+                    // of the accumulated audio with the head of entry i.
+                    var seconds = (Math.Min(overlap, Math.Min(previous.DurationMs, current.DurationMs)) / 1000.0)
+                        .ToString("F3", CultureInfo.InvariantCulture);
+                    builder.Append(CultureInfo.InvariantCulture, $"[r{i}]asetpts=PTS-STARTPTS[t{i}];");
+                    builder.Append(CultureInfo.InvariantCulture, $"[{chainLabel}][t{i}]acrossfade=d={seconds}:c1=tri:c2=tri[{nextLabel}];");
+                }
+                else
+                {
+                    // whole_dur is in seconds; pad the accumulated stream up to
+                    // the next entry's start so gaps stay silent.
+                    var gapEndSec = ((current.StartMs - firstStartMs) / 1000.0).ToString("F3", CultureInfo.InvariantCulture);
+                    builder.Append(CultureInfo.InvariantCulture, $"[{chainLabel}]apad=whole_dur={gapEndSec}[g{i}];");
+                    builder.Append(CultureInfo.InvariantCulture, $"[g{i}][r{i}]concat=n=2:v=0:a=1[{nextLabel}];");
+                }
+
+                chainLabel = nextLabel;
+            }
+
+            builder.Append(CultureInfo.InvariantCulture, $"[{chainLabel}]apad=whole_dur={totalSec},atrim=0:{totalSec}[dialog];");
             dialogLabel = "[dialog]";
         }
         else

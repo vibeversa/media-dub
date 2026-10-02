@@ -181,6 +181,58 @@ public sealed class MixingTests
         }
     }
 
+    [SkippableFact]
+    public async Task Overlapping_Dialogue_Crossfades_And_Stays_Audible()
+    {
+        // GAP-017: overlapping entries get a measured acrossfade in the premix
+        // graph; the overlap window must remain audible (QC_CROSSFADE checks
+        // silence in that window) and the mix must still hit loudness/peak.
+        await EnsureFfmpegAsync().ConfigureAwait(true);
+        var mixer = CreateMixer();
+        var workDir = ProcessRunner.CreateTempWorkingDir();
+        try
+        {
+            var dlg1 = Path.Combine(workDir, "dlg1.wav");
+            var dlg2 = Path.Combine(workDir, "dlg2.wav");
+            var output = Path.Combine(workDir, "mixed.wav");
+            await GenerateSineAsync(880, 1, dlg1).ConfigureAwait(true);
+            await GenerateSineAsync(660, 1, dlg2).ConfigureAwait(true);
+
+            // dlg2 starts 800ms into dlg1: 200ms of overlap.
+            var timeline = BuildTimeline(
+                [(0, 0, 1000), (1, 800, 1000)],
+                sourceDurationMs: 1800);
+
+            var result = await mixer.MixAsync(
+                timeline, [dlg1, dlg2], null, output, "web", CancellationToken.None).ConfigureAwait(true);
+
+            Assert.True(File.Exists(output), "Mix output must exist.");
+            Assert.Contains("acrossfade=d=0.200", result.PremixFilter, StringComparison.Ordinal);
+            Assert.Contains("acrossfade", result.FilterComplex, StringComparison.Ordinal);
+            Assert.True(Math.Abs(result.DurationMs - 1800) <= 500, $"Duration {result.DurationMs}ms must be within 500ms of 1800ms.");
+
+            // The overlap window must not be silent: that is exactly what
+            // QualityControlService.CodeCrossfade measures.
+            var levels = await new FFmpegService(
+                new ProcessRunner(NullLogger<ProcessRunner>.Instance),
+                new FFprobeService(
+                    new Moq.Mock<IArtifactStorage>(Moq.MockBehavior.Strict).Object,
+                    new ProcessRunner(NullLogger<ProcessRunner>.Instance),
+                    Microsoft.Extensions.Options.Options.Create(new MediaOptions()),
+                    NullLogger<FFprobeService>.Instance),
+                Microsoft.Extensions.Options.Options.Create(new MediaOptions()),
+                NullLogger<FFmpegService>.Instance)
+                .MeasureChannelRmsDbAsync(output, workDir, 800, 200, CancellationToken.None).ConfigureAwait(true);
+            _output.WriteLine($"Overlap window RMS: {string.Join(", ", levels.Select(l => l.ToString("F2", CultureInfo.InvariantCulture)))} dB.");
+            Assert.NotEmpty(levels);
+            Assert.True(levels.Max() > -60.0, $"Overlap window must stay audible (max {levels.Max():F2}dB).");
+        }
+        finally
+        {
+            DeleteDirQuietly(workDir);
+        }
+    }
+
     private static FFmpegMixer CreateMixer()
     {
         var runner = new ProcessRunner(NullLogger<ProcessRunner>.Instance);
