@@ -59,7 +59,11 @@
 #   bash scripts/restore-drill.sh --require-schema # do not create the schema; fail if it is absent
 #
 # MACHINE-READABLE OUTPUT
-#   One line: RESTORE_DRILL_RESULT reason=<REASON> status=<PASS|FAIL> tables=<n> rows=<n> gaps=<n>
+#   One line:
+#     RESTORE_DRILL_RESULT reason=<REASON> status=<PASS|FAIL> tables=<n> rows=<n> gaps=<n> spot=<n>
+#   `spot=` is the number of per-group spot-reads that ran, and it is bounded
+#   below by a constant the script holds rather than by the length of the list it
+#   iterates - see step 9.
 #   REASONS is a closed set; docs/ci-branch-protection.md lists it.
 set -euo pipefail
 
@@ -89,6 +93,9 @@ STARTED_CONTAINER=0
 REASON="OK"
 STATUS="PASS"
 GAPS=0
+# How many per-group spot-reads ran. Zero until step 9, and reported on the result
+# line so a drill that died earlier says so rather than saying nothing.
+SPOT_READS=0
 
 # ---- reason vocabulary (closed set) ------------------------------------------
 readonly REASONS_OK="OK"
@@ -122,8 +129,12 @@ finish() {
   rows="$(paste -sd+ -s < "$SUM_ROWS_FILE" 2>/dev/null | bc 2>/dev/null || true)"
   [ -n "$tables" ] || tables=0
   [ -n "$rows" ] || rows=0
+  # spot_reads is initialised to 0 before the loop in step 9 can run, and again
+  # at the top of the script, so a failure BEFORE step 9 reports spot=0 rather
+  # than tripping `set -u` on an unset variable. A drill that died early has read
+  # nothing, and the number on the line is what says so.
   echo
-  echo "RESTORE_DRILL_RESULT reason=${REASON} status=${STATUS} tables=${tables} rows=${rows} gaps=${GAPS}"
+  echo "RESTORE_DRILL_RESULT reason=${REASON} status=${STATUS} tables=${tables} rows=${rows} gaps=${GAPS} spot=${SPOT_READS}"
   if [ "$STATUS" != "PASS" ] && [ "$STARTED_CONTAINER" = "1" ] && [ "$KEEP_CONTAINER" = "0" ]; then
     echo "the server is left running for inspection; remove it with: docker rm -f ${CONTAINER_NAME}"
   fi
@@ -488,31 +499,146 @@ fi
 [ "$DANGLING" -eq 0 ] || die "$REASONS_DANGLING" "$DANGLING referential check(s) found orphans after the restore"
 ok "no dangling references across $FLOOR group(s); all $EXPECTED_CHECKS declared relationship(s) ran"
 
-# ---- 9. spot-read ------------------------------------------------------------
-# One project, one user, one notification - by id, with the columns that exist
-# only because of Plan B. A matching count with NULL names is a restore that
-# passed the wrong test.
-SPOT="$(psql_run -c "
-  SELECT p.id::text, p.name, p.owner_user_id::text, p.is_archived::text, p.settings_version::text,
-         u.email, u.display_name,
-         n.type, n.read_at IS NULL
-  FROM dubbing_projects p
-  JOIN tenant_users u ON u.id = p.owner_user_id
-  JOIN notifications n ON n.project_id = p.id
-  WHERE p.id = 'de710000-0000-4000-8000-000000000101'
-    AND n.id = 'de710000-0000-4000-8000-000000000401';" 2>"$WORK/spot.err")" || {
-  die "$REASONS_SPOT_READ" \
-    "the spot-read query did not execute: $(head -2 "$WORK/spot.err" | tr '\n' ' ')" \
-    "if this says invalid input syntax for uuid, the seed's UUID prefix and the one in this script have drifted"
-}
-[ -n "$SPOT" ] || die "$REASONS_SPOT_READ" "the spot-read row is not present in the restored database"
-echo "$SPOT" | grep -q 'Drill Project One' \
-  || die "$REASONS_SPOT_READ" "dubbing_projects.name did not survive: got '${SPOT}'"
-echo "$SPOT" | grep -q 'alice@drill.invalid' \
-  || die "$REASONS_SPOT_READ" "tenant_users.email did not survive: got '${SPOT}'"
-echo "$SPOT" | grep -q 'RunCompleted' \
-  || die "$REASONS_SPOT_READ" "notifications.type did not survive: got '${SPOT}'"
-ok "spot-read one project, one user and one notification, with the Plan B columns"
+# ---- 9. spot-read, ONE PER GROUP ---------------------------------------------
+# A count cannot tell you the right ROWS came back. The seven groups have
+# different failure modes under a bad restore, and each one gets its own read by
+# id with the columns that matter for it:
+#
+#   - a count that matches while every `name` is NULL is a restore that passed
+#     the wrong test (a pre-expand archive, D5);
+#   - a count that matches with the WRONG key/value rows is a restore that
+#     restored a different tenant's preferences;
+#   - a `Running` preview job restored as `Completed` (or vice versa) is a state
+#     change the responder has to know about;
+#   - a notification restored with `expires_at` lost has silently become
+#     permanent, which is worse than losing it.
+#
+# Before Task 047 this step read ONE row that happened to be a join across three
+# groups, so four of the seven were count-only - the exact shape of the D5
+# failure, one level down. Each read below is its own query against its own table
+# and its own expected marker, so a group can fail alone and be named.
+#
+# `group | label | table | predicate | expected-marker | marker-column`
+#
+# The predicate is one or more `column=value` pairs joined by `+`, because a
+# composite key is the normal case. `user_preferences` is keyed on
+# (tenant_id, user_id, key); the first version read on `user_id` alone, got all
+# three of that user's preferences back, and passed on `grep -q dark` against the
+# concatenation. That is a spot-read that cannot distinguish "the right row is
+# there" from "some row somewhere contains the right character sequence" - the
+# D5 failure inside the check written to catch D5, found by reading the drill's
+# own output rather than its exit code. The read must now return exactly ONE row,
+# and that is asserted below rather than assumed from the marker matching.
+SPOT_CHECKS=(
+  "tenant-users|tenant user|tenant_users|id=de710000-0000-4000-8000-000000000011|alice@drill.invalid|email"
+  "memberships|project membership|project_memberships|id=de710000-0000-4000-8000-000000000301|Owner|role"
+  "project-metadata|project row|dubbing_projects|id=de710000-0000-4000-8000-000000000101|Drill Project One|name"
+  "preferences|user preference|user_preferences|user_id=de710000-0000-4000-8000-000000000011+key=ui.theme|dark|value_json"
+  "notifications|notification|notifications|id=de710000-0000-4000-8000-000000000401|RunCompleted|type"
+  "activity-events|activity event|activity_events|id=de710000-0000-4000-8000-000000000501|StageCompleted|type"
+  "voice-preview-jobs|voice preview job|voice_preview_jobs|id=de710000-0000-4000-8000-000000000601|Completed|status"
+)
+
+# The count of reads that MUST run, held here rather than derived from the array
+# above. `${#SPOT_CHECKS[@]}` would make the check agree with itself: delete a
+# record from the array and a self-derived count shrinks with it, which is the
+# D2/D6 defect a third time, in the one place a responder reads during a restore.
+readonly SPOT_REQUIRED=7
+[ "${#SPOT_CHECKS[@]}" -eq "$SPOT_REQUIRED" ] || die "$REASONS_SPOT_READ" \
+  "the drill declares ${#SPOT_CHECKS[@]} per-group spot-read(s) and the task requires ${SPOT_REQUIRED}" \
+  "a spot-read removed from the list is a group verified by count only, and the drill would report the same PASS"
+
+SPOT_READS=0
+for record in "${SPOT_CHECKS[@]}"; do
+  IFS='|' read -r group label table predicate marker marker_column <<< "$record"
+  # Identifiers are validated, not trusted: the same rule the table list follows.
+  case "$table" in
+    [a-z_]*) ;;
+    *) die "$REASONS_SPOT_READ" "spot-read table is not a bare lowercase name: $table" ;;
+  esac
+  case "$marker_column" in
+    [a-z_]*) ;;
+    *) die "$REASONS_SPOT_READ" "spot-read marker column is not a bare lowercase name: $marker_column" ;;
+  esac
+
+  # The predicate is one or more `column=value` pairs joined by `+`, because a
+  # composite key is the normal case and reading on half of it returns the wrong
+  # number of rows. Every column and every value is validated against a character
+  # class before the statement is built, and the statement goes to psql on stdin
+  # so it is never in the process table.
+  PREDICATE=""
+  PREDICATE_TEXT=""
+  IFS='+' read -r -a pairs <<< "$predicate"
+  [ "${#pairs[@]}" -ge 1 ] || die "$REASONS_SPOT_READ" "the spot-read for $group has an empty predicate"
+  for pair in "${pairs[@]}"; do
+    case "$pair" in
+      *=*) ;;
+      *) die "$REASONS_SPOT_READ" "the spot-read predicate for $group has a term with no '=': $pair" ;;
+    esac
+    pair_column="${pair%%=*}"
+    pair_value="${pair#*=}"
+    case "$pair_column" in
+      [a-z_]*) ;;
+      *) die "$REASONS_SPOT_READ" "spot-read identifier is not a bare lowercase name: $pair_column" ;;
+    esac
+    # A synthetic uuid, or a bare lowercase/dotted/hyphenated literal (a
+    # preference key, an enum value). A value containing a quote, a space or a
+    # semicolon is refused rather than quoted, because this script does not build
+    # quoted SQL and a value it had to escape is a value it should not accept.
+    case "$pair_value" in
+      de71[0-9a-f-]*|[a-z0-9._-]*) ;;
+      *) die "$REASONS_SPOT_READ" "spot-read predicate value for $group is neither a synthetic de71 id nor a bare lowercase literal: $pair_value" ;;
+    esac
+    PREDICATE="${PREDICATE} AND ${pair_column} = '${pair_value}'"
+    PREDICATE_TEXT="${PREDICATE_TEXT:+$PREDICATE_TEXT AND }${pair_column} = '${pair_value}'"
+  done
+  PREDICATE="${PREDICATE# AND }"
+
+  SPOT="$(printf 'SELECT %s::text FROM %s WHERE %s;\n' \
+    "$marker_column" "$table" "$PREDICATE" | psql_run 2>"$WORK/spot.err")" || {
+    die "$REASONS_SPOT_READ" \
+      "the spot-read for $group ($label) did not execute: $(head -2 "$WORK/spot.err" | tr '\n' ' ')" \
+      "if this says invalid input syntax for uuid, the seed's id and the one in this script have drifted"
+  }
+  if [ -z "$SPOT" ]; then
+    die "$REASONS_SPOT_READ" \
+      "the $label row ($table WHERE $PREDICATE_TEXT) is not present after the restore" \
+      "the count for $table matched, so this is a restore of the wrong rows rather than too few of them"
+  fi
+  # EXACTLY one row. A read that returns three of a user's preferences and then
+  # greps the concatenation is not a spot-read; the previous version was, and it
+  # reported PASS.
+  SPOT_ROWS="$(printf '%s\n' "$SPOT" | grep -c .)"
+  if [ "$SPOT_ROWS" -ne 1 ]; then
+    die "$REASONS_SPOT_READ" \
+      "the $label read ($table WHERE $PREDICATE_TEXT) returned $SPOT_ROWS rows; a spot-read must resolve to exactly one" \
+      "the predicate is probably on half of a composite key"
+  fi
+  if ! printf '%s' "$SPOT" | grep -q -- "$marker"; then
+    die "$REASONS_SPOT_READ" \
+      "$table.$marker_column for $label ($PREDICATE_TEXT) did not survive the restore: expected '$marker', got '$SPOT'"
+  fi
+  echo "     $group ($label): $marker_column='$SPOT'"
+  SPOT_READS=$((SPOT_READS + 1))
+done
+ok "spot-read $SPOT_READS row(s), one per entity group, with each group's Plan B columns"
+
+# The extended project metadata is the one group where the column set itself is
+# the risk, so it gets a second assertion: a base backup taken BEFORE the expand
+# migration restores `dubbing_projects` without the nine new columns, and the
+# table, the row count and the spot-read `name` above can all be satisfied by a
+# restore that has no `owner_user_id` at all. This asks for the columns by name.
+COLUMNS="$(psql_run -c "
+  SELECT count(*) FROM information_schema.columns
+  WHERE table_schema='public' AND table_name='dubbing_projects'
+    AND column_name IN ('name','description','is_archived','archived_at','owner_user_id',
+                        'created_by_user_id','updated_by_user_id','processing_settings_json',
+                        'settings_version');")"
+[ "$COLUMNS" = "9" ] || die "$REASONS_SPOT_READ" \
+  "dubbing_projects carries $COLUMNS of the 9 extended-metadata columns after the restore" \
+  "a restore from a pre-expand archive is the likely cause: the row count matches and the names are NULL" \
+  "the migration that adds them is 20260921093301_AddProductIdentityExtensions, and it runs FORWARD on the restored instance (docs/runbooks/backup-restore.md step 4)"
+ok "all 9 extended project-metadata columns present after the restore"
 
 # ---- 10. gaps the drill cannot close -----------------------------------------
 # Recorded as gaps rather than passed over, per the task's edge case: a partial
@@ -523,6 +649,7 @@ if [ "$STARTED_CONTAINER" = "1" ]; then
   note "     storage finals, previews, exports) was NOT restored, because this"
   note "     drill's scope is the new tables only. A drill that restores the"
   note "     database and not the media has verified half the system."
+  note "     Recorded as D1a (blocking) and F1 in docs/backup.md, not as a note."
 else
   note "NOTE: pointed at an existing instance; the caller owns the access window,"
   note "      the quiesce, and the removal of any archive this wrote."

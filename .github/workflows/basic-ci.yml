@@ -204,6 +204,29 @@ jobs:
       - name: Rollout window (additive migrations, compat matrix, flag register, rehearsal record)
         run: node scripts/check-rollout-window.mjs
 
+      # The backup/restore policy gate (Task 047). Sits beside the rollout-window
+      # gate and for the same reason it exists separately from the .NET tests: it
+      # asks a question no test asks, and it is the gate that decides whether a
+      # release may ship over an open backup or restore gap.
+      #
+      # It needs node and nothing else, and it is expected to be RED on this
+      # repository, which is the finding rather than a defect in the wiring: gaps
+      # D1a (the media half has never been restored) and F1 (no full-system drill
+      # has ever run) are open and blocking, and instruction 5 of Task 047 says an
+      # open gap blocks the release. Making this step green would require closing
+      # them, which needs a staging environment with WAL archiving.
+      #
+      # It is therefore NOT `continue-on-error`. The failure is the correct output
+      # and the run is red on purpose, exactly as `deploy/verify.sh` is red on
+      # purpose for the kustomize patch-target failure inherited from 043A. When
+      # the gaps close the step goes green with no change to this file - which is
+      # the difference between a gate and a quarantine entry.
+      - name: Backup policy (coverage, tiers, RPO/RTO, escalation, drill record, release gate)
+        run: node scripts/check-backup-policy.mjs
+
+      - name: Backup coverage and policy tests
+        run: node --test tools/backup-coverage.test.mjs tools/backup-policy.test.mjs
+
       # `if: always()`: the most useful artifact is the one attached to the run
       # that failed. `scripts/workflow-lint.sh` requires this.
       - name: Upload unit test results

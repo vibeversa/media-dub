@@ -367,9 +367,57 @@ test('the drill runs the four checks that catch a silent failure', () => {
     /\[ "\$EXPECTED_CHECKS" -lt "\$FLOOR" \]/.test(drill),
     'the drill does not compare the declared check count against the floor (D6)',
   );
+  // D5, and its extension to all seven groups. Before Task 047 the drill
+  // spot-read ONE row that happened to be a three-table join, so four of the
+  // seven groups were verified by count alone - the same defect one level down.
+  // Each group is asserted here to have its own read, by its own predicate,
+  // against its own marker, so removing a group's read fails this test rather
+  // than shortening the drill quietly.
+  for (const required of REQUIRED_GROUPS) {
+    assert.ok(
+      drill.includes(`|${required.table}|`),
+      `the drill has no per-group spot-read for ${required.table} (group ${required.id}); a group verified by count only is a group whose wrong rows restore cleanly`,
+    );
+  }
+  // The floor is a CONSTANT, and both the constant and the comparison are
+  // asserted, because either half alone is satisfied by a comment.
   assert.ok(
-    /p\.name/.test(drill) && /Drill Project One/.test(drill),
-    'the drill does not spot-read the extended project metadata (D5); a count-only check passes a pre-expand restore',
+    /readonly SPOT_REQUIRED=7/.test(drill),
+    'the drill does not hold a constant for the number of per-group spot-reads it must run; a floor derived from the list it iterates shrinks when the list does',
+  );
+  assert.ok(
+    /\[ "\$\{#SPOT_CHECKS\[@\]\}" -eq "\$SPOT_REQUIRED" \]/.test(drill),
+    'the drill does not compare the spot-read list length against the required count',
+  );
+  // The result line reports how many reads ran, so a drill that died before
+  // step 9 says spot=0 rather than saying nothing at all.
+  assert.ok(
+    /RESTORE_DRILL_RESULT reason=\$\{REASON\} status=\$\{STATUS\} tables=\$\{tables\} rows=\$\{rows\} gaps=\$\{GAPS\} spot=\$\{SPOT_READS\}/.test(drill),
+    'the drill result line does not report the number of per-group spot-reads that ran',
+  );
+  // And the column-set assertion, which is the only check that survives a
+  // pre-expand archive: the row count matches and the names are NULL.
+  //
+  // The EXACT comparison is asserted, not merely the presence of the query. The
+  // first version checked that `information_schema.columns` and the migration
+  // name appeared somewhere in the script, and weakening `[ "$COLUMNS" = "9" ]`
+  // to `[ "$COLUMNS" -ge 0 ]` - which makes the assertion vacuous while leaving
+  // both strings in the file - passed it. A check that the right query is present
+  // is not a check that the query is compared against the right answer.
+  assert.ok(
+    /information_schema\.columns/.test(drill) && /AddProductIdentityExtensions/.test(drill),
+    "the drill does not assert the nine extended project-metadata COLUMNS; a restore from a pre-expand archive passes every count and every spot-read",
+  );
+  assert.ok(
+    /\[ "\$COLUMNS" = "9" \]/.test(drill),
+    'the drill does not compare the extended-column count against exactly 9; a weaker comparison leaves the check present and vacuous',
+  );
+  // The read must resolve to EXACTLY ONE row. `grep -q <marker>` against a
+  // multi-row result is a check that cannot tell the right row from the right
+  // characters, which is D5 inside the check written to catch D5 (gap D11).
+  assert.ok(
+    /a spot-read must resolve to exactly one/.test(drill),
+    "the drill does not require a spot-read to return exactly one row; a read of a composite key by half of it returns several and passes on a substring",
   );
 });
 
@@ -459,6 +507,45 @@ test('the drill never concatenates SQL and never interpolates an unvalidated ide
     !/DELETE FROM \$t/.test(drill),
     'the drill wipes with DELETE; a DELETE that fails partway leaves a half-empty table and the count comparison then passes',
   );
+
+  // The per-group spot-read (Task 047) is the second place the drill builds a
+  // whole statement, and the assertion that it validates its identifiers is here
+  // for the same reason the referential-check generator's is. A spot-read that
+  // interpolated an unvalidated name would be a SQL injection point in the one
+  // step that runs against a restored instance.
+  const spotSection = drill.slice(drill.indexOf('SPOT_CHECKS=('));
+  assert.ok(spotSection.length > 0, 'the per-group spot-read section could not be located in the drill');
+  assert.ok(
+    /spot-read table is not a bare lowercase name/.test(spotSection),
+    'the spot-read does not validate its table name before building a statement',
+  );
+  assert.ok(
+    /spot-read marker column is not a bare lowercase name/.test(spotSection),
+    'the spot-read does not validate the column it selects',
+  );
+  // The predicate values are checked against a character class that admits only
+  // a synthetic `de71…` uuid or a bare lowercase literal. The message names both
+  // because the drill's own composite key needs both: `preferences` is read on
+  // `user_id = de71…` AND `key = ui.theme`, and a rule that only allowed uuids
+  // could not express the second half of that predicate.
+  assert.ok(
+    /is neither a synthetic de71 id nor a bare lowercase literal/.test(spotSection),
+    'the spot-read does not refuse a predicate value that is neither synthetic nor a bare lowercase literal; a real tenant id in a drill is a drill that reads real data',
+  );
+  // The value must be a lowercase literal, not merely a checked string: a quote,
+  // a space or a semicolon has to be refused rather than escaped, since this
+  // script builds quoted SQL and a value it had to escape is one it should not
+  // accept at all.
+  assert.ok(
+    /de71\[0-9a-f-\]\*\|\[a-z0-9._-\]\*\)/.test(spotSection),
+    "the spot-read's value character class admits a quote or whitespace, so the value is escaped rather than refused",
+  );
+  // The statement goes to psql on STDIN, never as an argument: an argument is in
+  // the process table and in `ps` output for every other process on the host.
+  assert.ok(
+    /\| psql_run 2>"\$WORK\/spot\.err"/.test(spotSection),
+    "the spot-read does not send its statement to psql on stdin; an argv SQL string is visible in the process table",
+  );
 });
 
 test('the drill result line and its reason vocabulary are closed and documented', () => {
@@ -493,8 +580,16 @@ test('docs/backup.md names every table and every group (R2, from the doc side)',
 
 test('docs/backup.md records the drill with a date, a result and its gaps', () => {
   // R3: "Restore drill recorded (date + result), not just documented."
-  const recorded = doc.match(/\d{4}-\d{2}-\d{2}[^\n]*restore drill/i);
-  assert.ok(recorded, 'docs/backup.md has no dated drill record');
+  // The heading used to read "### 2026-10-01 — new-entity restore drill", and
+  // Task 047 restructured the section into "## Recorded drill results" with
+  // dated sub-headings beneath it - so this anchor stopped matching while the
+  // record was still there and as complete as ever. That is the shape of every
+  // defect in this repository's history: a rule that fails because the prose
+  // moved, and which then gets deleted or loosened. The anchor is now on the
+  // DATE and the word "drill" in the same heading, which is what the requirement
+  // actually is.
+  const recorded = doc.match(/^#{2,4}[^\n]*\d{4}-\d{2}-\d{2}[^\n]*drill/im);
+  assert.ok(recorded, 'docs/backup.md has no dated drill heading');
   assert.ok(/RESTORE_DRILL_RESULT/.test(doc), 'the recorded drill does not quote the machine-readable result line');
   // The verdict must be its own token on its own line, so a `PASS` quoted later in
   // the paragraph — or inside the `RESTORE_DRILL_RESULT` template above it — cannot
@@ -511,15 +606,52 @@ test('docs/backup.md records the drill with a date, a result and its gaps', () =
   );
   assert.ok(/\*\*Gaps/i.test(doc), 'docs/backup.md records no gaps for the drill');
   // Every gap row must name an owner, or it is a complaint rather than a task.
-  const gapRows = doc.match(/^\| \*\*D\d+[a-z]?\*\* \|.*$/gm) ?? [];
+  //
+  // The gap table is located BY ITS HEADER, not by a row pattern, and the reason
+  // is specific: Task 047 added an escalation table whose rows have the same
+  // shape as gap rows (`| **L1** | ... | 15 min | ... |`), so the widened row
+  // pattern matched the escalation ladder and the test failed on a row that was
+  // never a gap. On a page with several tables, "a row that looks like a gap row"
+  // is not a definition of a gap row. Bounding the search at the next `##`
+  // heading is the version that means what it says.
+  const gapTable = locateTable(doc, 'Gap');
+  const gapRows = gapTable.match(/^\|\s*\*\*[A-Z]\d+[a-z]?\*\*\s*\|.*$/gm) ?? [];
   assert.ok(gapRows.length >= 5, `only ${gapRows.length} gap rows found; the gaps table is probably not being read`);
   for (const row of gapRows) {
+    // Somewhere in the row, a three-digit task number - optionally with a letter
+    // suffix, so `043C` and `047` both match - or a named accountable party. A
+    // `CHANGE_ME` owner is not an owner.
+    //
+    // The suffix matters and cost a round trip: `\b\d{3}\b` does not match
+    // `043C`, because the `C` means there is no word boundary after the digits.
+    // The first version of this pattern was `\| \d{3}[A-Z]?[^|]*\|`, which
+    // required the owner to be the SECOND cell and therefore matched only the
+    // handful of rows whose owner happened to sit there.
     assert.ok(
-      /\| \d{3}[A-Z]?[^|]*\|/.test(row) || /043C/.test(row),
+      /\b\d{3}[A-Z]?\b|[a-z]+ (?:review| team| lead|on-call)/i.test(row),
       `a gap row names no owner: ${row.slice(0, 90)}`,
     );
+    assert.ok(!/\| *CHANGE_ME *\|/.test(row), `a gap row names CHANGE_ME as its owner: ${row.slice(0, 90)}`);
   }
 });
+
+/**
+ * The body of a markdown table, located by a header cell and bounded at the next
+ * heading of the same or higher level.
+ *
+ * Exists because this page now has three tables whose rows are shaped alike -
+ * gaps, escalation levels, coverage groups - and a row-shape pattern cannot tell
+ * them apart. A table whose column count changes is a formatting change; a page
+ * that gains a table is a content change, and neither should be able to silently
+ * redirect a check onto the wrong rows.
+ */
+function locateTable(text, headerCell) {
+  const start = text.search(new RegExp(`^\\|\\s*#\\s*\\|\\s*${headerCell}\\s*\\|`, 'm'));
+  assert.ok(start > 0, `docs/backup.md has no table with a "${headerCell}" header column`);
+  const rest = text.slice(start);
+  const end = rest.slice(1).search(/^#{1,4} /m);
+  return end > 0 ? rest.slice(0, end + 1) : rest;
+}
 
 test('docs/backup.md states the media half is not covered by this drill', () => {
   // The claim this page exists to keep honest: a database restore does not bring
@@ -545,23 +677,40 @@ test('docs/backup.md states the media half is not covered by this drill', () => 
   // the status cell is bold, so the row is matched as a whole rather than by
   // column count - a table whose column count changes is a formatting change,
   // not a coverage change, and this assertion is about coverage.
-  const gapRows = [...doc.matchAll(/^\| \*\*D(\d+[a-z]?)\*\* \|(.+)$/gm)];
-  assert.ok(gapRows.length >= 8, `only ${gapRows.length} gap rows found; the gaps table is probably not being read`);
+  //
+  // The id pattern is `[A-Z]\d+[a-z]?`, not `D\d+[a-z]?`, because Task 047 added
+  // an `F`-prefixed series (F1 the unrun full-system drill, F2 the unmeasured
+  // RTO, F3 the PITR-only tier) for gaps that are not defects in the drill. The
+  // original pattern did not match them, so every assertion below silently
+  // applied to the D-series only and a malformed F-row would have passed.
+  const gapTable = locateTable(doc, 'Gap');
+  const gapRows = [...gapTable.matchAll(/^\|\s*\*\*([A-Z]\d+[a-z]?)\*\*\s*\|(.+)$/gm)];
+  assert.ok(gapRows.length >= 8, `only ${gapRows.length} gap rows found in the gaps table; the table is probably not being read`);
   for (const [, id, rest] of gapRows) {
     assert.ok(
       /\*\*fixed\*\*|\*\*open\*\*/.test(rest),
       `gap ${id} has no status cell (expected **fixed** or **open**): ${rest.slice(-60)}`,
     );
+    // The owner cell accepts a task number OR a named team, for the reason given
+    // in the other gap test: 047 added a row owned by `security review`, because
+    // widening the network reach of the one workload that can DDL is not a
+    // numbered task's work. What it must not be is a `CHANGE_ME` placeholder.
     assert.ok(
-      /\|\s*`?0\d{2}[A-Z]?/.test(rest) || /043C/.test(rest),
-      `gap ${id} names no owning task: ${rest.slice(-70)}`,
+      /\b\d{3}[A-Z]?\b|[a-z]+ (?:review| team| lead| on-call)/i.test(rest),
+      `gap ${id} names no owner: ${rest.slice(-70)}`,
     );
+    assert.ok(!/CHANGE_ME/.test(rest), `gap ${id} names CHANGE_ME as its owner: ${rest.slice(-70)}`);
   }
   const docFixed = gapRows.filter(([, , rest]) => /\*\*fixed\*\*/.test(rest));
   assert.ok(
     docFixed.length >= 5,
     `docs/backup.md records only ${docFixed.length} fixed gaps; the drill found more than that by being run`,
   );
+  // And the open ones are not decoration: 047's blocking gaps are the whole
+  // argument for the release gate existing, so a register with none of them
+  // visible is a register nobody is maintaining.
+  const docOpen = gapRows.filter(([, , rest]) => /\*\*open\*\*/.test(rest));
+  assert.ok(docOpen.length >= 3, `only ${docOpen.length} open gap(s) recorded; the register should name what is still broken`);
 });
 
 test('docs/backup.md links Plan A rather than forking the procedure', () => {

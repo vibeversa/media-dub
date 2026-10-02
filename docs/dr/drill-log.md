@@ -150,3 +150,51 @@ recorded here — only counts, durations, and verdicts.
   (database **and** media) remains the gate in
   [`../runbooks/backup-restore.md`](../runbooks/backup-restore.md), and a gap
   recorded here does not satisfy it.
+
+## 2026-10-02 — Task 047 re-execution: the drill gains the job and the policy
+
+- Date: 2026-10-02 (UTC), 03:09–03:15. Full record, including every gap:
+  [`../backup.md`](../backup.md). This entry is the index; that page is the
+  evidence.
+- Scope: the same ten tables and 28 synthetic rows as the 2026-10-01 entry, so
+  the counts are comparable run to run. What changed is the drill, not the
+  scope: it now spot-reads **one row per entity group** (seven, was one
+  three-table join) and asserts the nine extended project-metadata **columns**
+  after the restore.
+- Command: `bash scripts/restore-drill.sh`. Target: the disposable
+  `postgres:16-alpine` 16.15, schema from the committed migration chain (7
+  migrations, 56 tables).
+- Result: **PASS** — `RESTORE_DRILL_RESULT reason=OK status=PASS tables=10
+  rows=28 gaps=0 spot=7`
+  - RLS verified enabled on all 9 tenant-scoped tables **before** any write.
+  - `pg_dump -Fc` 6,251 bytes → `TRUNCATE` to 0 across all 10 →
+    `pg_restore --data-only --exit-on-error`.
+  - All 10 counts identical before and after, none zero.
+  - 15 referential checks, 0 dangling.
+  - 7 per-group spot-reads, each by its own predicate, each resolving to exactly
+    one row, each asserting that group's own column.
+  - All 9 extended project-metadata columns present after the restore.
+- **Six further defects were found by injecting faults, and all six are fixed.**
+  They are D7–D12 in [`../backup.md`](../backup.md). D7 is the one that matters
+  most: **`deploy/k8s/backup-cronjob.yaml` never existed**, although
+  `scope.json` and `docs/backup.md` both described it. That is the limit of
+  "write the required set down again": D2 and D6 were *reduced* checks, and D7
+  was the *absence* of one, which three agreeing sources cannot detect.
+  D11 is the sharpest: the new spot-read keyed `user_preferences` on half of its
+  composite key, read back three rows, and passed on a substring — the D5 failure
+  inside the check written to catch D5. It was found by **reading the drill's
+  printed output**, not its exit code.
+- Quiesce timestamp: N/A (disposable instance; no live environment touched).
+- PITR target: N/A — unchanged. The managed-service PITR tier is still
+  **STAGING-GATED**; gaps F1 and F3 in `docs/backup.md` keep that open, and this
+  entry does not let a green local drill imply otherwise.
+- Wall-clock RTO: ~7 s for the data half against a single-node server. The live
+  RTO is still unmeasured; `policy.json` carries `rto.measured: false` and the
+  gate fails if that flips to `true` with no date.
+- Verdict: **PASS** for the new-entity data tier, and **still not** a full-system
+  drill. The media half has never been restored by anything in this repository —
+  gap **D1a** is `blocking: true`, and the backup policy gate is therefore
+  **RED**, which is the correct output and is what instruction 5 of Task 047
+  requires. The full-system drill in
+  [`../runbooks/backup-restore.md`](../runbooks/backup-restore.md) is still the
+  promotion gate, and a gap recorded here does not satisfy it.

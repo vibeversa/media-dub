@@ -393,6 +393,12 @@ jobs:
             image: dubbing-worker-export
           - dockerfile: Dockerfile.maintenance
             image: dubbing-maintenance
+          # Task 047. The backup job's image: a pg_dump client plus curl, and
+          # nothing else. It is in this matrix rather than built by hand because
+          # an image that no job builds and no scan covers is not a hardened
+          # image, it is an unpinned tag.
+          - dockerfile: Dockerfile.backup
+            image: dubbing-backup
     steps:
       - uses: actions/checkout@v4
 

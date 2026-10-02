@@ -1,0 +1,169 @@
+# Scheduled PostgreSQL backup of the seven durable-entity groups Plan B added
+# (Task 047, instruction 1).
+#
+# THIS FILE WAS MISSING BEFORE TASK 047
+# -------------------------------------
+# `deploy/backup/scope.json` has carried the line "deploy/k8s/backup-cronjob.yaml
+# dumps exactly `tables`" since Task 043C wrote it, and `docs/backup.md` has
+# carried a coverage table since the same day. Neither file existed. The scope
+# described a coverage that nothing produced, and because `tools/
+# backup-coverage.test.mjs` compared scope.json against the prose and against the
+# drill, every one of those checks passed: three sources agreed, and none of them
+# was a job. That is gap **D7** in docs/backup.md - the same defect class as 043C
+# D2 and D6 one level up, where the subject list and the data being checked were
+# the same thing, except that here there was no subject at all.
+#
+# The schedule is NOT the RPO
+# --------------------------
+# The 5-minute RPO is WAL archiving, which runs in the managed service and has no
+# CronJob. This job is hourly, deliberately off the hour, and it is the
+# SELECTABLE artefact: an archive a responder can restore from with pg_restore
+# and nothing else - no provider CLI, no new instance, no restore plan approval.
+# An hourly job that claimed to deliver a 5-minute RPO would be a coverage claim
+# the schedule does not support, and a responder who believed it would discover
+# the difference during an incident.
+#
+# WHY THE COVERAGE IS IN ANNOTATIONS
+# ---------------------------------
+# The seven groups are declared as one annotation per group, below, each naming
+# the table it dumps. An annotation is the one part of a manifest an operator
+# reads with `kubectl describe`, and one line per group means a group that is
+# dropped from the job is *named* by the gate rather than merely absent.
+# `scripts/check-backup-policy.mjs` reads these lines and fails the release if any
+# of the seven is missing, if a table here disagrees with `scope.json`, or if
+# `deploy/backup/dump.sh` disagrees with this file.
+#
+# SECURITY
+#   - Runs as uid 1654, non-root, read-only root filesystem, all capabilities
+#     dropped: the same posture as deploy/k8s/migration-job.yaml, the other
+#     workload whose entire job is to read the database.
+#   - No secret in this file. The connection string, the bucket and the
+#     object-storage keys come from the ExternalSecret in deploy/k8s/secrets.yaml.
+#   - The connection string is the MAINTENANCE role, never the app role. An
+#     archive taken as the app role is empty on every row-level-security table
+#     and `pg_restore` reports success - gap D3 in docs/backup.md, which
+#     `backup-dump` now refuses to produce rather than leaves for a restore to
+#     discover.
+#   - Network: `backup-allow` in deploy/k8s/networkpolicies.yaml. Egress to
+#     PostgreSQL and to object storage and nowhere else; no ingress rule at all,
+#     because nothing connects to a backup pod.
+#   - The archive is synthetic-free: it is a copy of production data, so it is
+#     written to the same encrypted, versioned bucket as the media and it is
+#     never left on the pod. The pod's disk is an emptyDir and the archive is
+#     removed by the pod's own deletion.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dubbing-backup
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+    app.kubernetes.io/component: backup
+  annotations:
+    # The seven new durable-entity groups, one line each. `table=` is the table
+    # the job dumps; `priority=` is its restore order (docs/backup.md);
+    # `retention=` is its retention. Read by scripts/check-backup-policy.mjs.
+    dubbing.io/backup-group-1-tenant-users: "tenant users - table=tenant_users, priority=1, retention=365d"
+    dubbing.io/backup-group-2-memberships: "project memberships - table=project_memberships, priority=2, retention=365d"
+    dubbing.io/backup-group-3-project-metadata: "extended project metadata - table=dubbing_projects (9 new columns), priority=2, retention=365d"
+    dubbing.io/backup-group-4-preferences: "user preferences - table=user_preferences, priority=3, retention=365d"
+    dubbing.io/backup-group-5-notifications: "notifications - table=notifications, priority=4, retention=90d"
+    dubbing.io/backup-group-6-activity-events: "activity events - table=activity_events, priority=5, retention=90d"
+    dubbing.io/backup-group-7-voice-preview-jobs: "voice preview jobs - table=voice_preview_jobs, priority=6, retention=30d"
+    # Not a group: the four tables the groups reference, which the schema does
+    # not protect with a foreign key, so a dump without them restores
+    # notifications whose project does not exist.
+    dubbing.io/backup-parents: "tenants, dubbing_projects, speakers, voice_profiles"
+    dubbing.io/rpo: "5 min (WAL archiving, managed service; this job is hourly and is not the RPO)"
+    dubbing.io/restore-of-record: "docs/backup.md; procedure is docs/runbooks/backup-restore.md"
+spec:
+  # Hourly, at :17. Off the hour so a fleet of environments does not hit the same
+  # database in the same second, and so the run is not competing with the
+  # nightly base backup window.
+  schedule: "17 * * * *"
+  timeZone: Etc/UTC
+  # Forbid, not Allow: two concurrent dumps race for the same object key
+  # sequence and the older archive can overwrite the newer one.
+  concurrencyPolicy: Forbid
+  # A missed window is a missed backup and must be visible, not skipped quietly.
+  # Ten minutes is one missed run; the Job's own activeDeadlineSeconds is 30.
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 24
+  failedJobsHistoryLimit: 24
+  # A completed Job is kept for a day so `kubectl logs` still has last night's
+  # failure; the archive itself lives in object storage, not on the pod.
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: dubbing-platform
+        app.kubernetes.io/component: backup
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: dubbing-platform
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1654
+            runAsGroup: 1654
+            fsGroup: 1654
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: backup-dump
+              # Built by Dockerfile.backup. Not a `latest`-only reference to a
+              # floating third-party image: this job holds a copy of the
+              # production database.
+              image: ghcr.io/CHANGE_ME/dubbing-backup:latest
+              imagePullPolicy: Always
+              env:
+                # The maintenance role. `backup-dump` refuses to run without
+                # BYPASSRLS on this role, so the wrong secret here is a failed
+                # Job and not an empty archive.
+                - name: BACKUP_PG_DSN
+                  valueFrom:
+                    secretKeyRef: {name: dubbing-secrets, key: maintenance-connection}
+                - name: BACKUP_STORAGE_ENDPOINT
+                  valueFrom:
+                    secretKeyRef: {name: dubbing-secrets, key: storage-endpoint}
+                - name: BACKUP_STORAGE_BUCKET
+                  valueFrom:
+                    secretKeyRef: {name: dubbing-secrets, key: storage-bucket}
+                - name: BACKUP_STORAGE_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef: {name: dubbing-secrets, key: storage-access-key}
+                - name: BACKUP_STORAGE_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef: {name: dubbing-secrets, key: storage-secret-key}
+                # Optional, and the only optional one here, for a specific
+                # reason: the region is a SIGNING input with a correct default
+                # in backup-dump, so a cluster whose ExternalSecret predates
+                # this key still produces backups. The other four are fatal when
+                # absent - a missing credential is a failed Job, which is the
+                # outcome that says "the backup did not run" instead of the one
+                # that says "the backup ran and went nowhere".
+                - name: BACKUP_STORAGE_REGION
+                  valueFrom:
+                    secretKeyRef: {name: dubbing-secrets, key: storage-region, optional: true}
+                - name: BACKUP_PREFIX
+                  value: postgres/new-entities
+              resources:
+                requests: {cpu: 100m, memory: 128Mi}
+                limits: {cpu: "1", memory: 1Gi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1654
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: archive, mountPath: /backup}
+          volumes:
+            - name: archive
+              emptyDir: {}

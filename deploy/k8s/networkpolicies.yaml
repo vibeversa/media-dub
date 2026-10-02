@@ -187,6 +187,88 @@ spec:
 # the edge - which is the correct direction to fail in.
 #
 # Egress: none. A static file server that serves a build has nothing to call.
+---
+# The backup job (Task 047): PostgreSQL and object storage, nothing else.
+#
+# The migration-allow policy above is the template and the reason this one exists:
+# before Task 047 the backup CronJob did not exist, and when it was added it
+# inherited the default-deny with no rule of its own - which means it could not
+# have reached PostgreSQL at all. A backup that cannot connect produces no
+# archive, and produces it silently: the Job succeeds (pg_dump against a
+# filtered-to-nothing view, or the CronJob never even starts) and there is
+# nothing to notice until a restore is needed.
+#
+# Egress is the whole of its job: read the database (5432), write the archive to
+# the versioned bucket (9000 self-hosted MinIO, 443 for a managed endpoint).
+# No ingress rule at all, for the migration Job's reason: nothing connects to a
+# pod that is copying a database, and a backup pod that accepts a connection is
+# a pod someone can ask what it is holding.
+#
+# It is NOT granted the broker, Redis, or the provider egress on 443 that the
+# workers hold. It has no reason to publish a message and no reason to call an
+# AI provider, and a backup job is exactly the kind of long-lived, low-urgency
+# process an over-broad egress rule is used to smuggle.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backup-allow
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+  annotations:
+    task-047: "PostgreSQL + object storage only; no ingress; no broker, no provider egress"
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/component: backup}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector: {matchLabels: {app: postgres}}
+        - ipBlock: {cidr: 198.51.100.0/24} # CHANGE_ME: managed PG CIDR
+      ports:
+        - {protocol: TCP, port: 5432}
+    - to:
+        - podSelector: {matchLabels: {app: minio}}
+        - ipBlock: {cidr: 198.51.100.0/24} # CHANGE_ME: managed storage CIDR
+      ports:
+        - {protocol: TCP, port: 9000}
+        - {protocol: TCP, port: 443}
+---
+# The datestores have to ACCEPT the backup job, and this policy is the only
+# reason they do.
+#
+# A NetworkPolicy is symmetric: `backup-allow` granting egress does not open the
+# database's ingress, and the default-deny above closes it. Without this rule
+# the job cannot connect. That asymmetry is invisible in a manifest review
+# because each file looks locally correct, and the symptom is a CronJob that
+# fails with a connection timeout rather than with anything that says "the
+# network policy does not permit this" - which is gap D8 in docs/backup.md.
+#
+# The migration job has the SAME missing half and it is deliberately NOT fixed
+# here: widening the reach of the one workload that can DDL is a security change
+# with its own review, it is pre-existing, and it is recorded as a gap with an
+# owner rather than being fixed inside a backup task. This rule names the backup
+# component alone; `deploy/tests/hosting-topology.py` allows exactly this one
+# extra peer and fails on any other.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: datastores-allow-backup
+  namespace: dubbing-prod
+  labels:
+    app.kubernetes.io/part-of: dubbing-platform
+  annotations:
+    task-047: "the half of the policy that lets the backup job be dialled at all"
+spec:
+  podSelector:
+    matchLabels: {app: postgres}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/component: backup}}
+      ports:
+        - {protocol: TCP, port: 5432}
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

@@ -162,11 +162,29 @@ for name, doc in policies:
     for rule in (doc.get("spec") or {}).get("ingress") or []:
         for peer in rule.get("from") or []:
             peer_labels = (peer.get("podSelector") or {}).get("matchLabels") or {}
-            allowed = {"api", "migration"}
+            # Task 047 added `backup`. It is in the set for a specific reason
+            # rather than because the set was widened to make a finding go away:
+            # the backup job's entire purpose is to read the database, and a
+            # backup that cannot be dialled produces no archive - silently,
+            # because the CronJob is hourly and nobody is watching it. The
+            # counter-argument, that a data-reading peer is a data-exfiltration
+            # peer, is answered by the other half rather than by this line: the
+            # job has no ingress of its own, no broker or provider egress, a
+            # non-root uid and a read-only root filesystem, and it is the only
+            # workload in the namespace holding the object-storage write key.
+            #
+            # The migration job is still MISSING its datastore-ingress rule - the
+            # same asymmetry, pre-existing. It is not added here: granting the
+            # one workload that can DDL a new network path is a change with its
+            # own review, and it is recorded as a gap in docs/backup.md rather
+            # than being widened in inside a backup task. `datastores-allow-
+            # backup` names the backup component alone, so this loop cannot be
+            # satisfied by a rule that admits everything.
+            allowed = {"api", "migration", "backup"}
             if not (set(peer_labels.values()) & allowed):
                 problems.append(
-                    f"{name}: policy for {targeted} admits {peer_labels or peer}, which is neither the api "
-                    "nor the migration job. Only those two may reach a datastore over the network."
+                    f"{name}: policy for {targeted} admits {peer_labels or peer}, which is none of the api, "
+                    "the migration job or the backup job. Only those three may reach a datastore over the network."
                 )
 
 # 4. The migration job reaches PostgreSQL and nothing else it does not need.

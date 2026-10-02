@@ -1,0 +1,44 @@
+# Backup dump image for the CronJob in deploy/k8s/backup-cronjob.yaml (Task 047).
+#
+# Two tools and nothing else: `pg_dump` (from the PostgreSQL client package) and
+# `curl` (for the SigV4-signed PUT to object storage). The official
+# postgres:16-alpine image already carries a pg_dump whose major version is the
+# server's, which is the property that matters - a client one major version off
+# refuses a server that new, and a client that is too old silently changes
+# behaviour. The tag is deliberately `16-alpine`, the same image
+# scripts/restore-drill.sh runs, so the archive the job writes is the archive
+# the drill proves restorable.
+#
+# `postgres:16-alpine` ships neither curl nor openssl, so curl is added here
+# rather than the job falling back to a second image and a sidecar: one container,
+# one entrypoint, one thing that can fail.
+#
+# No shell concatenation of any SQL: dump.sh hands `pg_dump` `--table=`
+# arguments and never builds a query. No credential is baked in: the connection
+# string, the bucket and the object-storage keys arrive as environment
+# variables from the ExternalSecret in deploy/k8s/secrets.yaml.
+FROM postgres:16-alpine
+
+# tini is not used: the entrypoint is a single bash script that execs curl last
+# and pg_dump is a child process, so the container's lifetime is the script's.
+RUN apk add --no-cache curl
+
+# Non-root, and a uid the platform's Pod Security Standards already accept
+# (1654 is the uid the migration Job in deploy/k8s/migration-job.yaml runs as,
+# so one `runAsNonRoot` rule covers the two data-touching workloads).
+# `backup` is not a login user: nothing in the namespace runs as it.
+RUN addgroup -g 1654 -S backup \
+ && adduser -u 1654 -S -G backup -H -s /sbin/nologin backup \
+ && mkdir -p /backup \
+ && chown 1654:1654 /backup
+
+COPY deploy/backup/dump.sh /usr/local/bin/backup-dump
+RUN chmod 0555 /usr/local/bin/backup-dump
+
+# Read-only-root compatible: the job writes only to /backup, which is an
+# emptyDir mounted by the manifest.
+USER 1654:1654
+WORKDIR /backup
+ENV BACKUP_DIR=/backup \
+    PGDATA=/var/lib/postgresql/data
+ENTRYPOINT ["/usr/local/bin/backup-dump"]

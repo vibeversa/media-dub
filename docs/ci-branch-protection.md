@@ -292,18 +292,105 @@ media half is out of scope, so a green drill has verified half the system. It is
 not the number of open issues in `docs/backup.md`; it is what this run could not
 close.
 
-### `tools/backup-coverage.test.mjs` and `tools/product-runbooks.test.mjs`
+`spot=` is the number of per-group spot-reads that ran, added in Task 047. The
+pre-047 drill read one row that happened to be a three-table join, so four of the
+seven groups were verified by count alone. The count is bounded below by a
+constant the script holds (`SPOT_REQUIRED=7`) rather than by the length of the
+list it iterates, because a floor derived from the list shrinks with the list.
 
-Both are pure, need no database and no cluster, and run under
-`npm run test:tools`. They are not separately wired: `test:tools` globs
-`tools/*.test.mjs`, so a new file is covered by adding it there.
+### `scripts/check-backup-policy.mjs` (the backup/restore release gate, Task 047)
+
+```
+BACKUP_GATE_RESULT reason=<REASON> status=<PASS|FAIL> groups=<n> tables=<n> gaps=<n> open=<n> blocking=<n>
+```
+
+**This gate is currently RED on this repository, and that is correct.** Gaps
+**D1a** (the media half has never been restored) and **F1** (no full-system
+restore drill has ever run) are open with `blocking: true`, and Task 047
+instruction 5 is explicit: an open backup or restore gap blocks the release. The
+step in `basic-ci.yml` is deliberately **not** `continue-on-error` — the red is
+the output, and it goes green by closing the gaps rather than by changing the
+wiring.
+
+Every finding line is prefixed with its own reason, `[REASON]`, so a run with
+several findings is readable and a caller can branch on one without parsing the
+summary. `reason=` is the **first** failure, so it names the earliest problem in
+the file rather than whichever check ran last.
+
+| Reason | Meaning |
+| --- | --- |
+| `OK` | Every check passed: coverage complete, every table tiered, RPO/RTO declared, escalation callable, a drill recorded, no open blocking gap |
+| `COVERAGE_GROUPS_MISSING` | One of the seven groups is absent from `scope.json`, `policy.json`, **or the CronJob's coverage annotations**. The last of these is gap **D7** — the state before Task 047, where the file the scope named did not exist and every coverage check passed because the sources agreed |
+| `BACKUP_JOB_MISSING` | `deploy/k8s/backup-cronjob.yaml` or `deploy/backup/dump.sh` is absent. **Called out separately from `COVERAGE_GROUPS_MISSING`** because they are different incidents: one is "the job is not deployed", the other is "the job is deployed and does not cover this" |
+| `COVERAGE_DRIFT` | The CronJob, `dump.sh`, `scope.json` and `policy.json` disagree about what is dumped; or a table that must never be archived is in the archive |
+| `DURABLE_TABLE_UNCLASSIFIED` | A table a migration creates has no tier, or a tier names a table that does not exist. **The edge case, made mechanical** |
+| `RPO_UNDECLARED` / `RTO_UNDECLARED` | No number, no mechanism, no source document, or a `measured: true` with no `measuredOn` date |
+| `ESCALATION_INCOMPLETE` | A level with no role, SLA, trigger or contact, or the "overdue, not waived" rule is missing |
+| `DRILL_RECORD_MISSING` | No record, a record missing a required field, a `$comment` read as a track, or an unrun track that does not declare `blocksPromotion` |
+| `DRILL_OVERDUE` | The last run is older than the track's own declared cadence |
+| `DRILL_FAILED` | The last run is recorded `FAIL`. A failed drill blocks until it is re-run |
+| `GAP_BLOCKS_RELEASE` | An open blocking gap, a durable entity with no backup, or no `releaseGate.rule` at all |
+| `INPUT_INVALID` | A file could not be read or parsed. **A failure, not a skip** — a gate that read nothing has cleared nothing |
+
+`GAP_BLOCKS_RELEASE` is deliberately **not** overridable by an environment
+variable. A release gate whose blocking behaviour can be switched off by an env
+var is a gate that is off. L3's authority to waive a drill is a dated row in
+`deploy/backup/policy.json`, which the gate reads — so a waiver is visible.
+
+`deploy/verify.sh` reports `BACKUP_GAP_BLOCKS_RELEASE` for this gate's failure,
+called out from `MANIFEST_CHECK_FAILED` for the rollout gate's reason: the
+manifests can be perfect and the release still unshippable, and an operator sent
+to `deploy/k8s/` for a missing backup entry is sent to the wrong file.
+
+### `deploy/backup/dump.sh` (the backup job, Task 047)
+
+```
+BACKUP_DUMP_RESULT reason=<REASON> status=<PASS|FAIL> groups=<n> tables=<n> bytes=<n>
+```
+
+Runs in the CronJob pod, so the log is read during an incident rather than in CI.
+It is the one job in the platform holding a copy of the production database, and
+each of its reasons is a refusal that would otherwise be silent.
+
+| Reason | Meaning |
+| --- | --- |
+| `OK` | The archive is non-empty, custom-format, and uploaded with a 2xx |
+| `INPUT_INVALID` | An unknown argument, or a table name that is not a bare lowercase identifier |
+| `DSN_UNPARSEABLE` | `BACKUP_PG_DSN` is empty, has a fragment with no `=`, or does not resolve a host, a database and a user. **It refuses to guess** — a silently misparsed DSN produces a dump of the wrong database |
+| `RESTORE_ROLE_UNSUITABLE` | The connection's role does not have `BYPASSRLS`. An archive taken without it is empty on every RLS table and `pg_restore` reports success — gap **D3**, pre-empted rather than discovered during a restore |
+| `DUMP_FAILED` | `pg_dump` exited non-zero, or the archive is 0 bytes, or it does not begin with `PGDMP` |
+| `UPLOAD_FAILED` | The signed PUT did not complete, or returned a non-2xx. A 403 is called out separately: an unuploaded archive is on an ephemeral volume and is gone |
+
+### `tools/backup-coverage.test.mjs`, `tools/backup-policy.test.mjs` and `tools/product-runbooks.test.mjs`
+
+All three are pure, need no database and no cluster, and run under
+`npm run test:tools`. They are not separately wired there: `test:tools` globs
+`tools/*.test.mjs`, so a new file is covered by adding it there. The two backup
+files are **also** named explicitly as a step in `basic-ci.yml`, because
+`basic-ci.yml` is a different workflow with its own glob and a reader looking for
+"where is the backup gate enforced" should not have to know that.
+
+The two backup test files are split by question, not by convenience:
+`backup-coverage.test.mjs` owns **what is covered** (the scope file, the seed,
+the drill), and `backup-policy.test.mjs` owns **what was promised** (the job, the
+tiers, RPO/RTO, escalation, the drill record, the release rule). 043C's D2 and
+D6 were both caused by two questions being answered from one source, so they are
+not put back together.
 
 | Property | Held by |
 | --- | --- |
 | The seven new-entity groups are declared, with a real table, a real migration, a contiguous restore priority and a retention | `backup-coverage.test.mjs` |
 | The scope file, the drill's own `REQUIRED_GROUPS`, and `docs/backup.md` agree | both (independently — the duplication is the point) |
 | The drill fails on an empty restore, a disabled RLS policy, a dangling reference, a non-loopback target, and a spot-read that lost the Plan B columns | `backup-coverage.test.mjs`, by asserting the checks exist in the script |
+| **Every one of the seven groups has its own spot-read**, and the floor of seven is a constant the script holds rather than the length of the list it iterates | `backup-coverage.test.mjs` (Task 047 — see the `SPOT_READS` note under the drill above) |
+| A spot-read resolves to exactly **one** row, so a read of half a composite key cannot pass on a substring | `backup-coverage.test.mjs` (gap **D11**) |
+| The nine extended project-metadata columns are present after the restore, compared against exactly `9` — not merely queried | `backup-coverage.test.mjs` |
 | Every `reason` the drill can emit is documented here | `backup-coverage.test.mjs` |
+| The gate is red **only** for the open blocking gaps, and closing them turns it green | `backup-policy.test.mjs` |
+| Each of the seven groups is in the **job**, not only in a document; removing one from the CronJob, the script, or the scope fails | `backup-policy.test.mjs` (Task 047, gap **D7**) |
+| A new table with no tier assignment fails, and a tier for a table that does not exist fails | `backup-policy.test.mjs` (the task's "new table without a backup entry" edge case) |
+| A target cannot claim a measurement it does not have; an unrun drill must declare that it blocks promotion | `backup-policy.test.mjs` |
+| The job refuses a role without `BYPASSRLS`, an unparseable DSN, and a non-2xx upload; and never echoes a credential | `backup-policy.test.mjs` |
 | Eight product runbooks exist with the uniform template, in order, none empty | `product-runbooks.test.mjs` |
 | Every monitor a runbook names is a real alert, dashboard or emitted metric — **or is declared a GAP with a named owner** | `product-runbooks.test.mjs` |
 | Every diagnostics view a runbook cites is a route `AdminController` serves | `product-runbooks.test.mjs` |
@@ -387,6 +474,7 @@ VERIFY_RESULT reason=<REASON> status=<PASS|FAIL> exit=<n>
 | `OK` | Every applicable check passed |
 | `MANIFEST_CHECK_FAILED` | A structural or contract assertion over `deploy/` failed |
 | `MIGRATION_NOT_ADDITIVE` | The rollout-window gate failed: a migration in the compatibility window is not additive, or the compatibility matrix / flag register / rollback rehearsal record is not current. **Called out separately from `MANIFEST_CHECK_FAILED` because the manifests can be perfectly valid and the release still unshippable** — an operator sent to the manifests for a broken expand/contract window is sent to the wrong file |
+| `BACKUP_GAP_BLOCKS_RELEASE` | The backup-policy gate failed: an open backup or restore gap with `blocking: true`, a durable entity with no backup, or a coverage drift between the job and the scope. **Same class of separation and for the same reason** — the manifests can be perfect and the data still unrecoverable, and the answer is in `deploy/backup/policy.json`, not in `deploy/k8s/`. Checked **before** the rollout-window test, because a release blocked on both is blocked on the one that decides whether the data survives at all |
 | `DEPLOY_URL_REQUIRED` | `--require-post-deploy` (the release wiring) with no `DEPLOY_URL`. A static check is not a deployed check |
 | `HEALTH_FAILED` | `/health/live` or `/health/ready` did not return 200 |
 | `OPENAPI_UNREACHABLE` | The deployed API serves no OpenAPI document, or the document has no readable `info.version` |

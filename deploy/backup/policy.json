@@ -1,0 +1,445 @@
+{
+  "$comment": [
+    "Backup/restore POLICY as data (Task 047).",
+    "",
+    "Three separate things live in this repository and this file holds the third:",
+    "  deploy/backup/scope.json   WHAT is covered (tables, retention, restore order)",
+    "  deploy/k8s/backup-cronjob.yaml  HOW it is produced (the job)",
+    "  deploy/backup/policy.json  WHAT WE PROMISED (RPO/RTO, escalation, drill",
+    "                            cadence, the gap register, and the rule that makes",
+    "                            an open gap block a release)",
+    "",
+    "scripts/check-backup-policy.mjs reads all three plus the migrations and fails",
+    "when they disagree. The required seven groups are written down a FOURTH time",
+    "in tools/backup-policy.test.mjs, which is the point: a check whose subject",
+    "list comes from the same file as the data it checks will always agree with",
+    "itself. That is not hypothetical - it is gaps D2, D6 and D7 in docs/backup.md.",
+    "",
+    "RPO/RTO VALUES ARE TEAM-CHOSEN, NOT PLAN-DERIVED. Plan B section 18.4",
+    "specifies no RPO, no RTO, no job path and no escalation contact. Plan A",
+    "section 30 proposes RPO 5 min / RTO 1 h and those are the numbers carried",
+    "forward; what this file adds is which of them is a TARGET, which has been",
+    "MEASURED, and who to call. Replace every CHANGE_ME before this policy is",
+    "used to gate a real release."
+  ],
+  "policyVersion": 1,
+  "introducedBy": "Task 047",
+  "extends": "Task 043C (docs/backup.md coverage + scope.json + the drill)",
+
+  "coverage": {
+    "$comment": "The seven durable-entity groups. Id, title and table must match deploy/backup/scope.json and the CronJob's annotations exactly; the gate compares all three and this list is a fourth check, not a fourth source of truth.",
+    "groups": [
+      { "id": "tenant-users", "label": "tenant users", "table": "tenant_users", "priority": 1 },
+      { "id": "memberships", "label": "project memberships", "table": "project_memberships", "priority": 2 },
+      { "id": "project-metadata", "label": "extended project metadata", "table": "dubbing_projects", "priority": 2 },
+      { "id": "preferences", "label": "user preferences", "table": "user_preferences", "priority": 3 },
+      { "id": "notifications", "label": "notifications", "table": "notifications", "priority": 4 },
+      { "id": "activity-events", "label": "activity events", "table": "activity_events", "priority": 5 },
+      { "id": "voice-preview-jobs", "label": "voice preview jobs", "table": "voice_preview_jobs", "priority": 6 }
+    ],
+    "parents": ["tenants", "speakers", "voice_profiles", "dubbing_projects"],
+    "notInPostgres": ["media assets", "previews", "exports", "output assets", "uploaded source media"],
+    "job": {
+      "manifest": "deploy/k8s/backup-cronjob.yaml",
+      "script": "deploy/backup/dump.sh",
+      "image": "Dockerfile.backup",
+      "schedule": "17 * * * *",
+      "role": "maintenance (BYPASSRLS); the app role produces an empty archive and the script refuses it"
+    }
+  },
+
+  "tableTiers": {
+    "$comment": [
+      "Which mechanism covers each table, declared per table rather than inferred.",
+      "",
+      "This exists because of the 'new table added later without a backup entry' edge",
+      "case, and the two ways it can be got wrong. If the gate only asked 'is this",
+      "table in scope.json', then the 40-odd Plan A tables would read as unbacked -",
+      "which is false, they are covered by the managed base backup - and whoever",
+      "maintained it would either add them to the selectable archive (wrong: the",
+      "CronJob is a deliberate subset) or delete the check. So the assignment is",
+      "explicit, every table gets a tier, and the gate requires the assignment to",
+      "be total over what the migrations create.",
+      "",
+      "selectable-archive   dumped by deploy/k8s/backup-cronjob.yaml, restorable with",
+      "                     pg_restore and no provider CLI. The seven groups + parents.",
+      "primary-base-backup  covered by the managed PostgreSQL base backup + WAL, which",
+      "                     is a full-database mechanism. Selectable only via PITR, and",
+      "                     PITR is UNVERIFIED (gap F1/F2) - which is why the tiers are",
+      "                     recorded separately instead of being collapsed into 'yes'.",
+      "not-restored         deliberately excluded, with the reason. Queues redrive from",
+      "                     the outbox; EF history is the schema authority."
+    ],
+    "selectableArchive": [
+      "tenant_users", "project_memberships", "dubbing_projects", "user_preferences",
+      "notifications", "activity_events", "voice_preview_jobs",
+      "tenants", "speakers", "voice_profiles"
+    ],
+    "primaryBaseBackup": [
+      "artifact_parents", "artifacts", "consent_records", "content_objects",
+      "context_windows", "cost_reservations", "deletion_jobs", "export_artifacts",
+      "export_jobs", "generated_audio_artifacts", "idempotency_records",
+      "media_assets", "output_assets", "overlap_groups", "processing_policies",
+      "processing_runs", "prompt_template_versions", "prompt_templates",
+      "provider_capability_descriptors", "provider_executions",
+      "provider_route_snapshots", "quality_results", "quota_usages",
+      "refresh_sessions", "retention_holds", "review_decisions", "review_items",
+      "run_stage_summaries", "segment_context_assignments", "segment_overlaps",
+      "segment_selections", "speaker_voice_assignments", "speech_segments",
+      "stage_executions", "stage_input_artifacts", "stage_output_artifacts",
+      "stage_unit_completions", "sync_results", "transcript_versions",
+      "translation_versions", "upload_parts", "upload_sessions", "audit_events"
+    ],
+    "notRestored": {
+      "outbox_message": "MassTransit outbox. Recovery is redrive-from-outbox, never a queue restore (docs/dr/backup-restore.md, 'Schedules').",
+      "inbox_state": "MassTransit inbox deduplication state. Rederived as messages are consumed; a restored state is a dedupe window that would hide a redelivery.",
+      "outbox_state": "MassTransit transport statistics, not product state."
+    },
+    "infrastructure": {
+      "$comment": "Created by EF Core, not by a migration, so the CreateTable scan cannot see it. Declared here so the gate's totality check has something to check: EF adds __EFMigrationsHistory to every database it migrates, and a restore that brought back a history disagreeing with the code would be a restore that applies the wrong migrations.",
+      "__EFMigrationsHistory": "EF Core migration history. The migration chain is the schema authority for a restore, not an artefact one; the migration Job re-applies forward from it."
+    }
+  },
+
+  "rpo": {
+    "$comment": "Recovery POINT objective: how much data may be lost. RPO is a property of the mechanism, not of a job's schedule. The CronJob is hourly and is explicitly NOT the RPO - see docs/backup.md.",
+    "targets": [
+      {
+        "scope": "postgres",
+        "minutes": 5,
+        "mechanism": "WAL archiving, 7-day PITR window (managed service)",
+        "source": "docs/dr/backup-restore.md#schedules",
+        "measured": false,
+        "measuredOn": null,
+        "measuredBy": "the staging PITR drill (docs/dr/drill-log.md), which has not run"
+      },
+      {
+        "scope": "media (object storage)",
+        "minutes": 15,
+        "mechanism": "cross-region replication, versioning ON",
+        "source": "docs/dr/backup-restore.md#schedules",
+        "measured": false,
+        "measuredOn": null,
+        "measuredBy": "the staging PITR drill (docs/dr/drill-log.md), which has not run"
+      },
+      {
+        "scope": "selectable archive (the CronJob)",
+        "minutes": 60,
+        "mechanism": "hourly pg_dump -Fc to versioned object storage",
+        "source": "docs/backup.md#the-backup-job (the manifest is deploy/k8s/backup-cronjob.yaml)",
+        "measured": true,
+        "measuredOn": "2026-10-02",
+        "measuredBy": "the archive written during the 047 run of deploy/backup/dump.sh; it is an upper bound on the interval, not a measurement of WAL continuity"
+      }
+    ]
+  },
+
+  "rto": {
+    "$comment": "Recovery TIME objective: how long until the core platform serves again. Quiesce-complete, as docs/runbooks/backup-restore.md step 7 defines it.",
+    "targetMinutes": 60,
+    "source": "docs/dr/backup-restore.md#objectives",
+    "measured": false,
+    "measuredOn": null,
+    "measuredBy": "the full-system drill in docs/runbooks/backup-restore.md section 5, against a staging instance",
+    "consequence": "A drill that misses the RTO is a FAILED drill. It does not become a passed drill with a note attached - docs/runbooks/backup-restore.md, 'A drill that misses RTO is a failed drill'."
+  },
+
+  "restoreVerification": {
+    "$comment": "The steps a responder performs and the fields every drill record carries (Task 047 instruction 2). The commands are Plan A's and are NOT restated here; this is the checklist and the record shape.",
+    "target": "staging",
+    "targetRule": "Drill on staging only. A production drill requires an explicitly approved, time-boxed access window recorded BEFORE the first restore command (docs/runbooks/backup-restore.md step 0).",
+    "procedure": "docs/runbooks/backup-restore.md",
+    "newEntitySteps": [
+      { "step": 1, "action": "Confirm the target is staging and the access window is recorded.", "command": "kubectl -n dubbing-staging get pods" },
+      { "step": 2, "action": "Take a fresh restore of the target to a FRESH instance - never over the primary.", "command": "docs/dr/backup-restore.md#restore-postgresql-point-in-time" },
+      { "step": 3, "action": "Count-check every scoped table, non-zero, against the expected floor.", "command": "bash scripts/restore-drill.sh --require-schema (on the target)" },
+      { "step": 4, "action": "Spot-read one row per group, by id, with the group's Plan B columns.", "command": "scripts/restore-drill.sh check 9 - the per-group spot-read" },
+      { "step": 5, "action": "Verify RLS policies and append-only grants survived.", "command": "docs/runbooks/backup-restore.md step 3" },
+      { "step": 6, "action": "Verify the MEDIA half: an export download from the RESTORED database's id.", "command": "docs/runbooks/backup-restore.md step 5" },
+      { "step": 7, "action": "Measure the RTO as complete-minus-quiesce and record it even when it missed.", "command": "date -u +%Y-%m-%dT%H:%M:%SZ" }
+    ],
+    "spotReads": [
+      { "group": "tenant-users", "id": "de710000-0000-4000-8000-000000000011", "assert": "email, display_name, status", "why": "The identity row every other subject is scoped to." },
+      { "group": "memberships", "id": "de710000-0000-4000-8000-000000000301", "assert": "role, project_id, user_id", "why": "Authorization state; its absence is a 403 that reads as a broken release." },
+      { "group": "project-metadata", "id": "de710000-0000-4000-8000-000000000101", "assert": "name, owner_user_id, is_archived, settings_version, processing_settings_json", "why": "A pre-expand archive restores the table without these nine columns and the count still matches." },
+      { "group": "preferences", "id": "de710000-0000-4000-8000-000000000011", "assert": "ui.theme value_json", "why": "Key/value, not a count: two rows can sum to the right total and be the wrong rows." },
+      { "group": "notifications", "id": "de710000-0000-4000-8000-000000000401", "assert": "type, read_at, expires_at", "why": "Retention is a filter, not a delete; the expired row must be present and hidden." },
+      { "group": "activity-events", "id": "de710000-0000-4000-8000-000000000501", "assert": "type, actor_type, occurred_at", "why": "Append-only history; a window missing from it is a gap to record, not a reason to refuse." },
+      { "group": "voice-preview-jobs", "id": "de710000-0000-4000-8000-000000000601", "assert": "status, voice_id, speaker_id", "why": "A restored Running row is a claim on a worker that no longer exists." }
+    ],
+    "recordFields": ["date", "target", "scope", "result", "gaps", "owner", "rtoMeasured"],
+    "recordRule": "Partial success is recorded as FAILURE with the loss scope and a forward-fix. It is never recorded as a pass with a note."
+  },
+
+  "escalation": {
+    "$comment": "Task 047 instruction 3. Plan B section 18.4 names no escalation contact, so the CONTACTS are placeholders to be replaced; the LADDER is the deliverable. It is the backup-specific slice of docs/runbooks/escalation.md and does not restate it.",
+    "matrix": "docs/runbooks/escalation.md",
+    "onCallReference": "docs/operations/support-access.md",
+    "ladder": [
+      {
+        "level": "L1",
+        "role": "on-call platform engineer",
+        "slaMinutes": 15,
+        "contact": "CHANGE_ME",
+        "triggers": [
+          "a backup CronJob run failed (kubectl get jobs -n <ns> --selector app.kubernetes.io/component=backup)",
+          "the newest object-storage archive is older than 2h",
+          "a drill returned reason != OK"
+        ],
+        "mayDo": ["re-run the Job by hand", "run scripts/restore-drill.sh against a disposable instance"],
+        "mayNotDo": ["restore anything into production", "close a gap"]
+      },
+      {
+        "level": "L2",
+        "role": "platform lead / DBA on call",
+        "slaMinutes": 60,
+        "contact": "CHANGE_ME",
+        "triggers": [
+          "two consecutive backup runs failed",
+          "a drill failed with a non-OK reason",
+          "a durable entity has no backup entry (deploy/backup/scope.json durableEntitiesNotYetBackedUp is non-empty)",
+          "the RPO was exceeded: the archive is older than the RPO for its scope"
+        ],
+        "mayDo": ["open a gap in docs/backup.md with an owner", "approve a staging drill window"],
+        "mayNotDo": ["close a gap", "promote to production with a gap open"]
+      },
+      {
+        "level": "L3",
+        "role": "head of platform / incident commander",
+        "slaMinutes": 240,
+        "contact": "CHANGE_ME",
+        "triggers": [
+          "a data-loss event, actual or suspected",
+          "a restore that cannot complete within the RTO",
+          "an archive that cannot be read by the current pg_dump"
+        ],
+        "mayDo": ["close a gap", "authorise a production restore", "waive a drill - as a recorded, dated decision, never as a silent one"],
+        "mayNotDo": ["delete an archive", "treat a recorded gap as a passed drill"]
+      }
+    ],
+    "drillUnavailable": "A drill that cannot run because the environment is unavailable is OVERDUE, with a date and an owner. It is never waived by not running it. An overdue drill is a gap and the release gate reports it."
+  },
+
+  "drills": {
+    "$comment": "Cadence and the record of the last run. The gate reads lastRun.date, lastRun.result and the cadence to decide DRILL_STALE / DRILL_MISSING / DRILL_FAILED. A key beginning with '$' is a comment, not a track - asserted by the gate, because a $comment read as a track produces 'this drill has no lastRun record' for a key that is not a drill.",
+    "newEntity": {
+      "command": "bash scripts/restore-drill.sh",
+      "cadence": "every release, and at least monthly",
+      "cadenceDays": 30,
+      "runsOn": "a disposable postgres:16-alpine started by the script; the schema comes from the committed migrations",
+      "requiresEnvironment": "docker (or a local psql/pg_dump pair)",
+      "lastRun": {
+        "date": "2026-10-02",
+        "scope": "the seven new durable-entity groups plus four parents - 10 tables, 28 synthetic rows, 7 per-group spot-reads and 15 referential checks",
+        "result": "PASS",
+        "resultLine": "RESTORE_DRILL_RESULT reason=OK status=PASS tables=10 rows=28 gaps=0 spot=7",
+        "target": "disposable postgres:16-alpine 16.15 on 127.0.0.1:55432, schema from all 7 committed migrations",
+        "gaps": 0,
+        "owner": "047",
+        "rtoMeasured": "not measured - this drill times no RTO. It is a data-half check against a single node; the RTO is measured by the full-system drill (docs/runbooks/backup-restore.md section 5).",
+        "note": "gaps=0 is the drill's own counter and it is NOT the number of open gaps. The counter is what this RUN could not close; the run reused a container the script found already up, so the media-half gap did not increment it. The register above is the record of what is open, and D1a is blocking there. Conflating the two would let a green counter stand in for a green register."
+      }
+    },
+    "fullSystem": {
+      "command": "docs/runbooks/backup-restore.md sections 0-7",
+      "cadence": "quarterly",
+      "cadenceDays": 90,
+      "runsOn": "a staging instance with a real access window",
+      "requiresEnvironment": "a managed PostgreSQL with WAL archiving; NOT reachable from a developer host",
+      "lastRun": {
+        "date": null,
+        "result": "NOT_RUN",
+        "resultLine": null,
+        "target": "staging",
+        "gaps": 0,
+        "owner": "047",
+        "rtoMeasured": null
+      },
+      "blocksPromotion": true
+    }
+  },
+
+  "gaps": {
+    "$comment": "The register the release gate reads. An entry with blocking=true and status=open is a FAILED release gate; that is the rule, and it is the same rule docs/runbooks/backup-restore.md states in prose. Every entry needs an owner and a reviewBy date - a gap with no owner is a complaint, and a gap with no review date is never closed.",
+    "entries": [
+      {
+        "id": "D1a",
+        "severity": "HIGH",
+        "status": "open",
+        "blocking": true,
+        "summary": "The media half was not restored. The new-entity drill's scope is the new tables, so a project can restore perfectly and render an empty workspace.",
+        "owner": "043C / 047",
+        "reviewBy": "2026-12-31",
+        "coveredBy": "docs/runbooks/backup-restore.md section 5 (full-system drill) - which has never run; see F1",
+        "note": "Blocking, and it stays blocking until the full-system drill runs. Recording the limit is not the same as closing it."
+      },
+      {
+        "id": "D2a",
+        "severity": "MEDIUM",
+        "status": "open",
+        "blocking": false,
+        "summary": "The managed-service PITR tier is unverified: WAL archive continuity, the 7-day window and the measured RTO need a real managed instance.",
+        "owner": "043C / 047",
+        "reviewBy": "2026-11-30",
+        "coveredBy": "F2 (the full-system drill is due)",
+        "note": "Not blocking a release because the base-backup mechanism is the provider's and is not something this repository can verify from here; blocking PROMOTION, which is what fullSystem.blocksPromotion covers."
+      },
+      {
+        "id": "D3a",
+        "severity": "LOW",
+        "status": "open",
+        "blocking": false,
+        "summary": "The PostgreSQL client is a dependency of the drill, not of the product. A host with neither Docker nor psql cannot run it.",
+        "owner": "043C",
+        "reviewBy": "2026-12-31",
+        "coveredBy": "CI has Docker; CLIENT_UNAVAILABLE exits 2 and reports status=FAIL, never PASS",
+        "note": "A SKIP-shaped absence. The gate must never accept it as a pass."
+      },
+      {
+        "id": "D7",
+        "severity": "HIGH",
+        "status": "fixed",
+        "blocking": false,
+        "summary": "There was no backup job. scope.json's comment and docs/backup.md's coverage table both described deploy/k8s/backup-cronjob.yaml, which did not exist, and every coverage check passed because all three sources agreed and none of them was a job.",
+        "owner": "047",
+        "reviewBy": "2026-10-02",
+        "coveredBy": "deploy/k8s/backup-cronjob.yaml + deploy/backup/dump.sh + Dockerfile.backup, with the seven groups as one annotation each",
+        "note": "Found by looking for the file the scope file named. This is D2 and D6's defect class with the subject list removed entirely: nothing disagreed, because nothing was there to disagree."
+      },
+      {
+        "id": "D8",
+        "severity": "MEDIUM",
+        "status": "fixed",
+        "blocking": false,
+        "summary": "The backup job's network policy was one-sided. backup-allow granted egress to PostgreSQL, but no policy granted PostgreSQL INGRESS from the backup component, so under default-deny the job could not connect - and the symptom would be a connection timeout, not a message about the policy.",
+        "owner": "047",
+        "reviewBy": "2026-10-02",
+        "coveredBy": "datastores-allow-backup in deploy/k8s/networkpolicies.yaml",
+        "note": "A NetworkPolicy is symmetric and each half looks locally correct, so a manifest review cannot find this. The same asymmetry still exists for the migration job and is NOT fixed here - see D9."
+      },
+      {
+        "id": "D9",
+        "severity": "MEDIUM",
+        "status": "open",
+        "blocking": false,
+        "summary": "The migration Job has D8's asymmetry too: migration-allow grants it PostgreSQL egress and no policy grants PostgreSQL ingress from the migration component, so under default-deny the migration cannot connect either.",
+        "owner": "TBD - security review",
+        "reviewBy": "2026-11-30",
+        "coveredBy": "nothing yet",
+        "note": "Deliberately not fixed in this task. Widening the reach of the one workload that can DDL is a security change with its own review, and doing it inside a backup task would put an unreviewed network grant in a commit whose subject is backups. The gap is the honest record: the migration job's own comment says migration-allow 'restricts this Job's egress to PostgreSQL', which reads as complete and is not."
+      },
+      {
+        "id": "D10",
+        "severity": "LOW",
+        "status": "fixed",
+        "blocking": false,
+        "summary": "A `$comment` key in policy.json was read as a drill track by the gate, producing 'drill track \"$comment\" has no lastRun record' - a false positive on a documentation key.",
+        "owner": "047",
+        "reviewBy": "2026-10-02",
+        "coveredBy": "scripts/check-backup-policy.mjs skips $-prefixed keys, and tools/backup-policy.test.mjs asserts the gate does not report one as a track",
+        "note": "Found by reading the gate's output rather than its exit code: it exited 1, correctly, for two real reasons, and the third line was noise. A gate that reports noise trains people to skim it."
+      },
+      {
+        "id": "D11",
+        "severity": "HIGH",
+        "status": "fixed",
+        "blocking": false,
+        "summary": "The new per-group spot-read could not distinguish the right row from the right characters: user_preferences was read on user_id alone, half of its composite key, returning three rows, and grep -q passed on the concatenation.",
+        "owner": "047",
+        "reviewBy": "2026-10-02",
+        "coveredBy": "scripts/restore-drill.sh takes composite predicates and asserts each read resolves to exactly one row; the failure is demonstrated by re-seeding ui.theme as \"solarized\" and re-running",
+        "note": "The D5 failure (a restore that passes on counts and fails on data) inside the check written to catch D5. Found by reading the drill's printed output: it showed three values for a read that should have shown one, and reported success."
+      },
+      {
+        "id": "D12",
+        "severity": "MEDIUM",
+        "status": "fixed",
+        "blocking": false,
+        "summary": "Four of the seven groups were verified by count only. 043C's spot-read was a single three-table join, so preferences, activity events, memberships and voice preview jobs had no data-level assertion at all.",
+        "owner": "047",
+        "reviewBy": "2026-10-02",
+        "coveredBy": "one spot-read per group in scripts/restore-drill.sh (SPOT_CHECKS, with a held constant SPOT_REQUIRED=7), plus a nine-column assertion against information_schema.columns",
+        "note": "Invisible because the step reported success. D5 one level down, in the step whose entire purpose was to catch D5."
+      },
+      {
+        "id": "D13",
+        "severity": "HIGH",
+        "status": "fixed",
+        "blocking": false,
+        "summary": "The backup job's table list was assigned to GROUPS, which bash reserves as a special array of the current user's group ids. The assignment is silently ineffective, so the job iterated the uid and dumped nothing.",
+        "owner": "047",
+        "reviewBy": "2026-10-02",
+        "coveredBy": "renamed to SCOPE_GROUPS/SCOPE_PARENTS in deploy/backup/dump.sh; scripts/check-backup-policy.mjs parses those exact names and treats an empty parse as a finding rather than as 'no gaps'",
+        "note": "Found by RUNNING the script, which is the only way to see it: `bash -n` accepts it and a reader cannot. The failure was loud (`malformed group entry: 1000`, exit 127) - a looser entry check would have dumped an empty archive and reported success. The same run found a second defect: the table-resolution loop sat above the function definitions, so the first failure died with `finish: command not found` instead of the reason that went wrong."
+      },
+      {
+        "id": "D14",
+        "severity": "MEDIUM",
+        "status": "fixed",
+        "blocking": false,
+        "summary": "A missing PostgreSQL client in the backup image produced `psql: command not found` and exit 127 with no BACKUP_DUMP_RESULT line, so a release job parsing that line would find nothing.",
+        "owner": "047",
+        "reviewBy": "2026-10-02",
+        "coveredBy": "a preflight for psql, pg_dump and curl in deploy/backup/dump.sh, reporting CLIENT_UNAVAILABLE",
+        "note": "Found by running the script on a host without a client, which is an ordinary developer machine and not the container the job runs in. `set -e` does not help: a command-not-found inside a command substitution is reported by the shell, not by the script."
+      },
+      {
+        "id": "D15",
+        "severity": "MEDIUM",
+        "status": "fixed",
+        "blocking": false,
+        "summary": "The S3 sink used to verify the job's signed PUT answered 200 to any request with a non-empty Authorization header, so it 'verified' an UNSIGNED upload - because curl's --user sends Basic auth when --aws-sigv4 is absent.",
+        "owner": "047",
+        "reviewBy": "2026-10-02",
+        "coveredBy": "the sink now requires the AWS4-HMAC-SHA256 prefix, and both the signed and the unsigned path were then run against it",
+        "note": "The verification harness had the same defect as every gate in this repository's history: a stub permissive enough to pass anything. Recorded because the lesson generalises - a test double that does not fail on the thing it is testing for is not a test double, it is a mirror."
+      },
+      {
+        "id": "F1",
+        "severity": "HIGH",
+        "status": "open",
+        "blocking": true,
+        "summary": "No full-system restore drill has ever run. The drill log's three earlier entries are procedure walk-throughs and a compose sanity check; the live managed-instance tier is STAGING-GATED in every one of them.",
+        "owner": "047",
+        "reviewBy": "2026-11-30",
+        "coveredBy": "nothing - it needs a staging environment with an access window",
+        "note": "Blocking promotion, not every release. This is the entry that makes 'a drill that cannot run is overdue, not waived' mechanical: there is no date here, and an absent date is what the gate reads."
+      },
+      {
+        "id": "F2",
+        "severity": "MEDIUM",
+        "status": "open",
+        "blocking": false,
+        "summary": "The RTO is a target with no measurement behind it. Nothing in this repository has timed a full restore.",
+        "owner": "047",
+        "reviewBy": "2026-11-30",
+        "coveredBy": "F1",
+        "note": "rto.measured is false in this file. A target with measured=false is honest; a target presented as a measurement is not, and the gate reports the difference."
+      },
+      {
+        "id": "F3",
+        "severity": "MEDIUM",
+        "status": "open",
+        "blocking": false,
+        "summary": "The 43 primary-base-backup tables are recoverable only by PITR, and PITR is unverified. Their stated 5-minute RPO is a property of the managed service's configuration, not something observed here.",
+        "owner": "047",
+        "reviewBy": "2026-11-30",
+        "coveredBy": "F1",
+        "note": "This is why tableTiers keeps the tiers separate instead of collapsing them into 'covered': an operator reading 'backed up' for a table whose only path is an unverified PITR is misled exactly when it matters."
+      }
+    ]
+  },
+
+  "releaseGate": {
+    "$comment": "Instruction 5. Stated as data so the gate and the documentation cannot state different rules.",
+    "rule": "An open backup/restore gap blocks the release. blocking=true with status=open fails scripts/check-backup-policy.mjs, which deploy/verify.sh runs in its static tier, so the release gate cannot pass with one open.",
+    "gate": "scripts/check-backup-policy.mjs",
+    "resultLine": "BACKUP_GATE_RESULT reason=<REASON> status=<PASS|FAIL> groups=<n> tables=<n> gaps=<n> open=<n> blocking=<n>",
+    "wiredInto": [
+      "deploy/verify.sh (the release gate, static tier)",
+      ".github/workflows/basic-ci.yml (backend job, non-blocking for a PR that only adds a table until the config is updated - the gate fails, which is the point)",
+      "npm run check:backup-policy"
+    ],
+    "exceptions": "L3 may waive a drill, as a recorded dated decision in this file. There is no exception that makes an open gap a pass without an entry here, because the entry is the record and the gate reads the record."
+  }
+}

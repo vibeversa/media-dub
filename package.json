@@ -15,6 +15,8 @@
     "test:tools": "node --test tools/*.test.mjs deploy/frontend/*.test.mjs",
     "check:runbooks": "node --test tools/runbooks-index.test.mjs tools/product-runbooks.test.mjs",
     "check:backup": "node --test tools/backup-coverage.test.mjs",
+    "check:backup-policy": "node scripts/check-backup-policy.mjs",
+    "test:backup-policy": "node --test tools/backup-policy.test.mjs",
     "check:i18n": "node scripts/check-no-hardcoded-copy.mjs",
     "drill:restore": "bash scripts/restore-drill.sh",
     "check:unit-containers": "node tools/unit-tier-containers.mjs",

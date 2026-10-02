@@ -119,12 +119,35 @@ Shortcut for environments (applies the same objects via kustomize):
   (or `values-staging.yaml`).
 
 Verify the manifests with `bash deploy/verify.sh` (structural assertions always;
-`kubectl dry-run`, `kubeconform`, `kustomize build` and `helm lint` when those
-tools are usable, each reporting a machine-readable SKIP reason when they are
-not). The overlays are built in CI on `ubuntu-latest`; a developer on Windows
-gets an explicit SKIP for `kustomize` rather than a false failure, because
-kustomize refuses a parent-path `resources:` entry once the host normalises path
-separators.
+the backup-policy gate; `kubectl dry-run`, `kubeconform`, `kustomize build` and
+`helm lint` when those tools are usable, each reporting a machine-readable SKIP
+reason when they are not). The overlays are built in CI on `ubuntu-latest`; a
+developer on Windows gets an explicit SKIP for `kustomize` rather than a false
+failure, because kustomize refuses a parent-path `resources:` entry once the host
+normalises path separators.
+
+### The scheduled backup
+
+`deploy/k8s/backup-cronjob.yaml` (`dubbing-backup`) runs hourly at `:17` and
+writes a `pg_dump -Fc` archive of the seven new durable-entity groups plus their
+four parents to the versioned object-storage bucket. It is not applied by the
+sequence above: it is a scheduled object, so it is created once and then keeps
+its own cadence.
+
+```bash
+kubectl apply -f deploy/k8s/backup-cronjob.yaml
+kubectl -n dubbing-staging create job --from=cronjob/dubbing-backup backup-now   # run one, now
+kubectl -n dubbing-staging logs job/backup-now
+```
+
+The archive is the **selectable** backup — restorable with `pg_restore` and
+nothing else, no provider CLI. The 5-minute RPO is WAL archiving in the managed
+service, which has no CronJob; do not read the hourly schedule as the RPO. It
+requires a `storage-region` key in the ExternalSecret (`deploy/k8s/secrets.yaml`),
+and the connection string is the **maintenance** role, because an archive taken as
+the app role is empty on every row-level-security table and `pg_restore` reports
+success. Coverage, retention, RPO/RTO, escalation and the gap register are in
+[`docs/backup.md`](../docs/backup.md).
 
 ## Verifying a deployment (the release gate)
 
@@ -207,7 +230,7 @@ and it has an answer that is not "roll it back". Summary:
 
 ## Launch gates (staging -> prod promotion)
 
-All six gates must be green before any prod promotion. A single failed
+All seven gates must be green before any prod promotion. A single failed
 drill blocks promotion until a full passing re-run (partial re-runs do
 not satisfy the gate). Evidence lives in the linked logs.
 
@@ -251,6 +274,30 @@ not satisfy the gate). Evidence lives in the linked logs.
    < 500 ms, DLQ depth 0 sustained, export success >= 99%), confirmed on
    the on-call dashboards (`deploy/observability/dashboards/`;
    see `docs/operations/support-access.md`).
+7. **No open backup or restore gap** (Task 047) — `npm run check:backup-policy`
+   reports `BACKUP_GATE_RESULT reason=OK`, and `deploy/verify.sh` has not
+   reported `BACKUP_GAP_BLOCKS_RELEASE`. An entry in
+   `deploy/backup/policy.json`'s gap register with `status: open` **and**
+   `blocking: true` stops the release; the register, the RPO/RTO, the escalation
+   ladder and the drill record are all in
+   [`docs/backup.md`](../docs/backup.md).
+
+   **This gate is currently RED, and that is the finding rather than a
+   misconfiguration.** Two gaps are open and blocking: **D1a** (the media half
+   has never been restored by anything in this repository) and **F1** (no
+   full-system restore drill has ever run — the three earlier entries in
+   `docs/dr/drill-log.md` are a hermetic suite, a procedure walk-through and a
+   compose sanity check). Both need a staging environment with WAL archiving and
+   a recorded access window, which this repository does not have.
+
+   It is deliberately **not** quarantined and the `basic-ci.yml` step is
+   deliberately **not** `continue-on-error`. The red is the correct output of a
+   gate doing its job, and a passing promotion check that nobody can act on is
+   worse than a failing one. What closes it is running the full-system drill,
+   not editing a workflow. Anyone who needs a promotion before then needs an
+   L3 decision recorded as a dated row in the gap register — see the escalation
+   ladder in `docs/backup.md` — because the register is what the gate reads, and
+   a waiver that is not in it is not a waiver.
 
 Also required: compat window verified
 (`docs/operations/migration-compat.md`, `MigrationCompatTests` green)

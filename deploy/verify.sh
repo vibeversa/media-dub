@@ -77,6 +77,7 @@ readonly REASONS_SMOKE_FAILED="SMOKE_FAILED"
 readonly REASONS_ROLLBACK="ROLLBACK_TRIGGERED"
 readonly REASONS_ROLLBACK_UNAVAILABLE="ROLLBACK_UNAVAILABLE"
 readonly REASONS_ROLLBACK_WINDOW="MIGRATION_NOT_ADDITIVE"
+readonly REASONS_BACKUP="BACKUP_GAP_BLOCKS_RELEASE"
 readonly REASONS_URL_REQUIRED="DEPLOY_URL_REQUIRED"
 readonly REASONS_INPUT="INPUT_INVALID"
 
@@ -191,6 +192,12 @@ required = {
     "pdb.yaml": ["PodDisruptionBudget"],
     "migration-job.yaml": ["Job"],
     "keda-scalers.yaml": ["TriggerAuthentication", "ScaledObject"],
+    # Task 047: the scheduled backup. Listed so deleting the manifest is a
+    # structural failure rather than something only the backup-policy gate
+    # notices - and `backup-cronjob.yaml` is a file `scope.json` named for a
+    # task before it existed, so "the gate would have caught it" is not an
+    # argument for leaving it off this list.
+    "backup-cronjob.yaml": ["CronJob"],
     # Task 043A: the static origin, moved out of the flat layout into its own
     # directory alongside the TLS ingress and the build-config ConfigMap.
     "frontend/deployment.yaml": ["Deployment"],
@@ -580,6 +587,38 @@ PY
   fi
 
   echo ""
+  echo "== backup policy (047) =="
+  # The backup/restore release gate. Task 047's instruction 5 is a rule, and this
+  # is where the rule is enforced: `deploy/backup/policy.json` declares which
+  # entity groups the backup job covers, what the RPO/RTO are, who to escalate
+  # to, and the gap register - and an entry with status=open and blocking=true
+  # fails here.
+  #
+  # It is a SEPARATE block rather than another assertion in the structural tier
+  # for the rollout gate's reason: that tier has a parsed PyYAML view of the
+  # manifests, and this gate asks questions about a JSON policy, a bash script
+  # and what the migrations create, which no YAML parser can answer. One gate per
+  # question, in the language that can read it.
+  #
+  # Fail-closed on a missing node, for the same reason python3 is: a release gate
+  # that skipped its own assertions because a tool was missing is a gate that
+  # reports success having checked nothing - and this one would report that a
+  # release is safe to ship with a durable entity that has never been dumped.
+  if have node; then
+    if node "$ROOT/scripts/check-backup-policy.mjs"; then
+      ok "backup policy: coverage, tier assignment, RPO/RTO, escalation, drill record, release gate"
+    else
+      bad "backup policy: coverage, tier assignment, RPO/RTO, escalation, drill record, release gate"
+      echo "  A failing backup policy is a RELEASE BLOCKER, not a warning. The findings above"
+      echo "  name the file to fix: deploy/backup/policy.json, deploy/k8s/backup-cronjob.yaml,"
+      echo "  or the gap register in docs/backup.md. See 'The release gate' in docs/backup.md."
+    fi
+  else
+    echo "::error::node is required for the backup-policy checks."
+    fail_with "$REASONS_INPUT" "backup policy" "node is not installed; coverage, RPO/RTO, escalation and the gap register are not verified without it"
+  fi
+
+  echo ""
   echo "== kubectl dry-run =="
   if have kubectl; then
     if kubectl version --client >/dev/null 2>&1 && kubectl config current-context >/dev/null 2>&1; then
@@ -602,7 +641,8 @@ PY
   if have kubeconform; then
     if kubeconform -summary -ignore-missing-schemas "$K8S"/namespace.yaml "$K8S"/configmap.yaml \
         "$K8S"/api-deployment.yaml "$K8S"/workers-*.yaml "$K8S"/ingress.yaml \
-        "$K8S"/networkpolicies.yaml "$K8S"/pdb.yaml "$K8S"/migration-job.yaml >/dev/null 2>&1; then
+        "$K8S"/networkpolicies.yaml "$K8S"/pdb.yaml "$K8S"/migration-job.yaml \
+        "$K8S"/backup-cronjob.yaml >/dev/null 2>&1; then
       ok "kubeconform (core kinds; CRDs excluded)"
     else
       bad "kubeconform"
@@ -689,7 +729,22 @@ PY
     # perfectly valid and the release still unshippable, and an operator reading
     # `MANIFEST_CHECK_FAILED` for a broken expand/contract window would go looking
     # in the wrong file.
-    if printf '%s\n' "${CHECKS[@]:-}" | grep -q "FAIL|rollout window"; then
+    #
+    # `BACKUP_GAP_BLOCKS_RELEASE` is called out for the same class of reason and
+    # the same reason (Task 047): the manifests can be perfect, the release can
+    # be a good release, and it is still unshippable because a durable entity has
+    # no backup or a restore has never been verified. An operator sent to
+    # `deploy/k8s/` for a missing backup entry is sent to the wrong file - the
+    # answer is in `deploy/backup/policy.json` and the gap register in
+    # `docs/backup.md`.
+    #
+    # Checked before the rollout-window test on purpose: a release that is
+    # blocked on a backup gap AND on a migration is blocked on both, and the
+    # backup reason is the one that decides whether the data is recoverable at
+    # all. Both are in `CHECKS`, so neither is hidden by the other being named.
+    if printf '%s\n' "${CHECKS[@]:-}" | grep -q "FAIL|backup policy"; then
+      REASON="$REASONS_BACKUP"
+    elif printf '%s\n' "${CHECKS[@]:-}" | grep -q "FAIL|rollout window"; then
       REASON="$REASONS_ROLLBACK_WINDOW"
     else
       REASON="$REASONS_MANIFEST"
