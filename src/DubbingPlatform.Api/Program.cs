@@ -269,6 +269,11 @@ builder.Services.AddScoped<RetentionService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Processing.ProcessingIdempotency>();
 builder.Services.AddScoped<DubbingPlatform.Application.Workspace.WorkspaceService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Notifications.NotificationProjector>();
+// Task 049 notification channels: in-app is the sole active channel. Adding a
+// channel is one registration line here and the same one in the Workers host.
+builder.Services.AddScoped<DubbingPlatform.Application.Notifications.InAppChannelPublisher>();
+builder.Services.AddScoped<DubbingPlatform.Application.Notifications.INotificationChannelPublisher>(provider => provider.GetRequiredService<DubbingPlatform.Application.Notifications.InAppChannelPublisher>());
+builder.Services.AddScoped<DubbingPlatform.Application.Notifications.NotificationChannelDispatcher>();
 builder.Services.AddScoped<DubbingPlatform.Application.Output.OutputService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Activity.ActivityProjector>();
 builder.Services.AddScoped<DubbingPlatform.Application.Abstractions.IQuotaGate>(provider => provider.GetRequiredService<QuotaService>());

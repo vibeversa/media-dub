@@ -192,6 +192,12 @@ builder.Services.AddDbContextFactory<AppDbContext>(options => options
 builder.Services.AddScoped<IStageExecutionContextFactory, StageExecutionContextFactory>();
 builder.Services.AddScoped<StageExecutionService>();
 builder.Services.AddScoped<DubbingPlatform.Application.Notifications.NotificationProjector>();
+// Task 049 notification channels: must mirror the Api host registration, or
+// NotificationProjector fails to resolve in this host. In-app is the sole
+// active channel.
+builder.Services.AddScoped<DubbingPlatform.Application.Notifications.InAppChannelPublisher>();
+builder.Services.AddScoped<DubbingPlatform.Application.Notifications.INotificationChannelPublisher>(provider => provider.GetRequiredService<DubbingPlatform.Application.Notifications.InAppChannelPublisher>());
+builder.Services.AddScoped<DubbingPlatform.Application.Notifications.NotificationChannelDispatcher>();
 builder.Services.AddScoped<DubbingPlatform.Application.Activity.ActivityProjector>();
 StorageRegistration.AddDubbingStorage(builder.Services, builder.Configuration);
 DubbingPlatform.Infrastructure.Media.MediaRegistration.AddDubbingMedia(builder.Services);

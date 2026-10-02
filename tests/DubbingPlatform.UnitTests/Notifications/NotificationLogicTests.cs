@@ -10,6 +10,7 @@ using DubbingPlatform.Domain.Exceptions;
 using DubbingPlatform.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DubbingPlatform.UnitTests.Notifications;
 
@@ -37,7 +38,7 @@ public sealed class NotificationLogicTests
         var sourceEventId = Guid.NewGuid();
         using var factory = CreateFactory();
         SeedProject(factory, tenantId, projectId, ownerUserId: recipient);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var input = new NotificationInput(
             tenantId, projectId, NotificationType.ProcessingFailed, NotificationSeverity.Error,
@@ -67,7 +68,7 @@ public sealed class NotificationLogicTests
         using var factory = CreateFactory();
         SeedProject(factory, tenantA, projectA, recipient);
         SeedProject(factory, tenantB, projectB, recipient);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var a = await projector.ProjectAsync(Input(tenantA, projectA, sharedSourceEventId));
         var b = await projector.ProjectAsync(Input(tenantB, projectB, sharedSourceEventId));
@@ -92,7 +93,7 @@ public sealed class NotificationLogicTests
         var sourceEventId = Guid.NewGuid();
         using var factory = CreateFactory();
         SeedProject(factory, tenantId, projectId, ownerUserId: recipient);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var completed = await projector.ProjectAsync(
             new NotificationInput(tenantId, projectId, NotificationType.ProcessingCompleted, NotificationSeverity.Info,
@@ -117,7 +118,7 @@ public sealed class NotificationLogicTests
         var recipient = Guid.NewGuid();
         using var factory = CreateFactory();
         SeedProject(factory, tenantId, projectId, ownerUserId: recipient);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var first = await projector.ProjectAsync(Input(tenantId, projectId, sourceEventId: null));
         var second = await projector.ProjectAsync(Input(tenantId, projectId, sourceEventId: null));
@@ -141,7 +142,7 @@ public sealed class NotificationLogicTests
         using var factory = CreateFactory();
         SeedProject(factory, tenantId, projectId, ownerUserId: owner);
         SeedMembership(factory, tenantId, projectId, member, ProjectRole.Reviewer);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var created = await projector.ProjectAsync(Input(tenantId, projectId, sourceEventId));
 
@@ -163,7 +164,7 @@ public sealed class NotificationLogicTests
         var owner = Guid.NewGuid();
         using var factory = CreateFactory();
         SeedProject(factory, tenantId, projectId, ownerUserId: owner);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var created = await projector.ProjectAsync(Input(tenantId, projectId, Guid.NewGuid()));
 
@@ -179,7 +180,7 @@ public sealed class NotificationLogicTests
         var owner = Guid.NewGuid();
         using var factory = CreateFactory();
         SeedProject(factory, tenantId, projectId, ownerUserId: owner);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         // No ProjectMembership rows at all: the owner remains the fallback.
         var created = await projector.ProjectAsync(Input(tenantId, projectId, Guid.NewGuid()));
@@ -197,7 +198,7 @@ public sealed class NotificationLogicTests
         SeedProject(factory, tenantId, projectId, ownerUserId: owner);
         // The owner is also a member: the recipient set collapses to one row.
         SeedMembership(factory, tenantId, projectId, owner, ProjectRole.ProjectEditor);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var created = await projector.ProjectAsync(Input(tenantId, projectId, Guid.NewGuid()));
 
@@ -213,7 +214,7 @@ public sealed class NotificationLogicTests
         using var factory = CreateFactory();
         SeedUser(factory, tenantId, active, TenantUserStatus.Active);
         SeedUser(factory, tenantId, disabled, TenantUserStatus.Disabled);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var created = await projector.ProjectAsync(new NotificationInput(
             tenantId, null, NotificationType.QuotaWarning, NotificationSeverity.Warning,
@@ -231,7 +232,7 @@ public sealed class NotificationLogicTests
         using var factory = CreateFactory();
         // Disabled, so the tenant-level recipient query finds no active users.
         SeedUser(factory, tenantId, Guid.NewGuid(), TenantUserStatus.Disabled);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         // Ownerless, memberless project => no recipients => skipped (never a throw).
         var created = await projector.ProjectAsync(Input(tenantId, projectId, Guid.NewGuid()));
@@ -253,7 +254,7 @@ public sealed class NotificationLogicTests
         var recipient = Guid.NewGuid();
         using var factory = CreateFactory();
         SeedProject(factory, tenantId, projectId, ownerUserId: recipient);
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var created = await projector.ProjectAsync(new NotificationInput(
             tenantId, projectId, NotificationType.ProcessingFailed, NotificationSeverity.Error,
@@ -272,7 +273,7 @@ public sealed class NotificationLogicTests
     public async Task ProjectAsync_RejectsEmptyTenant_AndUnsafeResourceFields()
     {
         using var factory = CreateFactory();
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         await Assert.ThrowsAsync<DomainException>(() => projector.ProjectAsync(
             Input(Guid.Empty, Guid.NewGuid(), Guid.NewGuid())));
@@ -294,7 +295,9 @@ public sealed class NotificationLogicTests
             "Quota warning", "body", "Tenant", "bearer abc123", null, null)));
 
         await Assert.ThrowsAsync<ArgumentNullException>(() => projector.ProjectAsync(null!));
-        Assert.Throws<ArgumentNullException>(() => new NotificationProjector(null!));
+        Assert.Throws<ArgumentNullException>(() => new NotificationProjector(null!, CreateDispatcher()));
+        Assert.Throws<ArgumentNullException>(
+            () => new NotificationProjector(new TestContextFactory(CreateOptions()), null!));
     }
 
     [Fact]
@@ -307,7 +310,7 @@ public sealed class NotificationLogicTests
         SeedNotification(factory, tenantId, userId, "b", readAt: null, createdAt: Now.AddHours(-1), expiresAt: Now.AddHours(3));
         SeedNotification(factory, tenantId, userId, "c", readAt: Now.AddMinutes(-5), createdAt: Now.AddHours(-3), expiresAt: Now.AddHours(1));
         SeedNotification(factory, tenantId, userId, "d", readAt: null, createdAt: Now.AddHours(-5), expiresAt: Now.AddHours(-4));
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         var (all, total) = await projector.ListActiveAsync(tenantId, userId, 1, 50);
         Assert.Equal(3, total);
@@ -332,7 +335,7 @@ public sealed class NotificationLogicTests
             SeedNotification(factory, tenantId, userId, $"n{index}", readAt: null, createdAt: Now.AddMinutes(-index), expiresAt: null);
         }
 
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         // pageSize clamps to 100, page clamps to 1: never a negative skip.
         var (_, total) = await projector.ListActiveAsync(tenantId, userId, 0, 5000);
@@ -359,7 +362,7 @@ public sealed class NotificationLogicTests
         SeedNotification(factory, tenantId, userId, "a", readAt: null, createdAt: Now.AddHours(-2), expiresAt: Now.AddHours(2));
         SeedNotification(factory, tenantId, userId, "b", readAt: null, createdAt: Now.AddHours(-1), expiresAt: null);
         SeedNotification(factory, tenantId, userId, "c", readAt: null, createdAt: Now.AddHours(-5), expiresAt: Now.AddHours(-4));
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         Assert.Equal(2, await projector.MarkAllReadAsync(tenantId, userId));
         // Second call marks nothing: idempotent, never 409.
@@ -381,7 +384,7 @@ public sealed class NotificationLogicTests
         var id = SeedNotification(factory, tenantId, userId, "a", readAt: null, createdAt: Now.AddHours(-2), expiresAt: Now.AddHours(2));
         var expiredId = SeedNotification(factory, tenantId, userId, "b", readAt: null, createdAt: Now.AddHours(-5), expiresAt: Now.AddHours(-4));
         var foreignTenantId = SeedNotification(factory, otherTenant, userId, "c", readAt: null, createdAt: Now.AddHours(-2), expiresAt: Now.AddHours(2));
-        var projector = new NotificationProjector(factory);
+        var projector = CreateProjector(factory);
 
         await projector.MarkAsReadAsync(tenantId, userId, id);
         // Re-marking an already-read row is a no-op, never a throw.
@@ -715,6 +718,14 @@ public sealed class NotificationLogicTests
         Assert.Equal("DubbingPlatform.Notifications", NotificationMeters.MeterName);
         Assert.Equal("notifications.skipped_total", NotificationMeters.SkippedMetricName);
         Assert.NotNull(NotificationMeters.Skipped);
+
+        // Task 049's channel counters live on the same frozen meter; this test
+        // owns the frozen-metric contract, so the seam does not restate it.
+        Assert.Equal("notifications.channel_published_total", NotificationMeters.ChannelPublishedMetricName);
+        Assert.Equal("notifications.channel_failed_total", NotificationMeters.ChannelFailedMetricName);
+        Assert.Equal("channel", NotificationMeters.ChannelTagName);
+        Assert.NotNull(NotificationMeters.ChannelPublished);
+        Assert.NotNull(NotificationMeters.ChannelFailed);
     }
 
     private static void AssertGuard(Action action, string expectedFragment)
@@ -783,6 +794,23 @@ public sealed class NotificationLogicTests
     private static TestContextFactory CreateFactory()
     {
         return new TestContextFactory(CreateOptions());
+    }
+
+    /// <summary>
+    /// The production dispatcher over the real in-app channel: these tests assert
+    /// Task 002's projection semantics and must run through the same channel seam
+    /// the hosts register. <c>NotificationChannelTests</c> owns the seam itself.
+    /// </summary>
+    private static NotificationChannelDispatcher CreateDispatcher()
+    {
+        return new NotificationChannelDispatcher(
+            [new InAppChannelPublisher(NullLogger<InAppChannelPublisher>.Instance)],
+            NullLogger<NotificationChannelDispatcher>.Instance);
+    }
+
+    private static NotificationProjector CreateProjector(TestContextFactory factory)
+    {
+        return new NotificationProjector(factory, CreateDispatcher());
     }
 
     private static DbContextOptions<AppDbContext> CreateOptions()

@@ -159,6 +159,8 @@ chaos, load, and secret-rotation drills; promotion gates are documented in
 - `deploy/README.md` — deploy order, rollback, launch gates, scaling.
 - `LOCAL_PROFILES.md` — local fast/full profiles and health expectations.
 - `docs/api-contract.md` — OpenAPI source of truth and client generation.
+- `docs/notifications-channels.md` — the notification channel seam, its
+  persist-then-publish invariant, and how to add a channel.
 - `docs/observability/slos.md` — SLO targets and dashboards.
 - `docs/runbooks/` — on-call runbooks (DLQ, leases, orphan recovery, provider
   outage, storage outage, DB failover, quota/cost, review backlog, escalation).

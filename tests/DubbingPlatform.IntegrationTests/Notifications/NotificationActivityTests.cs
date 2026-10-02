@@ -13,6 +13,7 @@ using DubbingPlatform.Infrastructure.Persistence;
 using DubbingPlatform.Infrastructure.Persistence.Interceptors;
 using EFCore.NamingConventions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit.Abstractions;
@@ -689,7 +690,12 @@ public sealed class NotificationActivityTests
 
     private static NotificationProjector CreateNotificationProjector(DbContextOptions<AppDbContext> options)
     {
-        return new NotificationProjector(new TestFactory(options));
+        // Task 049: the projector publishes on the real in-app channel seam, so
+        // these tests exercise persist-then-publish against a live PostgreSQL.
+        var dispatcher = new NotificationChannelDispatcher(
+            [new InAppChannelPublisher(NullLogger<InAppChannelPublisher>.Instance)],
+            NullLogger<NotificationChannelDispatcher>.Instance);
+        return new NotificationProjector(new TestFactory(options), dispatcher);
     }
 
     private static ActivityProjector CreateActivityProjector(DbContextOptions<AppDbContext> options)

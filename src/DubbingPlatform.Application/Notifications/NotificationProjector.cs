@@ -19,10 +19,25 @@ public static class NotificationMeters
 
     public const string SkippedMetricName = "notifications.skipped_total";
 
+    /// <summary>Tag key carrying the channel key on the two channel counters.</summary>
+    public const string ChannelTagName = "channel";
+
+    public const string ChannelPublishedMetricName = "notifications.channel_published_total";
+
+    public const string ChannelFailedMetricName = "notifications.channel_failed_total";
+
     private static readonly Meter Meter = new(MeterName);
 
     public static readonly Counter<long> Skipped =
         Meter.CreateCounter<long>(SkippedMetricName);
+
+    /// <summary>Per-channel successful publishes (Task 049).</summary>
+    public static readonly Counter<long> ChannelPublished =
+        Meter.CreateCounter<long>(ChannelPublishedMetricName);
+
+    /// <summary>Per-channel failed publishes (Task 049). The row stays durable.</summary>
+    public static readonly Counter<long> ChannelFailed =
+        Meter.CreateCounter<long>(ChannelFailedMetricName);
 }
 
 /// <summary>
@@ -51,15 +66,28 @@ public sealed record NotificationInput(
 /// owner is the fallback, and with neither the event is skipped with
 /// <c>notifications.skipped_total</c>. Expired rows are excluded from listings
 /// but retained for the retention job. Only ids and short summaries are stored.
+/// <para><b>Persist, then publish (Task 049).</b> Newly created rows are committed
+/// by <c>SaveChangesAsync</c> before <see cref="NotificationChannelDispatcher"/>
+/// is called, so delivery can never precede durability. Only rows this call
+/// created are published: every deduplicated path — the pre-check, the
+/// concurrent CONFLICT race, and the no-recipient skip — publishes nothing, which
+/// is what makes a redelivered source event exactly one publish. The projection
+/// semantics above are Task 002's and are unchanged; the channel seam only
+/// observes committed rows.</para>
 /// </summary>
 public sealed class NotificationProjector
 {
     private readonly IStageExecutionContextFactory _contextFactory;
 
-    public NotificationProjector(IStageExecutionContextFactory contextFactory)
+    private readonly NotificationChannelDispatcher _channels;
+
+    public NotificationProjector(
+        IStageExecutionContextFactory contextFactory,
+        NotificationChannelDispatcher channels)
     {
         ArgumentNullException.ThrowIfNull(contextFactory);
         _contextFactory = contextFactory;
+        _channels = channels ?? throw new ArgumentNullException(nameof(channels));
     }
 
     /// <summary>
@@ -107,6 +135,9 @@ public sealed class NotificationProjector
                 recipients = recipients.Where(r => !existingRecipients.Contains(r)).ToList();
                 if (recipients.Count == 0)
                 {
+                    // Every recipient already has the row. Returning the stored
+                    // rows keeps the caller's result shape; publishing is skipped
+                    // so a redelivered event is exactly one publish, not N.
                     return await db.Set<Notification>()
                         .Where(n => n.TenantId == input.TenantId && n.SourceEventId == input.SourceEventId)
                         .ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -136,10 +167,20 @@ public sealed class NotificationProjector
             catch (DomainException ex) when (input.SourceEventId.HasValue && ex.Message.Contains("CONFLICT", StringComparison.Ordinal))
             {
                 db.ChangeTracker.Clear();
+
+                // Lost the concurrent race: these rows belong to the writer that
+                // won, so nothing is published — the winner published them.
                 return await db.Set<Notification>()
                     .Where(n => n.TenantId == input.TenantId && n.SourceEventId == input.SourceEventId)
                     .Where(n => recipients.Contains(n.RecipientUserId))
                     .ToListAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            // Committed. Everything below is delivery: a channel failure can no
+            // longer cost the row, only this caller's knowledge of it.
+            foreach (var notification in created)
+            {
+                await _channels.DispatchAsync(notification, cancellationToken).ConfigureAwait(false);
             }
 
             return created;
