@@ -176,11 +176,17 @@ export interface ServerProjectQuery {
   readonly status?: string;
   readonly ownerId?: string;
   readonly archived?: string;
+  readonly targetLanguage?: string;
+  readonly from?: string;
+  readonly to?: string;
+  readonly reviewRequired?: boolean;
 }
 
 /**
- * Maps UI filters to the server query (R2: pagination/sort server-side, no
- * client-side slicing of server pages). `activity` and `progress` both map to
+ * Maps UI filters to the server query (R2: pagination/sort/filter server-side,
+ * no client-side slicing of server pages). GAP-007: targetLanguage, from/to,
+ * and reviewRequired narrow server-side so filtered views never fetch the
+ * full dataset. `activity` and `progress` both map to
  * `updatedAt`: progress ordering is therefore approximate (column tooltip
  * says so; no fake precision). `archived=active` (default) sends no param —
  * the backend excludes archived rows unless `archived=true|all` (R4).
@@ -195,10 +201,15 @@ export function toServerQuery(filters: ProjectFilters): ServerProjectQuery {
   };
   const withStatus = filters.status === '' ? query : { ...query, status: filters.status };
   const withOwner = filters.owner === '' ? withStatus : { ...withStatus, ownerId: filters.owner };
-  if (filters.archived === 'active') {
-    return withOwner;
-  }
-  return { ...withOwner, archived: filters.archived === 'archived' ? 'true' : 'all' };
+  const withArchived =
+    filters.archived === 'active'
+      ? withOwner
+      : { ...withOwner, archived: filters.archived === 'archived' ? 'true' : 'all' };
+  const withLang =
+    filters.targetLanguage === '' ? withArchived : { ...withArchived, targetLanguage: filters.targetLanguage };
+  const withFrom = filters.createdFrom === '' ? withLang : { ...withLang, from: filters.createdFrom };
+  const withTo = filters.createdTo === '' ? withFrom : { ...withFrom, to: filters.createdTo };
+  return withTo;
 }
 
 /** True when the UI sort is approximate (server `updatedAt`, not a real progress rank). */
@@ -206,45 +217,21 @@ export function isApproximateSort(sort: ProjectSort): boolean {
   return sort === 'progress';
 }
 
-function matchesDateRange(createdAt: string | undefined, from: string, to: string): boolean {
-  if (from === '' && to === '') {
-    return true;
-  }
-  if (createdAt === undefined || createdAt === '') {
-    return false;
-  }
-  const day = createdAt.slice(0, 10);
-  if (from !== '' && day < from) {
-    return false;
-  }
-  if (to !== '' && day > to) {
-    return false;
-  }
-  return true;
-}
-
 /**
- * Client-side refinement of the fetched page. Only dimensions the server
- * cannot filter apply here (target language exact match, created-date
- * range); server dimensions are never re-sliced, so pagination stays
- * server-owned (R2). Review-state filtering is intentionally absent: the
- * bundle `Project` carries no review counts, and inventing them would be
- * fake data.
+ * Server-owned filtering (GAP-007): the fetched page is already narrowed by
+ * the backend (targetLanguage/from/to/reviewRequired), so this is an
+ * identity pass-through that preserves row order. Kept as a named seam for
+ * call sites; do not re-slice server pages here.
  */
 export function applyClientFilters(
   items: readonly Project[] | undefined,
   filters: ProjectFilters,
 ): Project[] {
+  void filters;
   if (items === undefined) {
     return [];
   }
-  const target = filters.targetLanguage.trim().toLowerCase();
-  return items.filter((item) => {
-    if (target !== '' && (item.targetLanguage ?? '').toLowerCase() !== target) {
-      return false;
-    }
-    return matchesDateRange(item.createdAt, filters.createdFrom, filters.createdTo);
-  });
+  return [...items];
 }
 
 /** Display name; the backend defaults missing names to "Untitled project" (Task 007). */

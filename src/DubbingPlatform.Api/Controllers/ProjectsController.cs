@@ -106,7 +106,10 @@ public sealed class ProjectsController : ControllerBase
     /// <summary>
     /// Lists projects with filters, pagination, and sort. Archived rows are
     /// excluded by default; pass <c>archived=true</c> for only-archived or
-    /// <c>archived=all</c> for both.
+    /// <c>archived=all</c> for both. Server-side filters (GAP-007):
+    /// <c>targetLanguage</c> exact (2-3 letters), <c>from</c>/<c>to</c>
+    /// YYYY-MM-DD on CreatedAt (inclusive), <c>reviewRequired=true</c> for
+    /// ManualReviewRequired only.
     /// </summary>
     [HttpGet]
     [Authorize(Policy = AuthPolicies.RequireProjectViewer)]
@@ -121,6 +124,10 @@ public sealed class ProjectsController : ControllerBase
         [FromQuery] int? pageSize,
         [FromQuery] string? sort,
         [FromQuery] string? sortDir,
+        [FromQuery] string? targetLanguage,
+        [FromQuery] string? from,
+        [FromQuery] string? to,
+        [FromQuery] bool? reviewRequired,
         CancellationToken cancellationToken)
     {
         var tenantId = User.GetTenantId();
@@ -150,7 +157,7 @@ public sealed class ProjectsController : ControllerBase
 
         var query = new ProjectListQuery(
             parsedStatus, parsedOwner, search, archived, sort, sortDir,
-            page ?? 1, requestedSize);
+            page ?? 1, requestedSize, targetLanguage, from, to, reviewRequired);
         var (items, total, sortOut, dirOut) = await _projects.ListFilteredAsync(tenantId, query, cancellationToken).ConfigureAwait(false);
 
         var normalized = new PaginationParams { Page = page ?? 1, PageSize = requestedSize };

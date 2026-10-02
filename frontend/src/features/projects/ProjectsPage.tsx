@@ -36,9 +36,8 @@ import type { Project, ProjectAction, ProjectFilters as FilterState } from './ap
  * - R1: filters/sort/page live in URL search params (deep-linkable,
  *   back-button safe). Filter edits reset to page 1; page changes use
  *   `preventScrollReset` so scroll is preserved.
- * - R2: pagination/sorting server-side via `useProjectsQuery`; the client
- *   never slices server pages (target-language/date-range refine the
- *   fetched page in memory only).
+ * - R2: pagination/sorting/filtering server-side via `useProjectsQuery`; the client
+ *   never slices server pages (GAP-007: targetLanguage/from/to narrow server-side).
  * - R3: row actions come strictly from `getAllowedActions`; the server
  *   stays authoritative — 403/409 surfaces as toast + list refresh.
  * - R4: archived rows excluded by default (no `archived` param sent).

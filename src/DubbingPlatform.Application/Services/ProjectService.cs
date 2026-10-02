@@ -168,7 +168,9 @@ public sealed class ProjectService
     /// Filtered list for <c>GET /api/v1/projects</c>: status/owner/search plus
     /// archived mode (<c>false|true|all</c>, default <c>false</c>) and sort
     /// (<c>createdAt|updatedAt|name</c>, <c>asc|desc</c>, default
-    /// <c>createdAt desc</c>). Soft-deleted rows are always excluded.
+    /// <c>createdAt desc</c>), plus GAP-007 server-side targetLanguage,
+    /// created-date range, and reviewRequired (ManualReviewRequired).
+    /// Soft-deleted rows are always excluded.
     /// </summary>
     public async Task<(IReadOnlyList<DubbingProject> Items, long Total, string Sort, string SortDir)> ListFilteredAsync(
         Guid tenantId,
@@ -219,6 +221,31 @@ public sealed class ProjectService
                 scoped = scoped.Where(p =>
                     (p.Name != null && p.Name.ToLower().Contains(term)) ||
                     (p.Description != null && p.Description.ToLower().Contains(term)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(query.TargetLanguage))
+            {
+                var lang = query.TargetLanguage.Trim().ToLowerInvariant();
+                scoped = scoped.Where(p => p.TargetLanguage.ToLower() == lang);
+            }
+
+            var fromStart = query.CreatedFromStart();
+            if (fromStart.HasValue)
+            {
+                var from = fromStart.Value;
+                scoped = scoped.Where(p => p.CreatedAt >= from);
+            }
+
+            var toExclusive = query.CreatedToExclusive();
+            if (toExclusive.HasValue)
+            {
+                var to = toExclusive.Value;
+                scoped = scoped.Where(p => p.CreatedAt < to);
+            }
+
+            if (query.ReviewRequired == true)
+            {
+                scoped = scoped.Where(p => p.Status == ProjectStatus.ManualReviewRequired);
             }
 
             var total = await scoped.LongCountAsync(cancellationToken).ConfigureAwait(false);

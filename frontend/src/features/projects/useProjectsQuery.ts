@@ -9,12 +9,11 @@ import { fetchProjects, toServerQuery } from './api.js';
 import type { ProjectFilters } from './api.js';
 
 /**
- * Server-side project list query (Task 021, R2).
+ * Server-side project list query (Task 021, R2; GAP-007).
  *
- * - Key: `queryKeys.projects.list` over the server query only, so each
- *   filter/sort/page combination caches independently. Client-only
- *   refinements (target language, date range) stay out of the key — they
- *   filter the fetched page in memory without refetching.
+ * - Key: `queryKeys.projects.list` over the full server query, so each
+ *   filter/sort/page combination (including targetLanguage/from/to)
+ *   caches independently and narrows server-side without full-dataset fetch.
  * - `placeholderData: keepPreviousData` keeps the previous page rendered
  *   during page changes (no scroll jump, no blank table).
  * - Gated on the Task 019 session — no feature query fires before

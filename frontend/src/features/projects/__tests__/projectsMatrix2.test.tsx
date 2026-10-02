@@ -426,7 +426,7 @@ describe('ProjectTable degradation matrix', () => {
 });
 
 describe('projects api sweep', () => {
-  it('maps UI filters to server queries (R2)', () => {
+  it('maps UI filters to server queries (R2; GAP-007 server-side)', () => {
     expect(toServerQuery(DEFAULT_FILTERS)).toMatchObject({ page: 1, pageSize: 20, sort: 'createdAt', sortDir: 'desc' });
     expect(toServerQuery({ ...DEFAULT_FILTERS, sort: 'name' }).sort).toBe('name');
     expect(toServerQuery({ ...DEFAULT_FILTERS, sort: 'activity' }).sort).toBe('updatedAt');
@@ -434,6 +434,11 @@ describe('projects api sweep', () => {
     expect(toServerQuery({ ...DEFAULT_FILTERS, status: 'Failed', owner: 'u1' })).toMatchObject({ status: 'Failed', ownerId: 'u1' });
     expect(toServerQuery({ ...DEFAULT_FILTERS, archived: 'archived' }).archived).toBe('true');
     expect(toServerQuery({ ...DEFAULT_FILTERS, archived: 'all' }).archived).toBe('all');
+    expect(toServerQuery({ ...DEFAULT_FILTERS, targetLanguage: 'es' }).targetLanguage).toBe('es');
+    expect(toServerQuery({ ...DEFAULT_FILTERS, createdFrom: '2024-01-01', createdTo: '2024-02-01' })).toMatchObject({
+      from: '2024-01-01',
+      to: '2024-02-01',
+    });
     expect(isApproximateSort('progress')).toBe(true);
     expect(isApproximateSort('created')).toBe(false);
   });
@@ -456,13 +461,12 @@ describe('projects api sweep', () => {
     expect(getProjectDisplayName({ name: 'Pilot' })).toBe('Pilot');
   });
 
-  it('refines pages client-side without re-slicing server dims (R2)', () => {
+  it('server owns filtering; client is identity (GAP-007)', () => {
     const rows = [row({ id: 'a', targetLanguage: 'es', createdAt: '2024-01-10T00:00:00Z' }), row({ id: 'b', targetLanguage: 'fr', createdAt: '2024-03-10T00:00:00Z' })];
     expect(applyClientFilters(undefined, DEFAULT_FILTERS)).toEqual([]);
-    expect(applyClientFilters(rows, { ...DEFAULT_FILTERS, targetLanguage: 'ES' }).map((r) => r.id)).toEqual(['a']);
-    expect(applyClientFilters(rows, { ...DEFAULT_FILTERS, createdFrom: '2024-02-01' }).map((r) => r.id)).toEqual(['b']);
-    expect(applyClientFilters(rows, { ...DEFAULT_FILTERS, createdTo: '2024-02-01' }).map((r) => r.id)).toEqual(['a']);
-    expect(applyClientFilters([row({ id: 'c', createdAt: '' })], { ...DEFAULT_FILTERS, createdFrom: '2024-02-01' })).toEqual([]);
+    expect(applyClientFilters(rows, DEFAULT_FILTERS).map((r) => r.id)).toEqual(['a', 'b']);
+    expect(applyClientFilters(rows, { ...DEFAULT_FILTERS, targetLanguage: 'ES' }).map((r) => r.id)).toEqual(['a', 'b']);
+    expect(applyClientFilters(rows, { ...DEFAULT_FILTERS, createdFrom: '2024-02-01' }).map((r) => r.id)).toEqual(['a', 'b']);
   });
 
   it('allow-lists row actions from status + archived + perms (R3)', () => {

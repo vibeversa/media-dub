@@ -55,6 +55,20 @@ public sealed class ProjectGuardHashTests
     }
 
     [Fact]
+    public void ListQuery_Validates_Gap007_Server_Filters()
+    {
+        new ProjectListQuery(null, null, null, null, null, null, 1, 20, "es", "2024-01-01", "2024-02-01", true).Validate();
+        new ProjectListQuery(null, null, null, null, null, null, 1, 20, "ES", null, null, null).Validate();
+
+        Assert.Throws<global::DubbingPlatform.Domain.Exceptions.DomainException>(() =>
+            new ProjectListQuery(null, null, null, null, null, null, 1, 20, "english-too-long", null, null, null).Validate());
+        Assert.Throws<global::DubbingPlatform.Domain.Exceptions.DomainException>(() =>
+            new ProjectListQuery(null, null, null, null, null, null, 1, 20, null, "not-a-date", null, null).Validate());
+        Assert.Throws<global::DubbingPlatform.Domain.Exceptions.DomainException>(() =>
+            new ProjectListQuery(null, null, null, null, null, null, 1, 20, null, "2024-02-01", "2024-01-01", null).Validate());
+    }
+
+    [Fact]
     public void New_Error_Codes_Map_To_Expected_Status()
     {
         Assert.Equal(400, ErrorCodes.StatusFor(ErrorCodes.LanguageImmutable));

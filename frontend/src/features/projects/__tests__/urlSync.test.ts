@@ -80,9 +80,17 @@ describe('server query mapping (R2/R4)', () => {
     expect(query.status).toBe('Failed');
     expect(query.ownerId).toBe('usr_9');
   });
+
+  it('forwards targetLanguage and date range to the server (GAP-007)', () => {
+    expect(toServerQuery({ ...DEFAULT_FILTERS, targetLanguage: 'es' }).targetLanguage).toBe('es');
+    expect(toServerQuery({ ...DEFAULT_FILTERS, createdFrom: '2024-01-01', createdTo: '2024-02-01' })).toMatchObject({
+      from: '2024-01-01',
+      to: '2024-02-01',
+    });
+  });
 });
 
-describe('client-side refinement', () => {
+describe('server-owned filtering (GAP-007 identity)', () => {
   const items = [
     {
       id: 'prj_1',
@@ -106,19 +114,19 @@ describe('client-side refinement', () => {
     expect(applyClientFilters(items, DEFAULT_FILTERS).map((i) => i.id)).toEqual(['prj_1', 'prj_2']);
   });
 
-  it('matches target language case-insensitively', () => {
+  it('is identity: server already narrowed (no in-memory re-slice)', () => {
     expect(
       applyClientFilters(items, { ...DEFAULT_FILTERS, targetLanguage: 'ES' }).map((i) => i.id),
-    ).toEqual(['prj_1']);
+    ).toEqual(['prj_1', 'prj_2']);
   });
 
-  it('applies the created-date range on the day granularity', () => {
+  it('passes date-filtered pages through unchanged', () => {
     expect(
       applyClientFilters(items, { ...DEFAULT_FILTERS, createdFrom: '2024-02-01' }).map((i) => i.id),
-    ).toEqual(['prj_2']);
+    ).toEqual(['prj_1', 'prj_2']);
     expect(
       applyClientFilters(items, { ...DEFAULT_FILTERS, createdTo: '2024-02-01' }).map((i) => i.id),
-    ).toEqual(['prj_1']);
+    ).toEqual(['prj_1', 'prj_2']);
   });
 
   it('returns empty for undefined items (never crashes)', () => {
