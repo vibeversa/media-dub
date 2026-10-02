@@ -53,6 +53,49 @@ public sealed class ResolverTests
         Assert.Equal(ErrorCodes.PolicyDenied, ex.ErrorCode);
     }
 
+    [Theory]
+    [InlineData("restricted")]
+    [InlineData("local-only")]
+    [InlineData("no-external")]
+    [InlineData("private")]
+    public async Task Restrictive_Sensitive_Policy_Blocks_External_Route(string sensitivePolicy)
+    {
+        var tenant = Guid.NewGuid();
+        var descriptor = MakeDescriptor(tenant, ProviderType.Azure, ProviderCapability.Transcription);
+        var stores = new Mock<IDescriptorStore>(MockBehavior.Strict);
+        stores.Setup(s => s.GetCandidatesAsync(ProviderCapability.Transcription, tenant, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([descriptor]);
+        stores.Setup(s => s.IsCompatible(It.IsAny<ProviderCapabilityDescriptor>(), It.IsAny<ProviderRoutingRequest>()))
+            .Returns(true);
+        var now = DateTimeOffset.UtcNow;
+        var policy = new ProcessingPolicy(
+            Guid.NewGuid(), tenant, true, ["mock", "azure"], null, sensitivePolicy, "allow", true, null, now, now);
+        var policies = new Mock<IProcessingPolicyProvider>(MockBehavior.Strict);
+        policies.Setup(p => p.GetAsync(tenant, It.IsAny<CancellationToken>())).ReturnsAsync(policy);
+        var resolver = CreateResolver(stores.Object, policies.Object);
+
+        var ex = await Assert.ThrowsAsync<ErrorCodeException>(() => resolver.ResolveAsync(
+            ProviderCapability.Transcription, tenant, "en", 100, 1000));
+        Assert.Equal(ErrorCodes.PolicyDenied, ex.ErrorCode);
+        Assert.True(PolicyChecker.IsRestrictive(sensitivePolicy));
+        Assert.False(PolicyChecker.CanUseProvider(policy, ProviderType.Azure, "global"));
+        Assert.True(PolicyChecker.CanUseProvider(policy, ProviderType.Mock, "global"));
+    }
+
+    [Fact]
+    public void Permissive_Policies_Preserve_External_Routing()
+    {
+        var tenant = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        foreach (var permissive in new[] { "allow", "default" })
+        {
+            var policy = new ProcessingPolicy(
+                Guid.NewGuid(), tenant, true, ["mock", "azure"], null, permissive, permissive, true, null, now, now);
+            Assert.False(PolicyChecker.IsRestrictive(permissive));
+            Assert.True(PolicyChecker.CanUseProvider(policy, ProviderType.Azure, "global"));
+        }
+    }
+
     [Fact]
     public async Task Unhealthy_Route_Skipped()
     {

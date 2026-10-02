@@ -6,11 +6,14 @@ namespace DubbingPlatform.Application.Providers;
 /// <summary>
 /// Tenant-policy gate. Enforces the machine-checkable subset of
 /// <see cref="ProcessingPolicy"/>: external allowance, allowed-provider list,
-/// residency constraint, and local-inference allowance. Free-form
-/// <c>SensitivePolicy</c>/<c>VoicePolicy</c>/<c>RetentionOverride</c> strings
-/// carry no block semantics in the domain and are hashed into the route
-/// snapshot for audit instead of blocking here; workers enforce their
-/// call-site semantics (consent, retention).
+/// residency constraint, local-inference allowance, plus restrictive
+/// <c>SensitivePolicy</c>/<c>VoicePolicy</c>/<c>RetentionOverride</c> values
+/// (GAP-006). Restrictive values (case-insensitive: restricted, local-only,
+/// no-external, deny-external, private, confidential, no-clone, deny,
+/// block-external) block every external provider so routing stays local-only;
+/// permissive values (allow, default, empty) preserve existing behavior and
+/// are hashed into the route snapshot for audit. Workers enforce call-site
+/// semantics (consent, retention).
 /// Local-only routing (Task 043, optional) reuses
 /// <c>ExternalProvidersAllowed=false + LocalInferenceAllowed=true</c> with
 /// <c>AllowedProviders</c> containing <c>local</c>/<c>LocalInference</c>; this
@@ -19,6 +22,22 @@ namespace DubbingPlatform.Application.Providers;
 /// </summary>
 public static class PolicyChecker
 {
+    private static readonly HashSet<string> RestrictivePolicies = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "restricted",
+        "local-only",
+        "localonly",
+        "local_only",
+        "no-external",
+        "noexternal",
+        "deny-external",
+        "deny",
+        "private",
+        "confidential",
+        "no-clone",
+        "noclone",
+        "block-external",
+    };
     /// <summary>
     /// Whether <paramref name="provider"/> may serve the tenant.
     /// Null policy fails closed to mock-only (defense in depth when no row exists).
@@ -62,7 +81,44 @@ public static class PolicyChecker
             }
         }
 
+        if (isExternal && IsRestrictive(policy.SensitivePolicy))
+        {
+            return false;
+        }
+
+        if (isExternal && IsRestrictive(policy.VoicePolicy))
+        {
+            return false;
+        }
+
+        if (isExternal && !string.IsNullOrWhiteSpace(policy.RetentionOverride) && IsRestrictive(policy.RetentionOverride))
+        {
+            return false;
+        }
+
         return true;
+    }
+
+    public static bool IsRestrictive(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = value.Trim().ToLowerInvariant();
+        if (RestrictivePolicies.Contains(normalized))
+        {
+            return true;
+        }
+
+        return normalized.Contains("local-only", StringComparison.Ordinal)
+            || normalized.Contains("localonly", StringComparison.Ordinal)
+            || normalized.Contains("no-external", StringComparison.Ordinal)
+            || normalized.Contains("noexternal", StringComparison.Ordinal)
+            || normalized.Contains("deny-external", StringComparison.Ordinal)
+            || normalized.Contains("block-external", StringComparison.Ordinal)
+            || normalized.Contains("restricted", StringComparison.Ordinal);
     }
 
     private static bool IsListed(string[] allowed, ProviderType provider)
