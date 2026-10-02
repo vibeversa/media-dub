@@ -574,7 +574,7 @@ Supported fields:
 - `outputProfile`
 - `timingStrictness`
 - `voicePolicy`
-- `reviewThreshold`
+- `reviewThreshold` (number in `[0,1]`, not an enum string)
 - `glossary`
 - `styleInstructions`
 
@@ -595,7 +595,7 @@ Example shape:
   "outputProfile": "Web",
   "timingStrictness": "Standard",
   "voicePolicy": "Automatic",
-  "reviewThreshold": "Default",
+  "reviewThreshold": 0.4,
   "glossary": [
     {
       "sourceTerm": "foo",
@@ -606,6 +606,14 @@ Example shape:
   "styleInstructions": "Neutral documentary tone."
 }
 ```
+
+**Errata (GAP-027a).** `reviewThreshold` is a number in the inclusive range
+`[0,1]` (a per-review confidence below the threshold routes the item to
+manual review; it may be `null` to use the product default). The example above
+previously showed the enum string `"Default"`, which
+`ProjectProcessingSettingsValidator.HaveValidShape` rejects — a string value
+fails validation, it is not coerced. The implementation is authoritative and the
+example is corrected here; no enum-string support was added.
 
 #### 8.2.3 `ProjectMembership`
 
@@ -768,21 +776,40 @@ Add support for on-demand voice previews.
 
 #### 8.6.1 `VoicePreviewJob`
 
-Fields:
+Fields (aligned with the implementation, table `voice_preview_jobs`; see
+`docs/api-contract.md` for the authority copy):
 
 - `Id` (`vpv_` public ID)
 - `TenantId`
 - `ProjectId`
 - `SpeakerId`
-- `VoiceProfileId`
-- `RequestedText`
+- `VoiceId`
+- `Text`
 - `Status`
+- `RequestedByUserId`
+- `IdempotencyKey` nullable
+- `QuotaCheck`
+- `QuotaCheckReason` nullable
+- `ConsentState`
 - `ProviderExecutionId` nullable
 - `ArtifactId` nullable
-- `FailureCategory` nullable
+- `ErrorCode` nullable
+- `ErrorMessage` nullable
 - `CreatedAt`
+- `StartedAt` nullable
 - `CompletedAt` nullable
-- `ExpiresAt` nullable
+- `IsTerminal` computed (not a column)
+
+**Errata (GAP-027b).** The list above previously read `VoiceProfileId`,
+`RequestedText`, `FailureCategory`, and `ExpiresAt`. The implementation keeps
+`VoiceId` (the resolved voice of the assignment/profile, not the profile id),
+`Text` (the requested preview text), and `ErrorCode` + `ErrorMessage` instead of
+a `FailureCategory` enum, and it has no expiry column: preview artifacts follow
+the standard retention/hold path and are not deleted on a per-job timer. The
+additions (`RequestedByUserId`, `IdempotencyKey`, `QuotaCheck`,
+`QuotaCheckReason`, `ConsentState`, `StartedAt`) carry the audit, idempotency,
+quota, and consent evidence required by the consent and quota rules below. No
+schema change was made to close this errata; the document was wrong.
 
 Statuses:
 

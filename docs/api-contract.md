@@ -56,6 +56,52 @@ Adding an SSE type (closed 14-type set, Task 013):
 2. Then follow the enum checklist above (bundle `SseEventType` enum must stay
    exactly in sync; coverage test asserts the 14 values).
 
+## Entity contracts drifted from the plan (GAP-027)
+
+Two plan examples disagreed with the shipped implementation. The implementation
+is authoritative; the plan examples were corrected in
+`implementation_plan-B.md` and are pinned by
+`UnitTests/Docs/ContractDocDriftTests`.
+
+- `ProjectProcessingSettings.reviewThreshold` — the plan example showed the enum
+  string `"Default"`. The shipped validator
+  (`Application/Validation/ProjectProcessingSettingsValidator.HaveValidShape`)
+  requires a **number** in the inclusive range `[0,1]` (`null`/absent = product
+  default). A string value is rejected, not coerced.
+- `VoicePreviewJob` — the plan listed `VoiceProfileId`, `RequestedText`,
+  `FailureCategory`, and `ExpiresAt`. None of those columns exist.
+
+### VoicePreviewJob
+
+Table `voice_preview_jobs` (`Domain/Entities/VoicePreviewJob.cs`). Field-for-field
+with the entity:
+
+| Field | Notes |
+|---|---|
+| `Id` | `vpv_` public ID |
+| `TenantId` | tenant scope (RLS) |
+| `ProjectId` | owning project |
+| `SpeakerId` | speaker the preview targets |
+| `VoiceId` | resolved voice id, **not** a profile id (plan said `VoiceProfileId`) |
+| `Text` | requested preview text (plan said `RequestedText`) |
+| `Status` | `Pending`/`Running`/`Completed`/`Failed`/`Cancelled` |
+| `RequestedByUserId` | actor evidence for the audit trail |
+| `IdempotencyKey` | nullable; replay key for preview requests |
+| `QuotaCheck` | quota verdict recorded at request time |
+| `QuotaCheckReason` | nullable; why the quota verdict was what it was |
+| `ConsentState` | voice-consent state (cloning consent gate) |
+| `ProviderExecutionId` | nullable; provider call that synthesized the preview |
+| `ArtifactId` | nullable; preview artifact (separate from final generated audio) |
+| `ErrorCode` | nullable; failure code (plan said `FailureCategory`) |
+| `ErrorMessage` | nullable; failure detail |
+| `CreatedAt` | request time |
+| `StartedAt` | nullable; worker pickup |
+| `CompletedAt` | nullable; terminal time |
+| `IsTerminal` | computed (`Status is Completed/Failed/Cancelled`); not a column |
+
+There is no per-job expiry column: preview artifacts follow the standard
+retention/hold path (`RetentionService`), so nothing is deleted on a job timer.
+
 ## Drift dry-run (CI)
 
 `check-api-drift` fails closed on two mutations (verified in Task 014):
