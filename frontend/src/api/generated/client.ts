@@ -1171,9 +1171,6 @@ export interface StreamProgressParams {
   readonly path: {
     readonly "projectId": string;
   };
-  readonly query?: {
-    readonly "access_token"?: string;
-  };
 }
 
 export interface GetWorkspaceQualityParams {

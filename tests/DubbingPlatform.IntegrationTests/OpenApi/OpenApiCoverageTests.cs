@@ -276,7 +276,7 @@ public sealed class OpenApiCoverageTests
 
         var parameterNames = ResolveParameterNames(document, stream);
         Assert.Contains("Last-Event-ID", parameterNames);
-        Assert.Contains("access_token", parameterNames);
+        Assert.DoesNotContain("access_token", parameterNames);
     }
 
     [Fact]

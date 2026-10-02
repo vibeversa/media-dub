@@ -417,16 +417,26 @@ public sealed class WorkspaceProgressTests
             using var cross = await clientB.GetAsync($"/api/v1/projects/{projectId}/progress/stream").ConfigureAwait(true);
             Assert.Equal(HttpStatusCode.NotFound, cross.StatusCode);
 
-            // Query access_token succeeds and streams event-stream with Last-Event-ID accepted.
+            // GAP-001 (Plan B 9.11): query ?access_token= is never honored.
+            // Header-only bearer only; query token without header must be 401.
             var token = CreateToken(tenantA, "TenantAdmin");
             using var queryClient = factory.CreateClient();
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/projects/{projectId}/progress/stream?access_token={Uri.EscapeDataString(token)}");
             request.Headers.TryAddWithoutValidation("Last-Event-ID", "42");
             using var streamed = await queryClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(true);
-            Assert.Equal(HttpStatusCode.OK, streamed.StatusCode);
-            Assert.Equal("text/event-stream", streamed.Content.Headers.ContentType?.MediaType);
+            Assert.Equal(HttpStatusCode.Unauthorized, streamed.StatusCode);
             cts.Cancel();
+
+            // Header bearer still streams event-stream.
+            using var headerClient = factory.CreateClient();
+            headerClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            using var cts2 = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var headerRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/projects/{projectId}/progress/stream");
+            using var headerStreamed = await headerClient.SendAsync(headerRequest, HttpCompletionOption.ResponseHeadersRead, cts2.Token).ConfigureAwait(true);
+            Assert.Equal(HttpStatusCode.OK, headerStreamed.StatusCode);
+            Assert.Equal("text/event-stream", headerStreamed.Content.Headers.ContentType?.MediaType);
+            cts2.Cancel();
         }
     }
 

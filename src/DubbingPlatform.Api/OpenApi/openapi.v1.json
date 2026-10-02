@@ -3,7 +3,7 @@
   "info": {
     "title": "Dubbing Platform API",
     "version": "v1",
-    "description": "Tenant-scoped dubbing pipeline (Tasks 006-013, frozen). Auth: JWT bearer with tid (tenant), sub (user), roles[] claims; SSE /progress/stream additionally accepts ?access_token= (same policy, short-TTL, never logged). Tenant isolation: cross-tenant ids return 404 (no existence leak), except project-scoped reads which return 403 and admin per-resource reads which return 404. Errors: every failure is { error: { code, message, correlationId, details } } with exactly one catalog code (see ErrorCode; mapping: validation 400, auth 401, forbidden 403, not-found 404 incl. cross-tenant, conflict 409, quota 429, provider 502/504, unknown 500 INTERNAL_ERROR with a generic message). Pagination is page-based: { items, page, pageSize, total, hasMore } (generic lists default 20/max 100; segments default 50/max 200; admin diagnostics default 50/max 200). Mutations accept Idempotency-Key (required on processing start, exports, review mutations, voice previews; same key+body replays with Idempotent-Replayed:true, same key+different body is 409). Concurrency: PATCH projects uses If-Match (settings version); segment selection and review mutations use expectedVersion bodies (stale is 409 with current version in details). SSE: GET .../progress/stream emits frozen SseEnvelope frames (14 event types, schemaVersion 1, allowlisted payload, Last-Event-ID resume with last-100 headers-only replay; hint only, HTTP APIs are source of truth)."
+    "description": "Tenant-scoped dubbing pipeline (Tasks 006-013, frozen). Auth: JWT bearer with tid (tenant), sub (user), roles[] claims; SSE /progress/stream is header-only Authorization Bearer (never in query string per Plan B 9.11). Tenant isolation: cross-tenant ids return 404 (no existence leak), except project-scoped reads which return 403 and admin per-resource reads which return 404. Errors: every failure is { error: { code, message, correlationId, details } } with exactly one catalog code (see ErrorCode; mapping: validation 400, auth 401, forbidden 403, not-found 404 incl. cross-tenant, conflict 409, quota 429, provider 502/504, unknown 500 INTERNAL_ERROR with a generic message). Pagination is page-based: { items, page, pageSize, total, hasMore } (generic lists default 20/max 100; segments default 50/max 200; admin diagnostics default 50/max 200). Mutations accept Idempotency-Key (required on processing start, exports, review mutations, voice previews; same key+body replays with Idempotent-Replayed:true, same key+different body is 409). Concurrency: PATCH projects uses If-Match (settings version); segment selection and review mutations use expectedVersion bodies (stale is 409 with current version in details). SSE: GET .../progress/stream emits frozen SseEnvelope frames (14 event types, schemaVersion 1, allowlisted payload, Last-Event-ID resume with last-100 headers-only replay; hint only, HTTP APIs are source of truth)."
   },
   "servers": [
     {
@@ -1263,16 +1263,13 @@
         "operationId": "streamProgress",
         "tags": ["processing"],
         "summary": "Stream progress as frozen SSE envelopes",
-        "description": "text/event-stream of SseEnvelope frames (eventType stage.progress, schemaVersion 1, allowlisted payload). Auth: Authorization Bearer or ?access_token= (same policy, short-TTL, never logged). Last-Event-ID resume replays missed envelope headers from the last-100 buffer (no payload backfill); replay beyond the window sets the replayTruncated:true response header and the client falls back to polling. Oversize payloads are dropped (counted in sse.payload_dropped_total); the stream stays open. Cross-tenant ids return 404. Frames are invalidation hints; GET .../progress is the source of truth.",
+        "description": "text/event-stream of SseEnvelope frames (eventType stage.progress, schemaVersion 1, allowlisted payload). Auth: Authorization Bearer header-only (never in query string). Last-Event-ID resume replays missed envelope headers from the last-100 buffer (no payload backfill); replay beyond the window sets the replayTruncated:true response header and the client falls back to polling. Oversize payloads are dropped (counted in sse.payload_dropped_total); the stream stays open. Cross-tenant ids return 404. Frames are invalidation hints; GET .../progress is the source of truth.",
         "parameters": [
           {
             "$ref": "#/components/parameters/ProjectId"
           },
           {
             "$ref": "#/components/parameters/LastEventId"
-          },
-          {
-            "$ref": "#/components/parameters/AccessToken"
           }
         ],
         "responses": {
@@ -3666,15 +3663,6 @@
         "in": "header",
         "required": false,
         "description": "Resume cursor for the SSE stream. Missed envelope headers replay from the last-100 buffer; replay beyond the window sets replayTruncated:true and the client falls back to polling.",
-        "schema": {
-          "type": "string"
-        }
-      },
-      "AccessToken": {
-        "name": "access_token",
-        "in": "query",
-        "required": false,
-        "description": "Short-TTL bearer for /progress/stream only (EventSource cannot set headers). Same policy as Authorization; never logged.",
         "schema": {
           "type": "string"
         }

@@ -44,7 +44,7 @@ namespace DubbingPlatform.Api.Controllers;
 /// <c>GET .../progress</c> (durable unit-state progress with
 /// <c>percentApproximate</c> alias, indicator only),
 /// <c>GET .../progress/stream</c> (SSE <c>text/event-stream</c>, 2s poll,
-/// query <c>access_token</c> supported, <c>Last-Event-ID</c> accepted with
+/// header-only <c>Authorization: Bearer</c>, <c>Last-Event-ID</c> accepted with
 /// replay deferred to Task 013),
 /// <c>GET .../processing/{runId}</c>.
 /// Cancel flips the run to <c>Cancelling</c> (conditional update: exactly one
@@ -629,9 +629,9 @@ public sealed class ProcessingController : ControllerBase
     /// <summary>
     /// Streams progress as frozen SSE envelopes (<c>text/event-stream</c>): one
     /// <c>stage.progress</c> envelope every 2 seconds until the client
-    /// disconnects. Requires the project Viewer role; auth may arrive as
-    /// <c>Authorization: Bearer</c> or query <c>?access_token=</c> (same
-    /// policy, short-TTL single-use-scoped token, never logged).
+    /// disconnects. Requires the project Viewer role; auth is
+    /// <c>Authorization: Bearer</c> header-only (Plan B 9.11: never in the
+    /// query string).
     /// <c>Last-Event-ID</c> resume: missed envelope headers are replayed from
     /// the last-100 buffer (no payload backfill beyond the window); replay
     /// beyond the window sets the <c>replayTruncated: true</c> response header

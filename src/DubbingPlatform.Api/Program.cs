@@ -387,19 +387,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             OnMessageReceived = context =>
             {
-                // SSE transport shell: EventSource cannot set Authorization
-                // headers, so ?access_token= carries the same short-TTL bearer
-                // for /stream paths only. The value is never logged.
-                var path = context.HttpContext.Request.Path.Value ?? string.Empty;
-                if (path.Contains("/stream", StringComparison.OrdinalIgnoreCase))
-                {
-                    var token = context.HttpContext.Request.Query["access_token"].ToString();
-                    if (!string.IsNullOrWhiteSpace(token))
-                    {
-                        context.Token = token.Trim();
-                    }
-                }
-
+                // Plan B 9.11 (GAP-001): bearer travels in the Authorization
+                // header only, never in the query string. EventSource-style
+                // ?access_token= is intentionally unsupported so tokens never
+                // land in URLs, logs, or history. SSE clients use
+                // authenticated fetch with headers (see useProgressStream).
                 return Task.CompletedTask;
             },
             OnChallenge = context =>

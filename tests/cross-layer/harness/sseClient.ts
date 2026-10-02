@@ -45,9 +45,9 @@ export class SseClient {
   /**
    * Opens the progress stream for `projectId`.
    *
-   * The API accepts the bearer on `/stream` paths via `?access_token=` because
-   * `EventSource` cannot set headers; this client passes the header directly,
-   * which the API also accepts and which keeps the token out of URLs and logs.
+   * GAP-001 (Plan B 9.11): bearer travels in the Authorization header only,
+   * never via `?access_token=`. This client passes the header directly, which
+   * keeps the token out of URLs and logs.
    */
   static async open(token: string, projectId: string): Promise<SseClient> {
     const controller = new AbortController();
