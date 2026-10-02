@@ -1,6 +1,7 @@
 using DubbingPlatform.Application.Abstractions.Providers;
 using DubbingPlatform.Application.Options;
 using DubbingPlatform.Application.Providers;
+using DubbingPlatform.Domain.Enums;
 using DubbingPlatform.Infrastructure.Providers.Mock;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -333,7 +334,60 @@ public sealed class ProviderStartupValidator : IHostedService
             RequireKey(referenced, "google", EffectiveGoogleKey(options, _google.Value), "Google:ApiKey");
         }
 
+        RequireHonestAsyncJobFlags(options);
+
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// GAP-012: a descriptor may only advertise <c>AsyncJob</c> when the
+    /// provider implementation actually implements
+    /// <see cref="IBatchTranscriptionProvider"/>. Advertising a batch API the
+    /// adapter cannot honor would make the poller/reconciler unreachable at
+    /// runtime, so it fails fast here instead.
+    /// </summary>
+    private static void RequireHonestAsyncJobFlags(ProviderOptions options)
+    {
+        foreach (var option in options.Descriptors ?? [])
+        {
+            if (option is null || !option.AsyncJob)
+            {
+                continue;
+            }
+
+            if (!ProviderOptionNames.TryParseProvider(option.Provider, out var provider)
+                || !Enum.TryParse<ProviderCapability>(option.Capability, ignoreCase: true, out var capability))
+            {
+                continue;
+            }
+
+            var message = BatchProviderContract.ValidateAsyncJobFlag(provider, capability, ImplementationFor(provider, capability), option.AsyncJob);
+            if (message is not null)
+            {
+                throw new InvalidOperationException(message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Provider implementation type per provider/capability, used only for
+    /// capability-honesty validation. Unknown combinations yield null (the
+    /// descriptor is then validated as unimplemented).
+    /// </summary>
+    private static Type? ImplementationFor(ProviderType provider, ProviderCapability capability)
+    {
+        if (capability != ProviderCapability.Transcription)
+        {
+            return null;
+        }
+
+        return provider switch
+        {
+            ProviderType.Azure => typeof(Azure.AzureSttProvider),
+            ProviderType.OpenAI => typeof(OpenAI.OpenAiSttProvider),
+            ProviderType.Google => typeof(Google.GoogleSttProvider),
+            _ => null,
+        };
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

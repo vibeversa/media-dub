@@ -18,7 +18,7 @@ namespace DubbingPlatform.Infrastructure.Providers.OpenAI;
 /// Batch: POST <c>{BaseUrl}/audio/batch</c> → <c>202 {"jobId"}</c>;
 /// GET <c>{BaseUrl}/audio/batch/{jobId}</c> → <c>{"status","reason"}</c>.
 /// </summary>
-public sealed class OpenAiSttProvider : ITranscriptionProvider
+public sealed class OpenAiSttProvider : IBatchTranscriptionProvider
 {
     public const string ProviderName = "openai";
 

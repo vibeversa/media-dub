@@ -197,7 +197,7 @@ public sealed class DescriptorStore : IDescriptorStore
             Math.Max(0, option.MaxInputBytes),
             Math.Max(0, option.MaxDurationMs),
             false,
-            false,
+            option.AsyncJob,
             option.WordTimestamps,
             option.Diarization,
             [],

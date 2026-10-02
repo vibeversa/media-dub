@@ -21,7 +21,7 @@ namespace DubbingPlatform.Infrastructure.Providers.Azure;
 /// GET <c>{SpeechBase}/speech/batch/{jobId}</c> → <c>{"status","reason","text","confidence"}</c>.
 /// Production sends audio binary; the JSON shape keeps CI hermetic.
 /// </summary>
-public sealed class AzureSttProvider : ITranscriptionProvider, IDiarizationProvider
+public sealed class AzureSttProvider : IBatchTranscriptionProvider, IDiarizationProvider
 {
     public const string ProviderName = "azure";
 

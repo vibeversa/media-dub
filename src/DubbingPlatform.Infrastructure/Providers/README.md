@@ -83,8 +83,18 @@ delay. Timeouts respect cancellation (external cancel → `OperationCanceledExce
   `ProviderExecutionRecorder` (same hashes → existing id, different → 409).
 - `ProviderJobPoller`: `PollAsync(fetch, externalJobId, 10s, 30min)` +
   `ReconcileAsync` (single fetch for lease-loss). Azure/OpenAI batch adapters
-  expose `StartBatchAsync` → `ExternalJobId` (store on `ProviderExecution`) +
-  `GetBatchStatusAsync` for the poller.
+  implement `IBatchTranscriptionProvider` (`StartBatchAsync` →
+  `ExternalJobId` stored on `ProviderExecution`, `GetBatchStatusAsync` for the
+  poller). GAP-012 scope: Google STT (`:recognize`) and the local inference
+  sidecar (`/infer`) are synchronous contracts and deliberately do not
+  implement the interface. Batch support is therefore compiler-checked rather
+  than duck-typed, and `Providers:Descriptors[].AsyncJob` is validated against
+  the contract at startup (`BatchProviderContract.ValidateAsyncJobFlag`,
+  enforced by `ProviderStartupValidator`) so a descriptor cannot advertise a
+  long-running job API the adapter cannot honor. Google/Local are wired into
+  the poller only through tests that inject a status `fetch`; production
+  `TranscriptionService` calls every provider synchronously and therefore has
+  no per-provider lease-loss reconcile path to reconcile.
 - Every call records model/version/device/job/idempotency in
   `ProviderExecution` (see `RawMetadata`: `provider`, `model.hash`, `device`);
   fallback attempts record separately (R5).

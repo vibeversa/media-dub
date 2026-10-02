@@ -30,6 +30,14 @@ public sealed class ProviderDescriptorOption
 
     public bool Diarization { get; set; }
 
+    /// <summary>
+    /// Whether the provider exposes a long-running (batch/async job) API.
+    /// Only providers implementing
+    /// <c>IBatchTranscriptionProvider</c> may set this; startup validation
+    /// fails fast otherwise (GAP-012).
+    /// </summary>
+    public bool AsyncJob { get; set; }
+
     public bool VoiceCloning { get; set; }
 
     public string Region { get; set; } = "global";
