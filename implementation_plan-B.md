@@ -1315,32 +1315,125 @@ Event payloads must not include:
 
 ### 9.12 Error Contract and Frontend Mapping
 
-The backend error envelope remains:
+The backend error envelope is **nested** (the wire shape returned by every
+failing route, defined once in `Api/Errors/ApiError.cs` +
+`Api/Middleware/ErrorResponse.cs`):
 
 ```json
 {
-  "code": "PROVIDER_TIMEOUT",
-  "message": "...",
-  "correlationId": "...",
-  "details": {}
+  "error": {
+    "code": "PROVIDER_TIMEOUT",
+    "message": "...",
+    "correlationId": "...",
+    "details": {}
+  }
 }
 ```
 
-The frontend must map backend error codes to user-facing categories.
+`details` carries field-level validation errors only; it never contains media
+bytes, transcripts, tokens, or URLs. 500s return a generic message with the
+`correlationId` that ties the response to the server log.
 
-| Backend Code Class | Frontend Category | Recovery UX |
-|---|---|---|
-| validation errors | `ValidationError` | inline correction |
-| unauthorized | `AuthenticationError` | re-authenticate |
-| forbidden | `AuthorizationError` | explain permission limit |
-| conflict | `ConflictError` | refresh/resolve stale state |
-| quota/rate errors | `QuotaOrRateLimitError` | wait/contact admin |
-| provider transient errors | `TemporaryProcessingFailure` | automatic retry/wait |
-| media errors | `MediaError` | replace media/contact support |
-| review required | `ReviewRequired` | open review |
-| internal errors | `UnknownError` | safe failure message |
+The frontend maps every backend code to exactly one `ErrorKind` so UI code can
+branch without knowing the 65-code catalog (`api/errors/kinds.ts`,
+`api/errors/normalizeError.ts`). `Unknown` is the fallback and always carries
+the correlation ID plus a "report this ID" support hint.
+
+**Errata (GAP-028).** This section previously printed a flat
+`{ code, message, correlationId, details }` envelope and nine frontend
+categories (`ValidationError`, `AuthenticationError`, `AuthorizationError`,
+`ConflictError`, `QuotaOrRateLimitError`, `TemporaryProcessingFailure`,
+`MediaError`, `ReviewRequired`, `UnknownError`). The implementation collapses
+those nine into **seven** kinds: authentication and authorization share `Auth`
+(forbidden/permission problems are shown with an explain-the-limit hint, not a
+re-login), and provider-transient failures share `Unknown` with an automatic
+retry affordance rather than a separate kind. UI branching is by kind, never by
+raw code. The implementation is authoritative; no wire or catalog change was
+made to close this errata.
+
+| Backend code | Frontend kind |
+|---|---|
+| `VALIDATION_FAILED` | `Validation` |
+| `NOT_FOUND` | `Validation` |
+| `UPLOAD_INCOMPLETE` | `Validation` |
+| `PREFERENCE_KEY_UNKNOWN` | `Validation` |
+| `PREFERENCE_VALUE_TOO_LARGE` | `Validation` |
+| `LANGUAGE_IMMUTABLE` | `Validation` |
+| `PROJECT_NOT_FOUND` | `Validation` |
+| `IDEMPOTENCY_KEY_REQUIRED` | `Validation` |
+| `IDEMPOTENCY_KEY_REUSED` | `Validation` |
+| `VERSION_NOT_FOUND` | `Validation` |
+| `VERSION_SEGMENT_MISMATCH` | `Validation` |
+| `SEGMENT_TEXT_EMPTY` | `Validation` |
+| `VOICE_NOT_FOUND` | `Validation` |
+| `PREVIEW_TEXT_INVALID` | `Validation` |
+| `REVIEW_REASON_REQUIRED` | `Validation` |
+| `REVIEW_EDIT_EMPTY` | `Validation` |
+| `UNAUTHORIZED` | `Auth` |
+| `FORBIDDEN` | `Auth` |
+| `CONSENT_REQUIRED` | `Auth` |
+| `POLICY_DENIED` | `Auth` |
+| `INVALID_CREDENTIALS` | `Auth` |
+| `TOKEN_EXPIRED` | `Auth` |
+| `TOKEN_REUSED` | `Auth` |
+| `USER_DISABLED` | `Auth` |
+| `TENANT_REQUIRED` | `Auth` |
+| `VOICE_CONSENT_REQUIRED` | `Auth` |
+| `PROVIDER_RATE_LIMITED` | `Quota` |
+| `PROVIDER_QUOTA_EXHAUSTED` | `Quota` |
+| `QUOTA_EXCEEDED` | `Quota` |
+| `RATE_LIMITED` | `Quota` |
+| `RESOURCE_EXHAUSTED` | `Quota` |
+| `STORAGE_UNAVAILABLE` | `Quota` |
+| `PREVIEW_QUOTA_EXCEEDED` | `Quota` |
+| `MEDIA_UNSUPPORTED` | `Media` |
+| `MEDIA_CORRUPT` | `Media` |
+| `QC_BLOCKED` | `Media` |
+| `ARTIFACT_UNAVAILABLE` | `Media` |
+| `ARTIFACT_CHECKSUM_MISMATCH` | `Media` |
+| `VOICE_INCOMPATIBLE` | `Media` |
+| `MANUAL_REVIEW_REQUIRED` | `Review` |
+| `SELECTION_CONFLICT` | `Review` |
+| `REVIEW_VERSION_CONFLICT` | `Review` |
+| `REVIEW_ALREADY_RESOLVED` | `Review` |
+| `REVIEW_NOT_RESOLVED` | `Review` |
+| `CONFLICT` | `Conflict` |
+| `DUPLICATE_MEDIA` | `Conflict` |
+| `LEASE_LOST` | `Conflict` |
+| `EXPORT_NOT_READY` | `Conflict` |
+| `SETTINGS_LOCKED_ACTIVE_RUN` | `Conflict` |
+| `PROJECT_HAS_ACTIVE_RUN` | `Conflict` |
+| `SETTINGS_VERSION_CONFLICT` | `Conflict` |
+| `PROJECT_ARCHIVED` | `Conflict` |
+| `RUN_ALREADY_TERMINAL` | `Conflict` |
+| `RUN_ALREADY_ACTIVE` | `Conflict` |
+| `CONFIG_CHANGED_SINCE_RUN` | `Conflict` |
+| `SEGMENT_RETRY_ACTIVE` | `Conflict` |
+| `EXPORT_INCOMPLETE` | `Conflict` |
+| `OUTPUT_INCOMPLETE` | `Conflict` |
+| `PROVIDER_CONFIGURATION_ERROR` | `Unknown` |
+| `PROVIDER_TIMEOUT` | `Unknown` |
+| `PROVIDER_INVALID_RESPONSE` | `Unknown` |
+| `PROVIDER_FAILED` | `Unknown` |
+| `PIPELINE_INVARIANT_VIOLATION` | `Unknown` |
+| `INTERNAL_ERROR` | `Unknown` |
+| `URL_EXPIRED` | `Unknown` |
+
+Recovery UX per kind (full per-code plain-text hints live in
+`recoveryHintByCode`; no HTML, no links with secrets):
+
+| Kind | Recovery UX |
+|---|---|
+| `Validation` | inline correction |
+| `Auth` | re-authenticate or explain the permission limit |
+| `Quota` | wait / contact the tenant admin |
+| `Media` | replace media or contact support |
+| `Review` | open the review queue |
+| `Conflict` | refresh and resolve stale state |
+| `Unknown` | safe failure message, automatic retry when retryable, report the ID |
 
 Raw backend errors must not be shown to ordinary users.
+
 
 ---
 
