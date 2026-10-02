@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { setTokenProvider } from '../../api/client/index.js';
 import { NETWORK_ERROR, normalizeError } from '../../api/errors/index.js';
+import { queryKeys } from '../../api/queryKeys/index.js';
+import { readMeFeatureFlagSlice } from '../../config/featureFlags.js';
 import { queryClient } from '../../app/providers/queryClient.js';
 import { resolveAndApplyLocale } from '../../i18n/localePreference.js';
 import { useAppStore } from '../../stores/index.js';
@@ -238,6 +240,20 @@ export const useAuthStore = create<AuthState>()((set, get) => {
    * `i18n/localePreference.ts`). A `/me` read that throws is handled by the
    * caller's own status classification, unchanged. Presentation never gates
    * identity.
+   *
+   * AND THE FLAGS ARE SEEDED FROM IT (Task 048)
+   * -------------------------------------------
+   * The same document's `featureFlags` slice is the only server -> client flag
+   * channel an ordinary user can read, and the flag hook's query is keyed
+   * `queryKeys.me.featureFlags()`. Seeding it here - rather than letting the hook
+   * fetch a second time - is what keeps the application at ONE `/me` read per
+   * session. Task 044 paid for that extra read deliberately and named this task
+   * as the place to fix it; `useFeatureFlagsQuery` keeps a `queryFn` as the
+   * fallback for a session marked authenticated without this path running.
+   *
+   * The seed is written BEFORE the status flips, alongside the locale and for
+   * the same reason: `syncShell` releases `RequireAuth`, so a surface mounting
+   * in that same turn must already be able to resolve its flag.
    */
   async function resolveIdentityHints(): Promise<readonly string[]> {
     const raw = await fetchMeDocument();
@@ -249,6 +265,10 @@ export const useAuthStore = create<AuthState>()((set, get) => {
     resolveAndApplyLocale(raw, (locale) => {
       app.setLocale(locale);
     }, app.locale);
+    // Absent or unparseable: an empty slice, in which every flag is "unstated"
+    // and resolves fail-closed. `setQueryData` marks the entry fresh, so the
+    // flag hook does not immediately re-read what was just read.
+    queryClient.setQueryData(queryKeys.me.featureFlags(), readMeFeatureFlagSlice(raw));
     return readMePermissions(raw);
   }
 

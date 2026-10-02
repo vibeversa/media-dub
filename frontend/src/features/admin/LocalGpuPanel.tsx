@@ -4,7 +4,7 @@ import { Badge } from '../../components/Badge/Badge.js';
 import { EmptyState } from '../../components/EmptyState/EmptyState.js';
 import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { StatusBadge } from '../../components/StatusBadge/StatusBadge.js';
-import { useEnrichmentFlags } from '../enrichment/enrichmentFlags.js';
+import { useFeatureFlag } from '../../hooks/useFeatureFlag.js';
 import { canAccessAdmin } from './adminGuard.js';
 import { LocalGpuNotAvailableState, LocalGpuPrivacyNote, LocalGpuUnavailableState, LocalGpuUnknownState } from './LocalGpuStates.js';
 import { isAdminForbiddenError, isAdminUnknownRouteError } from './types.js';
@@ -48,10 +48,11 @@ const STATUS_BADGE: Readonly<Record<string, 'success' | 'warning' | 'error' | 'n
 
 export interface LocalGpuPanelProps {
   /**
-   * Overrides the flag read. Admin mounts the panel through `EnrichmentGate`,
-   * which already decided the flag; passing it in keeps the gate and the panel
-   * from ever disagreeing about whether this should exist. Omitted by the
-   * panel's own specs, which mount it directly.
+   * Overrides the flag read. `AdminPage` decides whether the section exists
+   * with the shared hook and mounts this panel inside it; the panel re-reads the
+   * same flag itself, so a future refactor that moved the section out from under
+   * that check would not expose device detail. Omitted by the panel's own specs,
+   * which mount it directly.
    */
   readonly enabled?: boolean;
 }
@@ -59,10 +60,10 @@ export interface LocalGpuPanelProps {
 export function LocalGpuPanel({ enabled }: LocalGpuPanelProps = {}): ReactNode {
   const permissions = useAppStore((s) => s.permissions);
   const sessionStatus = useAppStore((s) => s.sessionStatus);
-  const flags = useEnrichmentFlags();
+  const localInference = useFeatureFlag('localInference');
   const [dismissed, setDismissed] = useState(false);
 
-  const flagOn = enabled ?? flags.localGpu;
+  const flagOn = enabled ?? localInference;
   // `sessionStatus` matters as well as permissions: a permission list that
   // survived a logout must not keep an operator panel open.
   const allowed = sessionStatus === 'authenticated' && canAccessAdmin(permissions);

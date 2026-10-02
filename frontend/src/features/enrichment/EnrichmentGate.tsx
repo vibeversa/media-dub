@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import type { ReactNode } from 'react';
-import { useEnrichmentFlags } from './enrichmentFlags.js';
+import { useFeatureFlag } from '../../hooks/useFeatureFlag.js';
+import { ENRICHMENT_FLAG_KEY_BY_NAME } from './enrichmentFlags.js';
 import type { EnrichmentFlagName } from './enrichmentFlags.js';
 
 /**
@@ -42,8 +43,11 @@ import type { EnrichmentFlagName } from './enrichmentFlags.js';
  * is equally true of a feature that was never mounted at all, and a check that
  * passes on absent code is not a check.
  *
- * Task 048 replaces the flag *source*, not this gate. Whatever
- * `useFeatureFlag` ends up reading, it lands here and nowhere else.
+ * Task 048 landed the flag *source*, not this gate. The decision is now
+ * `useFeatureFlag`, the product-wide hook, and this file is one of its call
+ * sites - exactly as the note above predicted. The rule below is unchanged:
+ * nothing renders until the shared hook says the flag is on, and "on" is only
+ * ever `/me` or build-time bootstrap config.
  */
 
 // `lazy` wants a default export; both panels are named exports so the barrel
@@ -68,8 +72,8 @@ export function EnrichmentGate({
   readonly flag: EnrichmentFlagName;
   readonly children: ReactNode;
 }): ReactNode {
-  const flags = useEnrichmentFlags();
-  if (flags[flag] !== true) {
+  const enabled = useFeatureFlag(ENRICHMENT_FLAG_KEY_BY_NAME[flag]);
+  if (enabled !== true) {
     return null;
   }
   return <Suspense fallback={null}>{children}</Suspense>;
@@ -92,12 +96,13 @@ export interface ProjectEnrichmentProps {
  * that would let one flag switch another surface on.
  */
 export function ProjectEnrichment({ projectId, knownSegmentIds }: ProjectEnrichmentProps): ReactNode {
-  const flags = useEnrichmentFlags();
+  const videoIntel = useFeatureFlag(ENRICHMENT_FLAG_KEY_BY_NAME.videoIntel);
+  const lipSync = useFeatureFlag(ENRICHMENT_FLAG_KEY_BY_NAME.lipSync);
   // Not just the children: the WRAPPER. R1 asks for zero chrome, and a
   // `<div data-testid="enrichment-…">` with nothing inside it is chrome with
   // nothing in it — it is a DOM node, it is in the accessibility tree, and a
   // test that greps for `enrichment-` finds it.
-  if (flags.videoIntel !== true && flags.lipSync !== true) {
+  if (videoIntel !== true && lipSync !== true) {
     return null;
   }
   return (
@@ -112,7 +117,7 @@ export function ProjectEnrichment({ projectId, knownSegmentIds }: ProjectEnrichm
   );
 }
 
-// The gate's decision as a pure function lives in `enrichmentFlags.ts`
-// (`enrichmentGateAllows`), not here: `react-refresh/only-export-components`
+// The gate's decision as a pure function lives in `config/featureFlags.ts`
+// (`resolveFeatureFlag`), not here: `react-refresh/only-export-components`
 // requires a component file to export components only, and a rule worth
 // asserting belongs somewhere it can be asserted directly.

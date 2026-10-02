@@ -26,7 +26,8 @@ shared harness; aggregate tasks own gap closure, seams, and gates only.
 | `src/app` | 018 | `src/app/**/__tests__/` |
 | `src/components` | 016 | per-component `*.test.tsx` |
 | `src/api` (excl. `generated/`) | 017 | `src/api/__tests__/` |
-| `src/hooks` | 026 | `src/hooks/*/__tests__/` |
+| `src/hooks` | 026 (streams, version watch) / 048 (feature flags) | `src/hooks/__tests__/`, plus the co-located `src/hooks/useFeatureFlag.gate.test.tsx` — the R1 source gate reads the tree rather than a module, and it sits beside the hook so Task 048's `npm run test -- src/hooks/useFeatureFlag` filter can reach it (vitest treats a positional filter as a path pattern) |
+| `src/config` | 043 (deploy config) / 048 (flag vocabulary + resolver) | `src/config/__tests__/`, plus `src/hooks/__tests__/useFeatureFlag.test.tsx`, which is where the flag resolver's matrix lives: the resolver is the hook's subject, and a second copy of the matrix under `src/config/` would be a second copy of the rule |
 | `src/i18n` | 018 (framework) / 045 (pseudo, RTL, fallback chain) | `src/i18n/__tests__/`, `src/i18n/pseudo.spec.tsx` |
 | `src/lib` | 015 (env) / 045 (`dates/`, `formatting/`) | `src/lib/__tests__/`, `src/lib/dates/dates.spec.ts`, `src/lib/formatting/formatting.spec.ts` |
 | `src/mocks` | 046 (harness) / 039A (taxonomy conformance) | `src/mocks/handlers.spec.ts`, `src/mocks/conformance.spec.ts` |

@@ -1,20 +1,10 @@
 export * from './types.js';
 export {
-  ENRICHMENT_FLAGS_OFF,
+  ENRICHMENT_FLAG_KEY_BY_NAME,
   ENRICHMENT_FLAG_NAMES,
-  EnrichmentFlagsProvider,
-  enrichmentGateAllows,
-  isEnrichmentFlagEnabled,
-  parseEnrichmentFlags,
-  useEnrichmentFlagSnapshot,
-  useEnrichmentFlags,
-  useEnrichmentFlagsQuery,
 } from './enrichmentFlags.js';
 export type {
   EnrichmentFlagName,
-  EnrichmentFlagSnapshot,
-  EnrichmentFlags,
-  EnrichmentFlagsProviderProps,
 } from './enrichmentFlags.js';
 export {
   fetchLipSyncAssetUrl,

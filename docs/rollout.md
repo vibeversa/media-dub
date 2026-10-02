@@ -127,6 +127,44 @@ here means "the flag keeps its last value", not "the flag turns off": a flag
 service outage must not silently disable a feature for every tenant, and must not
 silently enable one that was not ready.
 
+### 4a. Where the browser reads a flag (Task 048)
+
+There is no flag service in this product: plan §6.9 does not require DB-backed
+flags, and `FlagsPanel` reads `GET /admin/feature-flags` only for the admin's
+own toggles. A browser reads a flag from exactly two places, in this order:
+
+1. **`GET /me`'s `featureFlags` slice** (`MeFeatureFlags`: `videoIntelligenceEnabled`,
+   `lipSyncEnabled`, `localInferenceEnabled`). It is the only server → client flag
+   channel an ordinary user can read — the admin list 403s for everyone else, so
+   it cannot gate a workspace surface.
+2. **Build-time bootstrap config**, the `VITE_ENABLE_*` family
+   (`VITE_ENABLE_ANALYTICS`, `_DIAGNOSTICS`, `_EXPERIMENTAL_FEATURES`), baked into
+   the bundle by `deploy/config-inject.sh`.
+
+The rule, in one sentence: **a flag is on when `/me` states it on, or — when
+`/me` says nothing about it — when bootstrap config states it on; everything
+else is off.** So `/me` wins where both speak, a recognised-but-off `/me` key is
+an answer rather than an absence, and every default is `false`.
+
+Evaluation happens in exactly one place, `useFeatureFlag`
+(`frontend/src/hooks/useFeatureFlag.ts`), over the vocabulary and the
+fail-closed resolver in `frontend/src/config/featureFlags.ts`. A grep gate
+(`frontend/src/hooks/useFeatureFlag.gate.test.tsx`) fails the suite if any other
+module names a `/me` wire spelling, reads a `VITE_ENABLE_*` variable, or issues
+its own `/me` read — so "is this rollout on?" has one answer, not one per module.
+
+Two consequences for this document's §4 promise:
+
+- **"Fail closed" is both halves.** Before any value is known (no session, no
+  `/me`, an unreadable document, a flag key this build has never heard of) every
+  flag is off. After a value is known, a later failed read keeps it — which is
+  the "last-known-good snapshot" above, implemented as react-query keeping the
+  resolved slice rather than as a degraded-state banner. A flag that flickers
+  mid-session is worse than one that is five minutes stale.
+- **A flag grants nothing.** Flags decide what is *shown*; `/me`'s permission
+  strings, `RequireAdmin`, and the server's own authorization decide what is
+  *permitted*. A flag on with no permission still renders the denial.
+
 ## 5. Verify, then keep the contract
 
 ```bash

@@ -44,15 +44,10 @@ import { resetRestoreStartedForTests } from '../../auth/useSession.js';
 import { AdminPage } from '../../admin/AdminPage.js';
 import { TranscriptEditor } from '../../transcript/TranscriptEditor.js';
 import { EnrichmentGate, ProjectEnrichment } from '../EnrichmentGate.js';
-import {
-  ENRICHMENT_FLAGS_OFF,
-  EnrichmentFlagsProvider,
-  enrichmentGateAllows,
-  isEnrichmentFlagEnabled,
-  parseEnrichmentFlags,
-  useEnrichmentFlagSnapshot,
-  useEnrichmentFlagsQuery,
-} from '../enrichmentFlags.js';
+import { ENRICHMENT_FLAG_KEY_BY_NAME } from '../enrichmentFlags.js';
+import { FeatureFlagProvider, useFeatureFlag } from '../../../hooks/useFeatureFlag.js';
+import { FEATURE_FLAG_DEFAULTS, resolveFeatureFlag } from '../../../config/featureFlags.js';
+import type { FeatureFlagValue, MeFeatureFlagSlice } from '../../../config/featureFlags.js';
 import { fetchLipSyncAssetUrl, isNotProvisionedError, useVideoIntel } from '../useEnrichmentQueries.js';
 import { useLocalGpuHealth } from '../../admin/useLocalGpuQueries.js';
 import {
@@ -66,7 +61,6 @@ import {
   resolveSegmentLink,
 } from '../types.js';
 import { parseLocalGpu, resolveLocalGpuStatus, isForbiddenLocalGpuKey } from '../../admin/localGpuTypes.js';
-import type { EnrichmentFlags } from '../enrichmentFlags.js';
 
 // --- harness -----------------------------------------------------------------
 
@@ -82,11 +76,38 @@ function redirectResponse(location: string): Response {
   return new Response(null, { status: 302, headers: { Location: location } });
 }
 
-const ALL_ON: EnrichmentFlags = { videoIntel: true, lipSync: true, localGpu: true };
+/**
+ * The `/me` flag slice, in the wire spelling `MeFeatureFlags` uses
+ * (Task 006). Task 048 moved the flag vocabulary, the `/me` read and the
+ * resolution rule into `config/featureFlags.ts` + `hooks/useFeatureFlag.ts`, so
+ * this suite drives the wire document itself rather than a private copy of the
+ * vocabulary - the same bytes a real backend sends.
+ */
+const WIRE_FLAGS_OFF: MeFeatureFlagSlice = {};
+const WIRE_ALL_ON: MeFeatureFlagSlice = {
+  videoIntelligenceEnabled: true,
+  lipSyncEnabled: true,
+  localInferenceEnabled: true,
+};
+
+/**
+ * The resolved map for `FeatureFlagProvider`, which takes the same thing
+ * `useFeatureFlag` reports rather than a document.
+ */
+const ALL_ENRICHMENT_ON: FeatureFlagValue = {
+  analytics: true,
+  diagnostics: true,
+  experimentalFeatures: true,
+  videoIntelligence: true,
+  lipSync: true,
+  localInference: true,
+};
+const ALL_ON: FeatureFlagValue = ALL_ENRICHMENT_ON;
 
 interface EnrichmentWorld {
   permissions: readonly string[];
-  flags: EnrichmentFlags;
+  /** The `/me` `featureFlags` slice, in wire spelling. */
+  flags: MeFeatureFlagSlice;
   /** Video-intel outcome. */
   videoIntel: 'ok' | 'empty' | 'error500' | 'timeout' | 'not-provisioned' | 'not-implemented' | 'forbidden';
   /** Lip-sync outcome. */
@@ -102,7 +123,7 @@ interface EnrichmentWorld {
 function newWorld(overrides: Partial<EnrichmentWorld> = {}): EnrichmentWorld {
   return {
     permissions: ['admin.manage', 'project.view', 'project.edit'],
-    flags: ENRICHMENT_FLAGS_OFF,
+    flags: WIRE_FLAGS_OFF,
     videoIntel: 'ok',
     lipSync: 'ok',
     localGpu: 'unreachable',
@@ -240,11 +261,7 @@ async function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       userId: 'usr_1',
       tenantId: 'ten_1',
       permissions: world.permissions,
-      featureFlags: {
-        videoIntelligenceEnabled: world.flags.videoIntel,
-        lipSyncEnabled: world.flags.lipSync,
-        localInferenceEnabled: world.flags.localGpu,
-      },
+      featureFlags: world.flags,
     });
   }
 
@@ -438,7 +455,7 @@ afterEach(() => {
 
 describe('R1 flag-off hides everything', () => {
   it('renders literally nothing: no chrome, no upsell, no disabled button', async () => {
-    world = newWorld({ flags: ENRICHMENT_FLAGS_OFF });
+    world = newWorld({ flags: WIRE_FLAGS_OFF });
     const { container } = render(
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
@@ -466,7 +483,7 @@ describe('R1 flag-off hides everything', () => {
   });
 
   it('issues no enrichment request at all with the flags off', async () => {
-    world = newWorld({ flags: ENRICHMENT_FLAGS_OFF });
+    world = newWorld({ flags: WIRE_FLAGS_OFF });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     await waitFor(() => {
       expect(world.seenUrls.some((url) => url.includes('/me'))).toBe(true);
@@ -478,7 +495,7 @@ describe('R1 flag-off hides everything', () => {
   });
 
   it('hides the operator GPU panel from the admin area with the flag off', async () => {
-    world = newWorld({ flags: { ...ENRICHMENT_FLAGS_OFF, localGpu: false } });
+    world = newWorld({ flags: WIRE_FLAGS_OFF });
     renderWithProviders(<AdminPage />);
     expect(await screen.findByTestId('admin-page')).toBeDefined();
     // The other seven admin areas are untouched — the gate removes only itself.
@@ -489,61 +506,52 @@ describe('R1 flag-off hides everything', () => {
     expect(world.seenUrls.filter((url) => url.includes('/admin/local-gpu'))).toEqual([]);
   });
 
-  it('fails closed on every unreadable flag source', () => {
-    // Every one of these must resolve to all-off. The last three are the ones
-    // that would be easy to read as "probably fine".
-    for (const raw of [
-      undefined,
-      null,
-      {},
-      { featureFlags: null },
-      { featureFlags: [] },
-      { featureFlags: 'true' },
-      { featureFlags: { videoIntelligenceEnabled: 'true', lipSyncEnabled: 1, localInferenceEnabled: {} } },
-      // Client-side alias spellings are NOT accepted. A parser that honours a
-      // key the backend never emits is not fail-closed, it is guessing.
-      { featureFlags: { videoIntel: true, lipSync: true, localGpu: true } },
-    ]) {
-      expect(parseEnrichmentFlags(raw)).toEqual(ENRICHMENT_FLAGS_OFF);
-    }
-  });
-
-  it('reads the three /me wire flags and nothing else', () => {
-    expect(parseEnrichmentFlags({ featureFlags: { videoIntelligenceEnabled: true } })).toEqual({
-      videoIntel: true,
-      lipSync: false,
-      localGpu: false,
-    });
-    expect(parseEnrichmentFlags({ featureFlags: { lipSyncEnabled: true } }).lipSync).toBe(true);
-    expect(parseEnrichmentFlags({ featureFlags: { localInferenceEnabled: true } }).localGpu).toBe(true);
-    // Accepts an already-unwrapped slice.
-    expect(parseEnrichmentFlags({ lipSyncEnabled: true }).lipSync).toBe(true);
-    // A recognised-but-false key is not an absent key.
-    expect(parseEnrichmentFlags({ featureFlags: { videoIntelligenceEnabled: false, lipSyncEnabled: true } })).toEqual({
-      videoIntel: false,
-      lipSync: true,
-      localGpu: false,
-    });
-  });
+  // The `/me` parser itself moved to `config/featureFlags.ts` in Task 048, and
+  // so did its matrix (unreadable documents, alias spellings, non-boolean
+  // values, an already-unwrapped slice): `hooks/__tests__/useFeatureFlag.test.tsx`
+  // asserts all of it against the one parser that now exists. Duplicating the
+  // matrix here would keep two copies of the same rule honest for exactly as
+  // long as nobody changed either.
 
   it('keeps an earlier resolution when a later refetch fails', async () => {
-    world = newWorld({ flags: ALL_ON });
+    world = newWorld({ flags: WIRE_ALL_ON });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     expect(await screen.findByTestId('enrichment-video-intel')).toBeDefined();
 
-    // A transient blip on /me must not make a working panel disappear.
+    // A transient blip on /me must not make a working panel disappear. The
+    // cache entry is the shared `me.featureFlags()` one (Task 048), so this
+    // mutates the SAME slice the gate reads - and the assertion that the entry
+    // exists is what stops this test from passing because the mutation found
+    // nothing to mutate.
     const cache = queryClient.getQueryCache();
-    const flagsKey = queryKeys.enrichment.flags();
-    cache.find({ queryKey: flagsKey })?.setState({ data: ALL_ON });
+    const flagsKey = queryKeys.me.featureFlags();
+    const entry = cache.find({ queryKey: flagsKey });
+    expect(entry).toBeDefined();
+    entry?.setState({ data: WIRE_ALL_ON });
     await void queryClient.invalidateQueries({ queryKey: flagsKey, refetchType: 'none' });
     expect(screen.queryByTestId('enrichment-video-intel')).not.toBeNull();
   });
 
-  it('exposes the gate decision as a pure predicate', () => {
-    expect(enrichmentGateAllows(ALL_ON, 'videoIntel')).toBe(true);
-    expect(enrichmentGateAllows(ALL_ON, 'localGpu')).toBe(true);
-    expect(enrichmentGateAllows(ENRICHMENT_FLAGS_OFF, 'videoIntel')).toBe(false);
-    expect(isEnrichmentFlagEnabled({ ...ALL_ON, lipSync: false }, 'lipSync')).toBe(false);
+  it('maps every enrichment capability onto the shared flag keys', () => {
+    // The vocabulary Task 044 speaks, and the keys Task 048 owns. This is the
+    // join between them, and it is total: a fourth capability without a key is
+    // a typecheck error, and a renamed key is a failing assertion here.
+    expect(ENRICHMENT_FLAG_KEY_BY_NAME).toEqual({
+      videoIntel: 'videoIntelligence',
+      lipSync: 'lipSync',
+      localGpu: 'localInference',
+    });
+    for (const [name, key] of Object.entries(ENRICHMENT_FLAG_KEY_BY_NAME)) {
+      expect(FEATURE_FLAG_DEFAULTS[key]).toBe(false);
+      // The shared resolver answers for each capability's key.
+      expect(resolveFeatureFlag(WIRE_ALL_ON, key, FEATURE_FLAG_DEFAULTS)).toBe(true);
+      expect(resolveFeatureFlag(WIRE_FLAGS_OFF, key, FEATURE_FLAG_DEFAULTS)).toBe(false);
+      expect(typeof name).toBe('string');
+    }
+    // A recognised-but-off `/me` key is not an absent key: video intel off and
+    // lip sync on keeps each decision independent.
+    expect(resolveFeatureFlag({ videoIntelligenceEnabled: false, lipSyncEnabled: true }, 'videoIntelligence', ALL_ON)).toBe(false);
+    expect(resolveFeatureFlag({ videoIntelligenceEnabled: false, lipSyncEnabled: true }, 'lipSync', ALL_ON)).toBe(true);
   });
 });
 
@@ -552,13 +560,13 @@ describe('R1 gate mounting', () => {
     const { unmount } = render(
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
-          <EnrichmentFlagsProvider value={{ ...ALL_ON, lipSync: false }}>
+          <FeatureFlagProvider value={{ ...ALL_ON, lipSync: false }}>
             <MemoryRouter>
               <EnrichmentGate flag="lipSync">
                 <p data-testid="gate-child">child</p>
               </EnrichmentGate>
             </MemoryRouter>
-          </EnrichmentFlagsProvider>
+          </FeatureFlagProvider>
         </LocaleProvider>
       </QueryClientProvider>,
     );
@@ -568,13 +576,13 @@ describe('R1 gate mounting', () => {
     render(
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
-          <EnrichmentFlagsProvider value={ALL_ON}>
+          <FeatureFlagProvider value={ALL_ON}>
             <MemoryRouter>
               <EnrichmentGate flag="lipSync">
                 <p data-testid="gate-child">child</p>
               </EnrichmentGate>
             </MemoryRouter>
-          </EnrichmentFlagsProvider>
+          </FeatureFlagProvider>
         </LocaleProvider>
       </QueryClientProvider>,
     );
@@ -582,7 +590,7 @@ describe('R1 gate mounting', () => {
   });
 
   it('gates each capability independently', async () => {
-    world = newWorld({ flags: { videoIntel: true, lipSync: false, localGpu: false } });
+    world = newWorld({ flags: { videoIntelligenceEnabled: true } });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     expect(await screen.findByTestId('enrichment-video-intel')).toBeDefined();
     expect(screen.queryByTestId('enrichment-lip-sync')).toBeNull();
@@ -595,7 +603,7 @@ describe('R1 gate mounting', () => {
 
 describe('R2 video-intel artifacts are separate', () => {
   it('renders artifacts as their own list, linked but never spliced in', async () => {
-    world = newWorld({ flags: ALL_ON });
+    world = newWorld({ flags: WIRE_ALL_ON });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" knownSegmentIds={new Set(['seg_1', 'seg_2'])} />);
 
     const list = await screen.findByTestId('enrichment-video-intel-list');
@@ -611,7 +619,7 @@ describe('R2 video-intel artifacts are separate', () => {
   });
 
   it('degrades a deleted segment link to Gone rather than dropping the row', async () => {
-    world = newWorld({ flags: ALL_ON });
+    world = newWorld({ flags: WIRE_ALL_ON });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" knownSegmentIds={new Set(['seg_1', 'seg_2'])} />);
     const row = await screen.findByTestId('enrichment-video-intel-artifact-art_orphan_1');
     expect(row.getAttribute('data-link')).toBe('gone');
@@ -622,7 +630,7 @@ describe('R2 video-intel artifacts are separate', () => {
   });
 
   it('treats an unknown segment list as unlinked, never as gone', async () => {
-    world = newWorld({ flags: ALL_ON });
+    world = newWorld({ flags: WIRE_ALL_ON });
     // No `knownSegmentIds`: a panel that cannot see segments must not declare
     // them deleted.
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
@@ -650,7 +658,7 @@ describe('R2 video-intel artifacts are separate', () => {
   });
 
   it('renders an empty state when the payload carries no artifacts', async () => {
-    world = newWorld({ flags: ALL_ON, videoIntel: 'empty' });
+    world = newWorld({ flags: WIRE_ALL_ON, videoIntel: 'empty' });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     expect(await screen.findByTestId('enrichment-video-intel-empty')).toBeDefined();
     expect(screen.queryByTestId('enrichment-video-intel-list')).toBeNull();
@@ -685,7 +693,7 @@ describe('R2 video-intel artifacts are separate', () => {
 
 describe('R3 lip sync ships score plus separate asset', () => {
   it('shows every score with its method note on the same row', async () => {
-    world = newWorld({ flags: ALL_ON });
+    world = newWorld({ flags: WIRE_ALL_ON });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     await screen.findByTestId('enrichment-lip-sync-segment-seg_1');
     expect(screen.getByTestId('enrichment-lip-sync-score-seg_1').textContent).toContain('0.94');
@@ -697,7 +705,7 @@ describe('R3 lip sync ships score plus separate asset', () => {
   });
 
   it('never renders a score without a method note', async () => {
-    world = newWorld({ flags: ALL_ON });
+    world = newWorld({ flags: WIRE_ALL_ON });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     await screen.findByTestId('enrichment-lip-sync-list');
     for (const segment of parseLipSync(LIP_SYNC_BODY).segments) {
@@ -707,7 +715,7 @@ describe('R3 lip sync ships score plus separate asset', () => {
   });
 
   it('keeps the score and hides the download with a reason when no asset exists', async () => {
-    world = newWorld({ flags: ALL_ON, lipSync: 'score-without-asset' });
+    world = newWorld({ flags: WIRE_ALL_ON, lipSync: 'score-without-asset' });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     const row = await screen.findByTestId('enrichment-lip-sync-segment-seg_1');
     // The score is real data and survives.
@@ -719,7 +727,7 @@ describe('R3 lip sync ships score plus separate asset', () => {
   });
 
   it('fetches the signed URL at click time only and never in the markup', async () => {
-    world = newWorld({ flags: ALL_ON });
+    world = newWorld({ flags: WIRE_ALL_ON });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     const anchor = await screen.findByTestId('enrichment-lip-sync-asset-download');
     // Before the click: no signed URL anywhere in the document.
@@ -738,11 +746,11 @@ describe('R3 lip sync ships score plus separate asset', () => {
   });
 
   it('refetches exactly once on a 410 and surfaces a retryable error on double expiry', async () => {
-    world = newWorld({ flags: ALL_ON, downloadBehavior: 'expired' });
+    world = newWorld({ flags: WIRE_ALL_ON, downloadBehavior: 'expired' });
     await expect(fetchLipSyncAssetUrl('prj_1')).resolves.toMatchObject({ url: 'https://cdn.example.com/lipsync/asset.wav?sig=fresh' });
     expect(world.downloadCalls).toBe(2);
 
-    world = newWorld({ flags: ALL_ON, downloadBehavior: 'double-expired' });
+    world = newWorld({ flags: WIRE_ALL_ON, downloadBehavior: 'double-expired' });
     await expect(fetchLipSyncAssetUrl('prj_1')).rejects.toMatchObject({ code: 'URL_EXPIRED', status: 410 });
     // Exactly two calls: one attempt plus ONE refetch. A loop here would turn
     // one click into an unbounded request storm.
@@ -750,19 +758,19 @@ describe('R3 lip sync ships score plus separate asset', () => {
   });
 
   it('maps a missing asset and an unpreparable download to distinct errors', async () => {
-    world = newWorld({ flags: ALL_ON, downloadBehavior: 'missing' });
+    world = newWorld({ flags: WIRE_ALL_ON, downloadBehavior: 'missing' });
     await expect(fetchLipSyncAssetUrl('prj_1')).rejects.toMatchObject({ status: 404 });
 
-    world = newWorld({ flags: ALL_ON, downloadBehavior: 'server-error' });
+    world = newWorld({ flags: WIRE_ALL_ON, downloadBehavior: 'server-error' });
     await expect(fetchLipSyncAssetUrl('prj_1')).rejects.toMatchObject({ status: 500 });
 
-    world = newWorld({ flags: ALL_ON, downloadBehavior: 'no-location' });
+    world = newWorld({ flags: WIRE_ALL_ON, downloadBehavior: 'no-location' });
     await expect(fetchLipSyncAssetUrl('prj_1')).rejects.toMatchObject({ status: 500 });
     expect(world.downloadCalls).toBe(1);
   });
 
   it('shows the download error with a correlation reference and a retry', async () => {
-    world = newWorld({ flags: ALL_ON, downloadBehavior: 'server-error' });
+    world = newWorld({ flags: WIRE_ALL_ON, downloadBehavior: 'server-error' });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     const anchor = await screen.findByTestId('enrichment-lip-sync-asset-download');
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
@@ -801,7 +809,7 @@ describe('R3 lip sync ships score plus separate asset', () => {
   });
 
   it('never counts the lip-sync asset as a core output or export', async () => {
-    world = newWorld({ flags: ALL_ON });
+    world = newWorld({ flags: WIRE_ALL_ON });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     await screen.findByTestId('enrichment-lip-sync');
     // The asset lives only in its own endpoint; the core export list is a
@@ -819,7 +827,7 @@ describe('R3 lip sync ships score plus separate asset', () => {
 
 describe('R4 local GPU health is operator-only', () => {
   it('summarises provider, model, version and device for an elevated operator', async () => {
-    world = newWorld({ flags: ALL_ON, localGpu: 'ok' });
+    world = newWorld({ flags: WIRE_ALL_ON, localGpu: 'ok' });
     renderWithProviders(<AdminPage />);
     expect(await screen.findByTestId('admin-section-local-gpu')).toBeDefined();
     expect((await screen.findByTestId('admin-local-gpu-provider')).textContent).toBe('local-inference');
@@ -831,7 +839,7 @@ describe('R4 local GPU health is operator-only', () => {
   });
 
   it('leaks no sidecar endpoint or key into the admin DOM', async () => {
-    world = newWorld({ flags: ALL_ON, localGpu: 'ok' });
+    world = newWorld({ flags: WIRE_ALL_ON, localGpu: 'ok' });
     renderWithProviders(<AdminPage />);
     await screen.findByTestId('admin-local-gpu-summary');
     const text = document.body.textContent ?? '';
@@ -840,7 +848,7 @@ describe('R4 local GPU health is operator-only', () => {
   });
 
   it('shows Unknown, never Healthy, when the health endpoint is unreachable', async () => {
-    world = newWorld({ flags: ALL_ON, localGpu: 'error500' });
+    world = newWorld({ flags: WIRE_ALL_ON, localGpu: 'error500' });
     renderWithProviders(<AdminPage />);
     expect(await screen.findByTestId('admin-local-gpu-unavailable')).toBeDefined();
     expect(screen.queryByTestId('admin-local-gpu-summary')).toBeNull();
@@ -850,7 +858,7 @@ describe('R4 local GPU health is operator-only', () => {
     expect(gpuSection().textContent).not.toMatch(/Healthy/);
 
     cleanup();
-    world = newWorld({ flags: ALL_ON, localGpu: 'empty' });
+    world = newWorld({ flags: WIRE_ALL_ON, localGpu: 'empty' });
     queryClient.clear();
     renderWithProviders(<AdminPage />);
     expect(await screen.findByTestId('admin-local-gpu-unknown')).toBeDefined();
@@ -859,14 +867,14 @@ describe('R4 local GPU health is operator-only', () => {
   });
 
   it('treats the admin unknown-route 404 as not-provisioned, not as an error', async () => {
-    world = newWorld({ flags: ALL_ON, localGpu: 'unreachable' });
+    world = newWorld({ flags: WIRE_ALL_ON, localGpu: 'unreachable' });
     renderWithProviders(<AdminPage />);
     expect(await screen.findByTestId('admin-local-gpu-not-available')).toBeDefined();
     expect(screen.getByTestId('enrichment-not-available-copy').textContent).toMatch(/operator feature in setup/);
   });
 
   it('never blocks the rest of the admin area when the GPU panel fails', async () => {
-    world = newWorld({ flags: ALL_ON, localGpu: 'error500' });
+    world = newWorld({ flags: WIRE_ALL_ON, localGpu: 'error500' });
     renderWithProviders(<AdminPage />);
     expect(await screen.findByTestId('admin-local-gpu-unavailable')).toBeDefined();
     // Every other admin section still renders and still queried.
@@ -878,7 +886,7 @@ describe('R4 local GPU health is operator-only', () => {
   });
 
   it('renders the privacy-policy routing note for operators', async () => {
-    world = newWorld({ flags: ALL_ON, localGpu: 'ok' });
+    world = newWorld({ flags: WIRE_ALL_ON, localGpu: 'ok' });
     renderWithProviders(<AdminPage />);
     const note = await screen.findByTestId('enrichment-privacy-note');
     expect(note.textContent).toMatch(/own local-inference host/);
@@ -888,16 +896,16 @@ describe('R4 local GPU health is operator-only', () => {
 
   it('hides GPU internals from a user who reaches the panel without the grant', async () => {
     const { LocalGpuPanel } = await import('../../admin/LocalGpuPanel.js');
-    world = newWorld({ flags: ALL_ON, localGpu: 'ok' });
+    world = newWorld({ flags: WIRE_ALL_ON, localGpu: 'ok' });
     useAppStore.getState().setSession('authenticated', ['project.view']);
     const { container } = render(
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
-          <EnrichmentFlagsProvider value={ALL_ON}>
+          <FeatureFlagProvider value={ALL_ON}>
             <MemoryRouter>
               <LocalGpuPanel />
             </MemoryRouter>
-          </EnrichmentFlagsProvider>
+          </FeatureFlagProvider>
         </LocaleProvider>
       </QueryClientProvider>,
     );
@@ -914,7 +922,7 @@ describe('R4 local GPU health is operator-only', () => {
   });
 
   it('a revoked mid-session grant closes the panel without logging the operator out', async () => {
-    world = newWorld({ flags: ALL_ON, localGpu: 'ok' });
+    world = newWorld({ flags: WIRE_ALL_ON, localGpu: 'ok' });
     renderWithProviders(<AdminPage />);
     expect(await screen.findByTestId('admin-local-gpu-summary')).toBeDefined();
     // The grant is revoked server-side; the panel locks and the session lives.
@@ -928,7 +936,7 @@ describe('R4 local GPU health is operator-only', () => {
 
   it('renders nothing for an ordinary user who reaches the panel directly', async () => {
     const { LocalGpuPanel } = await import('../../admin/LocalGpuPanel.js');
-    world = newWorld({ flags: { ...ENRICHMENT_FLAGS_OFF, localGpu: false } });
+    world = newWorld({ flags: WIRE_FLAGS_OFF });
     useAppStore.getState().setSession('authenticated', ['project.view']);
     const { container } = render(
       <QueryClientProvider client={queryClient}>
@@ -964,7 +972,7 @@ describe('R4 local GPU health is operator-only', () => {
   });
 
   it('never queries device health before its flag resolves on', () => {
-    world = newWorld({ flags: ENRICHMENT_FLAGS_OFF, localGpu: 'ok' });
+    world = newWorld({ flags: WIRE_FLAGS_OFF, localGpu: 'ok' });
     const Probe = (): React.ReactNode => {
       useLocalGpuHealth(false);
       return null;
@@ -988,17 +996,17 @@ describe('R4 local GPU health is operator-only', () => {
 
 describe('R5 enrichment failure never blocks core', () => {
   it.each(['error500', 'timeout'] as const)('survives a %s from both enrichment endpoints', async (outcome) => {
-    world = newWorld({ flags: ALL_ON, videoIntel: outcome, lipSync: outcome });
+    world = newWorld({ flags: WIRE_ALL_ON, videoIntel: outcome, lipSync: outcome });
     render(
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
           <ToastProvider>
-            <EnrichmentFlagsProvider value={ALL_ON}>
+            <FeatureFlagProvider value={ALL_ON}>
               <MemoryRouter>
                 <ProjectEnrichment projectId="prj_1" />
                 <TranscriptEditor projectId="prj_1" />
               </MemoryRouter>
-            </EnrichmentFlagsProvider>
+            </FeatureFlagProvider>
           </ToastProvider>
         </LocaleProvider>
       </QueryClientProvider>,
@@ -1016,17 +1024,17 @@ describe('R5 enrichment failure never blocks core', () => {
   });
 
   it('dismisses a failed enrichment surface without touching the transcript', async () => {
-    world = newWorld({ flags: ALL_ON, videoIntel: 'error500' });
+    world = newWorld({ flags: WIRE_ALL_ON, videoIntel: 'error500' });
     render(
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
           <ToastProvider>
-            <EnrichmentFlagsProvider value={ALL_ON}>
+            <FeatureFlagProvider value={ALL_ON}>
               <MemoryRouter>
                 <ProjectEnrichment projectId="prj_1" />
                 <TranscriptEditor projectId="prj_1" />
               </MemoryRouter>
-            </EnrichmentFlagsProvider>
+            </FeatureFlagProvider>
           </ToastProvider>
         </LocaleProvider>
       </QueryClientProvider>,
@@ -1043,16 +1051,16 @@ describe('R5 enrichment failure never blocks core', () => {
   });
 
   it('retries an enrichment failure on demand and recovers', async () => {
-    world = newWorld({ flags: ALL_ON, videoIntel: 'error500' });
+    world = newWorld({ flags: WIRE_ALL_ON, videoIntel: 'error500' });
     render(
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
           <ToastProvider>
-            <EnrichmentFlagsProvider value={ALL_ON}>
+            <FeatureFlagProvider value={ALL_ON}>
               <MemoryRouter>
                 <ProjectEnrichment projectId="prj_1" />
               </MemoryRouter>
-            </EnrichmentFlagsProvider>
+            </FeatureFlagProvider>
           </ToastProvider>
         </LocaleProvider>
       </QueryClientProvider>,
@@ -1064,7 +1072,7 @@ describe('R5 enrichment failure never blocks core', () => {
   });
 
   it('shows NotAvailable, not a failure, when the backend is unimplemented (404/501)', async () => {
-    world = newWorld({ flags: ALL_ON, videoIntel: 'not-provisioned', lipSync: 'not-implemented' });
+    world = newWorld({ flags: WIRE_ALL_ON, videoIntel: 'not-provisioned', lipSync: 'not-implemented' });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     expect(await screen.findByTestId('enrichment-video-intel-not-available')).toBeDefined();
     expect(await screen.findByTestId('enrichment-lip-sync-not-available')).toBeDefined();
@@ -1076,7 +1084,7 @@ describe('R5 enrichment failure never blocks core', () => {
   });
 
   it('renders a 403 with no artifact detail at all', async () => {
-    world = newWorld({ flags: ALL_ON, videoIntel: 'forbidden' });
+    world = newWorld({ flags: WIRE_ALL_ON, videoIntel: 'forbidden' });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     expect(await screen.findByTestId('enrichment-video-intel-forbidden')).toBeDefined();
     expect(screen.queryByTestId('enrichment-video-intel-list')).toBeNull();
@@ -1308,10 +1316,10 @@ describe('R6 import gate: no user-loadable chunk contains an enrichment module',
 
 describe('enrichment query wiring', () => {
   it('never fires an enrichment query before its flag resolves on', () => {
-    world = newWorld({ flags: ENRICHMENT_FLAGS_OFF });
+    world = newWorld({ flags: WIRE_FLAGS_OFF });
     const Probe = (): React.ReactNode => {
-      const flags = { ...ENRICHMENT_FLAGS_OFF };
-      useVideoIntel('prj_1', flags.videoIntel);
+      // The gate's decision, read through the shared hook's vocabulary.
+      useVideoIntel('prj_1', resolveFeatureFlag(undefined, ENRICHMENT_FLAG_KEY_BY_NAME.videoIntel, FEATURE_FLAG_DEFAULTS));
       return null;
     };
     render(
@@ -1327,7 +1335,7 @@ describe('enrichment query wiring', () => {
   });
 
   it('does not retry an enrichment 500 (a retry cannot fix an authorization-shaped answer)', async () => {
-    world = newWorld({ flags: ALL_ON, videoIntel: 'error500' });
+    world = newWorld({ flags: WIRE_ALL_ON, videoIntel: 'error500' });
     renderWithProviders(<ProjectEnrichment projectId="prj_1" />);
     await screen.findByTestId('enrichment-video-intel-unavailable');
     const calls = world.seenUrls.filter((url) => url.includes('/enrichment/video-intel')).length;
@@ -1336,10 +1344,15 @@ describe('enrichment query wiring', () => {
   });
 
   it('exposes a resolved snapshot only once /me has settled', async () => {
-    let snapshot: ReturnType<typeof useEnrichmentFlagSnapshot> | undefined;
+    // The snapshot itself belongs to the shared hook since Task 048
+    // (`useFeatureFlagSnapshot` in `hooks/useFeatureFlag.ts`), and its
+    // pending/resolved/failed matrix is asserted there. What is specific to
+    // THIS area is that the enrichment gate resolves off the shared snapshot
+    // and flips on when `/me` answers, so that is what is asserted here.
+    world = newWorld({ flags: WIRE_ALL_ON });
     const Probe = (): React.ReactNode => {
-      snapshot = useEnrichmentFlagSnapshot();
-      return null;
+      const videoIntel = useFeatureFlag(ENRICHMENT_FLAG_KEY_BY_NAME.videoIntel);
+      return <span data-testid="probe">{videoIntel ? 'on' : 'off'}</span>;
     };
     render(
       <QueryClientProvider client={queryClient}>
@@ -1350,12 +1363,10 @@ describe('enrichment query wiring', () => {
         </LocaleProvider>
       </QueryClientProvider>,
     );
-    expect(snapshot?.resolved).toBe(false);
-    expect(snapshot?.flags).toEqual(ENRICHMENT_FLAGS_OFF);
+    expect(screen.getByTestId('probe').textContent).toBe('off');
     await waitFor(() => {
-      expect(snapshot?.resolved).toBe(true);
+      expect(screen.getByTestId('probe').textContent).toBe('on');
     });
-    expect(snapshot?.failed).toBe(false);
-    expect(typeof useEnrichmentFlagsQuery).toBe('function');
+    expect(world.seenUrls.filter((url) => /\/me(\?|$)/.test(url)).length).toBe(1);
   });
 });

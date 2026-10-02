@@ -10,7 +10,7 @@ import { TenantsPanel } from './TenantsPanel.js';
 import { UsageQuotasPanel } from './UsageQuotasPanel.js';
 import { UsersRolesPanel } from './UsersRolesPanel.js';
 import { useAdminGuard } from './adminGuard.js';
-import { EnrichmentGate } from '../enrichment/EnrichmentGate.js';
+import { useFeatureFlag } from '../../hooks/useFeatureFlag.js';
 
 /**
  * Role-gated Admin area (Task 036).
@@ -27,10 +27,19 @@ import { EnrichmentGate } from '../enrichment/EnrichmentGate.js';
  * existing guard — never as a sibling of it — so an ordinary user cannot reach
  * it by any route, and the panel re-checks the elevated permission itself so a
  * future refactor cannot move it out from under that check. With the
- * `localGpu` flag off it renders `null`: no heading, no placeholder, nothing.
+ * `localInference` flag off it renders `null`: no heading, no placeholder,
+ * nothing.
+ *
+ * Task 048 replaced the flag READ with the product-wide hook
+ * (`useFeatureFlag`). That makes this file the admin area's call site for the
+ * shared evaluator: the guard above is still the authority, and the flag below
+ * is only what decides whether the section is drawn at all. A flag on with no
+ * admin permission still renders the forbidden state, because the guard runs
+ * first and `LocalGpuPanel` re-checks the permission itself.
  */
 export function AdminPage(): ReactNode {
   const guard = useAdminGuard();
+  const localInference = useFeatureFlag('localInference');
 
   if (guard.isPending) {
     return (
@@ -80,17 +89,17 @@ export function AdminPage(): ReactNode {
       <div data-testid="admin-section-ops">
         <OpsDashboard />
       </div>
-      {/* Task 044: operator-only. The gate wraps the WRAPPER as well as the
-          panel, so with the `localGpu` flag off not even this div is emitted —
-          R1 asks for zero chrome, and an empty container is chrome with
-          nothing in it. `LocalGpuPanel` also re-checks the flag and the
-          elevated permission itself, so moving it out from under the gate
+      {/* Task 044: operator-only. The flag gates the WRAPPER as well as the
+          panel, so with the `localInference` flag off not even this div is
+          emitted — R1 asks for zero chrome, and an empty container is chrome
+          with nothing in it. `LocalGpuPanel` also re-checks the flag and the
+          elevated permission itself, so moving it out from under this check
           would not expose device detail. */}
-      <EnrichmentGate flag="localGpu">
+      {localInference ? (
         <div data-testid="admin-section-local-gpu">
           <LocalGpuPanel />
         </div>
-      </EnrichmentGate>
+      ) : null}
     </section>
   );
 }

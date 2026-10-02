@@ -267,6 +267,19 @@ export const queryKeys = {
     ],
   },
   /**
+   * Product-wide feature flags (Task 048).
+   *
+   * Session-scoped under `me`, beside `preferences`: the values come out of the
+   * `featureFlags` slice of the same `GET /me` document that resolves
+   * permissions and locale, so they share a lifetime and a cache-clearing rule.
+   * `authStore`'s session resolution seeds this entry with what it already read,
+   * which is what keeps the app at one `/me` read per session rather than two.
+   */
+  me: {
+    all: ['me', 'feature-flags'] as const,
+    featureFlags: (): QueryKey => ['me', 'feature-flags'],
+  },
+  /**
    * Optional enrichment (Task 044, §19.1–§19.3). Deliberately a *sibling*
    * scope, never nested inside transcript/translations/timeline/outputs:
    * video-intel and lip-sync results are separate artifacts that link to core
@@ -274,13 +287,12 @@ export const queryKeys = {
    * must not be able to cascade into them, and vice versa. R2 depends on that
    * asymmetry being structural rather than a convention.
    *
-   * `flags` is session-scoped rather than project-scoped: the flag slice comes
-   * from `GET /me` and is identical for every project, so one key serves the
-   * whole session and the gate never refetches per project.
+   * There is deliberately NO `flags` entry here any more: the flag read moved to
+   * `me.featureFlags()` in Task 048, and two keys for one document is one key
+   * too many.
    */
   enrichment: {
     all: ['enrichment'] as const,
-    flags: (): QueryKey => ['enrichment', 'flags'],
     videoIntel: (projectId: string): QueryKey => ['enrichment', 'video-intel', projectId],
     lipSync: (projectId: string): QueryKey => ['enrichment', 'lip-sync', projectId],
   },
