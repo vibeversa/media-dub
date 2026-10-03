@@ -2,6 +2,9 @@ import arCommon from './locales/ar/common.json';
 import arNav from './locales/ar/nav.json';
 import ruCommon from './locales/ru/common.json';
 import enActivity from './locales/en/activity.json';
+import enEnrichment from './locales/en/enrichment.json';
+import enCost from './locales/en/cost.json';
+import enAdmin from './locales/en/admin.json';
 import enAuth from './locales/en/auth.json';
 import enCommon from './locales/en/common.json';
 import enDashboard from './locales/en/dashboard.json';
@@ -69,6 +72,9 @@ export const NAMESPACE_NAMES = [
   'exports',
   'notifications',
   'activity',
+  'admin',
+  'cost',
+  'enrichment',
   'settings',
   'errors',
 ] as const;
@@ -97,6 +103,9 @@ export const EN_RESOURCES: NamespaceResources = Object.freeze({
   exports: enExports,
   notifications: enNotifications,
   activity: enActivity,
+  enrichment: enEnrichment,
+  cost: enCost,
+  admin: enAdmin,
   settings: enSettings,
   errors: enErrors,
 });

@@ -9,6 +9,7 @@ import { useToast } from '../../components/Toast/useToast.js';
 import { useAppStore } from '../../stores/index.js';
 import { ASSIGNABLE_ROLES, MIN_AUDIT_REASON_LENGTH, assignerRank, canAssignRole, isAdminForbiddenError, isValidAuditReason, sanitizeReasonText } from './types.js';
 import { assignUserRole, invalidateAdminQueries, useAdminUsers } from './useAdminQueries.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * User-role assignment (Task 036, R6).
@@ -21,7 +22,8 @@ import { assignUserRole, invalidateAdminQueries, useAdminUsers } from './useAdmi
  * invalidated; on 403 a `ForbiddenState` renders without leaking role names.
  */
 export function UsersRolesPanel(): ReactNode {
-  const queryClient = useQueryClient();
+    const { t } = useTranslation();
+const queryClient = useQueryClient();
   const { push } = useToast();
   const permissions = useAppStore((s) => s.permissions);
   const usersQuery = useAdminUsers();
@@ -33,7 +35,7 @@ export function UsersRolesPanel(): ReactNode {
 
   if (usersQuery.isPending && usersQuery.data === undefined) {
     return (
-      <section data-testid="admin-users" aria-label="Users and roles">
+      <section data-testid="admin-users" aria-label={t('admin:usersRolesPanel.users-and-roles')}>
         <div data-testid="admin-users-loading">
           <Skeleton lines={4} />
         </div>
@@ -44,22 +46,22 @@ export function UsersRolesPanel(): ReactNode {
   if (usersQuery.isError && usersQuery.data === undefined) {
     if (isAdminForbiddenError(usersQuery.error)) {
       return (
-        <section data-testid="admin-users" aria-label="Users and roles">
+        <section data-testid="admin-users" aria-label={t('admin:usersRolesPanel.users-and-roles2')}>
           <div data-testid="admin-users-forbidden">
             <EmptyState
-              title="Users unavailable"
-              description="You do not have permission to view users. Contact your tenant admin for access."
+              title={t('admin:usersRolesPanel.users-unavailable')}
+              description={t('admin:usersRolesPanel.you-do-not-have-permission-to')}
             />
           </div>
         </section>
       );
     }
     return (
-      <section data-testid="admin-users" aria-label="Users and roles">
+      <section data-testid="admin-users" aria-label={t('admin:usersRolesPanel.users-and-roles3')}>
         <div data-testid="admin-users-error">
           <ErrorState
-            title="Users unavailable"
-            message={usersQuery.error?.message ?? 'Users could not be loaded. No data was changed.'}
+            title={t('admin:usersRolesPanel.users-unavailable2')}
+            message={usersQuery.error?.message ?? t('admin:usersRolesPanel.users-could-not-be-loaded-no')}
             correlationId={usersQuery.error?.correlationId}
             onRetry={() => {
               void usersQuery.refetch();
@@ -74,10 +76,10 @@ export function UsersRolesPanel(): ReactNode {
   const notProvisioned = usersQuery.data?.notProvisioned === true;
   if (items.length === 0) {
     return (
-      <section data-testid="admin-users" aria-label="Users and roles">
+      <section data-testid="admin-users" aria-label={t('admin:usersRolesPanel.users-and-roles4')}>
         <div data-testid="admin-users-empty">
           <EmptyState
-            title="No users"
+            title={t('admin:usersRolesPanel.no-users')}
             description={notProvisioned ? 'User reads are not provisioned on this backend yet.' : 'No users are visible in this scope.'}
           />
         </div>
@@ -114,10 +116,10 @@ export function UsersRolesPanel(): ReactNode {
   }
 
   return (
-    <section data-testid="admin-users" aria-label="Users and roles">
-      <h3>User roles</h3>
+    <section data-testid="admin-users" aria-label={t('admin:usersRolesPanel.users-and-roles5')}>
+      <h3>{t('admin:usersRolesPanel.user-roles')}</h3>
       <p className="dp-muted" data-testid="admin-users-grant-note">
-        Assigners must hold a strictly higher grant than the assigned role (your rank: {String(assignerRank(permissions))}).
+        {t('admin:usersRolesPanel.assigners-must-hold-a-strictly-higher')} {String(assignerRank(permissions))}).
       </p>
       <ul data-testid="admin-users-list">
         {items.map((user) => (
@@ -140,8 +142,8 @@ export function UsersRolesPanel(): ReactNode {
       </ul>
       {selected !== undefined ? (
         <div data-testid="admin-role-assign">
-          <h4>Assign role</h4>
-          <label htmlFor="admin-role-target">Target role</label>
+          <h4>{t('admin:usersRolesPanel.assign-role')}</h4>
+          <label htmlFor="admin-role-target">{t('admin:usersRolesPanel.target-role')}</label>
           <select
             id="admin-role-target"
             data-testid="admin-role-target"
@@ -159,14 +161,14 @@ export function UsersRolesPanel(): ReactNode {
           </select>
           {!grantable ? (
             <div data-testid="admin-role-grant-denied">
-              <Alert tone="error" title="Higher grant required">
+              <Alert tone="error" title={t('admin:usersRolesPanel.higher-grant-required')}>
                 <p data-testid="admin-role-grant-denied-text">
-                  Your grant must strictly exceed the assigned role. Ask a higher-grant admin to assign {targetRole}.
+                  {t('admin:usersRolesPanel.your-grant-must-strictly-exceed-the')} {targetRole}.
                 </p>
               </Alert>
             </div>
           ) : null}
-          <label htmlFor="admin-role-reason">Audit reason (minimum {String(MIN_AUDIT_REASON_LENGTH)} characters)</label>
+          <label htmlFor="admin-role-reason">{t('admin:usersRolesPanel.audit-reason-minimum')} {String(MIN_AUDIT_REASON_LENGTH)} {t('admin:usersRolesPanel.characters')}</label>
           <textarea
             id="admin-role-reason"
             data-testid="admin-role-reason"
@@ -178,20 +180,20 @@ export function UsersRolesPanel(): ReactNode {
           />
           {!reasonValid && reason !== '' ? (
             <p data-testid="admin-role-reason-error" role="alert">
-              Enter at least {String(MIN_AUDIT_REASON_LENGTH)} characters explaining this assignment.
+              {t('admin:usersRolesPanel.enter-at-least')} {String(MIN_AUDIT_REASON_LENGTH)} {t('admin:usersRolesPanel.characters-explaining-this-assignment')}
             </p>
           ) : null}
           {failure !== null ? (
             failure === 'FORBIDDEN' ? (
               <div data-testid="admin-role-forbidden">
                 <EmptyState
-                  title="Assignment not permitted"
-                  description="You do not have permission for this action. Contact your tenant admin for access."
+                  title={t('admin:usersRolesPanel.assignment-not-permitted')}
+                  description={t('admin:usersRolesPanel.you-do-not-have-permission-for')}
                 />
               </div>
             ) : (
               <div data-testid="admin-role-error">
-                <Alert tone="error" title="Assignment failed">
+                <Alert tone="error" title={t('admin:usersRolesPanel.assignment-failed')}>
                   <p>{failure}</p>
                 </Alert>
               </div>

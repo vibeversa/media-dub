@@ -7,6 +7,7 @@ import { useAppStore } from '../../stores/index.js';
 import { isQuotaBannerDismissed, markQuotaBannerDismissed } from './quotaDismiss.js';
 import { iconForQuotaState, isQuotaBlocking, toneForQuotaState } from './types.js';
 import type { QuotaState } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface QuotaBannerProps {
   readonly state: QuotaState;
@@ -30,7 +31,8 @@ export interface QuotaBannerProps {
  *   (no admin-only deep links leak here). Never renders reservation ids.
  */
 export function QuotaBanner({ state, resetsAt, remaining, allowedActions = [] }: QuotaBannerProps): ReactNode {
-  const locale = useAppStore((s) => s.locale);
+    const { t } = useTranslation();
+const locale = useAppStore((s) => s.locale);
   const tenantTimezone = useAppStore((s) => s.tenantTimezone);
   const [dismissed, setDismissed] = useState<boolean>(() => isQuotaBannerDismissed());
 
@@ -53,12 +55,12 @@ export function QuotaBanner({ state, resetsAt, remaining, allowedActions = [] }:
   if (state === 'available') {
     return (
       <div data-testid="quota-banner-available" data-tone={tone} data-blocked="false">
-        <Alert tone={tone} title="Quota available">
+        <Alert tone={tone} title={t('cost:quotaBanner.quota-available')}>
           <p>
             <span data-testid="quota-banner-icon" aria-hidden="true">
               {icon}
             </span>{' '}
-            <span data-testid="quota-banner-state">available</span>
+            <span data-testid="quota-banner-state">{t('cost:quotaBanner.available')}</span>
           </p>
         </Alert>
       </div>
@@ -68,14 +70,14 @@ export function QuotaBanner({ state, resetsAt, remaining, allowedActions = [] }:
   if (state === 'reserved') {
     return (
       <div data-testid="quota-banner-reserved" data-tone={tone} data-blocked="false">
-        <Alert tone={tone} title="Quota reserved">
+        <Alert tone={tone} title={t('cost:quotaBanner.quota-reserved')}>
           <p>
             <span data-testid="quota-banner-icon" aria-hidden="true">
               {icon}
             </span>{' '}
-            <span data-testid="quota-banner-state">reserved</span>{' '}
+            <span data-testid="quota-banner-state">{t('cost:quotaBanner.reserved')}</span>{' '}
             <span className="dp-muted" data-testid="quota-banner-reserved-note">
-              A cost hold is reserved for the active run. Informational only.
+              {t('cost:quotaBanner.a-cost-hold-is-reserved-for')}
             </span>
           </p>
         </Alert>
@@ -86,18 +88,18 @@ export function QuotaBanner({ state, resetsAt, remaining, allowedActions = [] }:
   if (state === 'near') {
     return (
       <div data-testid="quota-banner-near" data-tone={tone} data-blocked="false">
-        <Alert tone={tone} title="Quota nearly exhausted">
+        <Alert tone={tone} title={t('cost:quotaBanner.quota-nearly-exhausted')}>
           <p>
             <span data-testid="quota-banner-icon" aria-hidden="true">
               {icon}
             </span>{' '}
-            <span data-testid="quota-banner-state">near</span>
-            {remaining !== undefined ? <span data-testid="quota-banner-remaining"> · {String(remaining)} remaining</span> : null}
-            {resetsText !== undefined ? <span data-testid="quota-banner-resets"> · Resets {resetsText}</span> : null}
+            <span data-testid="quota-banner-state">{t('cost:quotaBanner.near')}</span>
+            {remaining !== undefined ? <span data-testid="quota-banner-remaining"> · {String(remaining)} {t('cost:quotaBanner.remaining')}</span> : null}
+            {resetsText !== undefined ? <span data-testid="quota-banner-resets"> {t('cost:quotaBanner.resets')} {resetsText}</span> : null}
           </p>
           <p>
             <Link data-testid="quota-banner-manage" to="/settings">
-              Manage in settings
+              {t('cost:quotaBanner.manage-in-settings')}
             </Link>
           </p>
           <button
@@ -106,7 +108,7 @@ export function QuotaBanner({ state, resetsAt, remaining, allowedActions = [] }:
             className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
             onClick={dismiss}
           >
-            Dismiss
+            {t('cost:quotaBanner.dismiss')}
           </button>
         </Alert>
       </div>
@@ -115,25 +117,24 @@ export function QuotaBanner({ state, resetsAt, remaining, allowedActions = [] }:
 
   return (
     <div data-testid="quota-banner-exceeded" data-tone={tone} data-blocked={blocking ? 'true' : 'false'}>
-      <Alert tone={tone} title="Quota exceeded — costly actions paused">
+      <Alert tone={tone} title={t('cost:quotaBanner.quota-exceeded-costly-actions-paused')}>
         <p>
           <span data-testid="quota-banner-icon" aria-hidden="true">
             {icon}
           </span>{' '}
-          <span data-testid="quota-banner-state">exceeded</span>
+          <span data-testid="quota-banner-state">{t('cost:quotaBanner.exceeded')}</span>
         </p>
         <p data-testid="quota-banner-explanation">
-          Costly actions (starting runs, requesting exports) are paused until quota resets. Finish reviews or wait for
-          the reset. Contact your tenant admin or see the runbook for usage guidance.
+          {t('cost:quotaBanner.costly-actions-starting-runs-requesting-exports')}
         </p>
-        {resetsText !== undefined ? <p data-testid="quota-banner-resets">Resets {resetsText}</p> : null}
+        {resetsText !== undefined ? <p data-testid="quota-banner-resets">{t('cost:quotaBanner.resets2')} {resetsText}</p> : null}
         <p>
           <Link data-testid="quota-banner-manage" to="/settings">
-            Manage in settings
+            {t('cost:quotaBanner.manage-in-settings2')}
           </Link>
         </p>
         <p className="dp-muted" data-testid="quota-banner-support">
-          Support hint: share the page correlation id with your admin. No reservation ids are shown here.
+          {t('cost:quotaBanner.support-hint-share-the-page-correlation')}
         </p>
       </Alert>
     </div>

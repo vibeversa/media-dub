@@ -7,6 +7,7 @@ import { useAppStore } from '../../stores/index.js';
 import { fetchExportDownloadUrl, invalidateExports, useCreateExport } from './useOutputs.js';
 import { formatFileSize, iconForExportState, isExpiredError, isNotFoundError, patternForExportState } from './types.js';
 import type { ExportView } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface ExportRowProps {
   readonly projectId: string;
@@ -32,7 +33,8 @@ export interface ExportRowProps {
  * only).
  */
 export function ExportRow({ projectId, job }: ExportRowProps): ReactNode {
-  const { push } = useToast();
+    const { t } = useTranslation();
+const { push } = useToast();
   const queryClient = useQueryClient();
   const permissions = useAppStore((s) => s.permissions);
   const createMutation = useCreateExport(projectId);
@@ -76,11 +78,11 @@ export function ExportRow({ projectId, job }: ExportRowProps): ReactNode {
         return;
       }
       if (isExpiredError(appError)) {
-        setDownloadError(appError.message ?? 'This download link expired. Request a fresh download.');
+        setDownloadError(appError.message ?? t('exports:exportRow.this-download-link-expired-request-a'));
         setDownloadCorrelationId(appError.correlationId);
         return;
       }
-      setDownloadError(appError.message ?? 'The download could not be prepared. No data was changed.');
+      setDownloadError(appError.message ?? t('exports:exportRow.the-download-could-not-be-prepared'));
       setDownloadCorrelationId(appError.correlationId);
     } finally {
       setDownloadPending(false);
@@ -103,7 +105,7 @@ export function ExportRow({ projectId, job }: ExportRowProps): ReactNode {
         await invalidateExports(queryClient, projectId);
         return;
       }
-      setRetryMessage(appError.message ?? 'Export retry failed. No data was changed.');
+      setRetryMessage(appError.message ?? t('exports:exportRow.export-retry-failed-no-data-was'));
     }
   }
 
@@ -127,7 +129,7 @@ export function ExportRow({ projectId, job }: ExportRowProps): ReactNode {
   return (
     <article
       data-testid={`export-row-${job.id}`}
-      aria-label={`Export ${job.id}`}
+      aria-label={t('exports:exportRow.export', { v0: job.id })}
       data-state={job.displayState}
       data-format={job.format}
       data-partial={job.isPartial ? 'true' : 'false'}
@@ -145,47 +147,47 @@ export function ExportRow({ projectId, job }: ExportRowProps): ReactNode {
           <span data-testid={`export-status-label-${job.id}`}>{job.displayState}</span>{' '}
           <span data-testid={`export-status-pattern-${job.id}`}>{pattern}</span>
         </p>
-        <p data-testid={`export-format-${job.id}`}>Format: {job.format}</p>
+        <p data-testid={`export-format-${job.id}`}>{t('exports:exportRow.format')} {job.format}</p>
         {job.createdAt !== undefined ? (
           <p data-testid={`export-created-${job.id}`} className="dp-muted">
-            Created: {job.createdAt}
+            {t('exports:exportRow.created')} {job.createdAt}
           </p>
         ) : null}
-        {job.isPartial ? <p data-testid={`export-partial-${job.id}`}>Partial export (incomplete source accepted).</p> : null}
+        {job.isPartial ? <p data-testid={`export-partial-${job.id}`}>{t('exports:exportRow.partial-export-incomplete-source-accepted')}</p> : null}
         {job.completeness !== undefined ? (
           <p data-testid={`export-completeness-${job.id}`} className="dp-muted">
             {`${String(job.completeness.ready)}/${String(job.completeness.total)}`}
           </p>
         ) : null}
-        {sizeText !== undefined ? <p data-testid={`export-size-${job.id}`}>Size: {sizeText}</p> : null}
+        {sizeText !== undefined ? <p data-testid={`export-size-${job.id}`}>{t('exports:exportRow.size')} {sizeText}</p> : null}
       </header>
 
       {progress}
 
       {job.displayState === 'failed' ? (
         <div data-testid={`export-error-${job.id}`}>
-          <Alert tone="error" title="Export failed">
-            <p data-testid={`export-error-message-${job.id}`}>{job.failureReason ?? 'The export failed. No file was produced.'}</p>
+          <Alert tone="error" title={t('exports:exportRow.export-failed')}>
+            <p data-testid={`export-error-message-${job.id}`}>{job.failureReason ?? t('exports:exportRow.the-export-failed-no-file-was')}</p>
             {canRetry ? (
               <button
                 type="button"
                 data-testid={`export-retry-${job.id}`}
                 className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
                 disabled={createMutation.isPending}
-                title="Retry this export with the same format"
+                title={t('exports:exportRow.retry-this-export-with-the-same')}
                 onClick={() => {
                   void handleRetry();
                 }}
               >
-                Retry export
+                {t('exports:exportRow.retry-export')}
               </button>
             ) : (
               <span
                 data-testid={`export-retry-unavailable-${job.id}`}
-                title={retryReason ?? 'Retry is not advertised for this project.'}
+                title={retryReason ?? t('exports:exportRow.retry-is-not-advertised-for-this')}
                 className="dp-muted"
               >
-                Retry unavailable
+                {t('exports:exportRow.retry-unavailable')}
               </span>
             )}
           </Alert>
@@ -207,7 +209,7 @@ export function ExportRow({ projectId, job }: ExportRowProps): ReactNode {
           </a>
           {downloadError !== null ? (
             <div data-testid={`export-download-error-${job.id}`}>
-              <Alert tone="error" title="Download failed" details={downloadCorrelationId !== undefined && downloadCorrelationId !== '' ? `Ref: ${downloadCorrelationId}` : undefined}>
+              <Alert tone="error" title={t('exports:exportRow.download-failed')} details={downloadCorrelationId !== undefined && downloadCorrelationId !== '' ? `Ref: ${downloadCorrelationId}` : undefined}>
                 <p data-testid={`export-download-error-message-${job.id}`}>{downloadError}</p>
                 <button
                   type="button"
@@ -219,7 +221,7 @@ export function ExportRow({ projectId, job }: ExportRowProps): ReactNode {
                     setDownloadCorrelationId(undefined);
                   }}
                 >
-                  Retry download
+                  {t('exports:exportRow.retry-download')}
                 </button>
               </Alert>
             </div>
@@ -229,7 +231,7 @@ export function ExportRow({ projectId, job }: ExportRowProps): ReactNode {
 
       {job.displayState === 'queued' || job.displayState === 'generating' ? (
         <p data-testid={`export-pending-${job.id}`} className="dp-muted">
-          Download available when ready.
+          {t('exports:exportRow.download-available-when-ready')}
         </p>
       ) : null}
     </article>

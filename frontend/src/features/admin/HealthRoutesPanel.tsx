@@ -6,6 +6,7 @@ import { formatDate } from '../../i18n/format.js';
 import { useAppStore } from '../../stores/index.js';
 import { isAdminForbiddenError, maskConnectionString } from './types.js';
 import { useProviderHealth, useProviderRoutes } from './useAdminQueries.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Provider health/routes matrix (Task 036).
@@ -17,7 +18,8 @@ import { useProviderHealth, useProviderRoutes } from './useAdminQueries.js';
  * only, never reversible).
  */
 export function HealthRoutesPanel(): ReactNode {
-  const locale = useAppStore((s) => s.locale);
+    const { t } = useTranslation();
+const locale = useAppStore((s) => s.locale);
   const tenantTimezone = useAppStore((s) => s.tenantTimezone);
   const healthQuery = useProviderHealth();
   const routesQuery = useProviderRoutes();
@@ -25,7 +27,7 @@ export function HealthRoutesPanel(): ReactNode {
   const loading = (healthQuery.isPending && healthQuery.data === undefined) || (routesQuery.isPending && routesQuery.data === undefined);
   if (loading) {
     return (
-      <section data-testid="admin-health" aria-label="Provider health and routes">
+      <section data-testid="admin-health" aria-label={t('admin:healthRoutesPanel.provider-health-and-routes')}>
         <div data-testid="admin-health-loading">
           <Skeleton lines={4} />
         </div>
@@ -36,11 +38,11 @@ export function HealthRoutesPanel(): ReactNode {
   const forbidden = isAdminForbiddenError(healthQuery.error) || isAdminForbiddenError(routesQuery.error);
   if (forbidden && healthQuery.data === undefined && routesQuery.data === undefined) {
     return (
-      <section data-testid="admin-health" aria-label="Provider health and routes">
+      <section data-testid="admin-health" aria-label={t('admin:healthRoutesPanel.provider-health-and-routes2')}>
         <div data-testid="admin-health-forbidden">
           <EmptyState
-            title="Provider health unavailable"
-            description="You do not have permission to view provider health. Contact your tenant admin for access."
+            title={t('admin:healthRoutesPanel.provider-health-unavailable')}
+            description={t('admin:healthRoutesPanel.you-do-not-have-permission-to')}
           />
         </div>
       </section>
@@ -51,11 +53,11 @@ export function HealthRoutesPanel(): ReactNode {
   if (failed) {
     const error = (healthQuery.isError ? healthQuery.error : undefined) ?? (routesQuery.isError ? routesQuery.error : undefined);
     return (
-      <section data-testid="admin-health" aria-label="Provider health and routes">
+      <section data-testid="admin-health" aria-label={t('admin:healthRoutesPanel.provider-health-and-routes3')}>
         <div data-testid="admin-health-error">
           <ErrorState
-            title="Provider health unavailable"
-            message={error?.message ?? 'Provider health could not be loaded. No data was changed.'}
+            title={t('admin:healthRoutesPanel.provider-health-unavailable2')}
+            message={error?.message ?? t('admin:healthRoutesPanel.provider-health-could-not-be-loaded')}
             correlationId={error?.correlationId}
             onRetry={() => {
               void healthQuery.refetch();
@@ -71,31 +73,31 @@ export function HealthRoutesPanel(): ReactNode {
   const routes = routesQuery.data ?? [];
   if (health.length === 0 && routes.length === 0) {
     return (
-      <section data-testid="admin-health" aria-label="Provider health and routes">
+      <section data-testid="admin-health" aria-label={t('admin:healthRoutesPanel.provider-health-and-routes4')}>
         <div data-testid="admin-health-empty">
-          <EmptyState title="No provider data" description="No provider health snapshots or routes are reported." />
+          <EmptyState title={t('admin:healthRoutesPanel.no-provider-data')} description={t('admin:healthRoutesPanel.no-provider-health-snapshots-or-routes')} />
         </div>
       </section>
     );
   }
 
   return (
-    <section data-testid="admin-health" aria-label="Provider health and routes">
-      <h3>Provider health</h3>
+    <section data-testid="admin-health" aria-label={t('admin:healthRoutesPanel.provider-health-and-routes5')}>
+      <h3>{t('admin:healthRoutesPanel.provider-health')}</h3>
       {health.length === 0 ? (
         <div data-testid="admin-health-list-empty">
-          <EmptyState title="No health snapshots" description="Providers have not reported health yet." />
+          <EmptyState title={t('admin:healthRoutesPanel.no-health-snapshots')} description={t('admin:healthRoutesPanel.providers-have-not-reported-health-yet')} />
         </div>
       ) : (
         <table data-testid="admin-health-table">
           <thead>
             <tr>
-              <th scope="col">Provider</th>
-              <th scope="col">Status</th>
-              <th scope="col">p95 latency</th>
-              <th scope="col">Error rate</th>
-              <th scope="col">Last success</th>
-              <th scope="col">Circuit</th>
+              <th scope="col">{t('admin:healthRoutesPanel.provider')}</th>
+              <th scope="col">{t('admin:healthRoutesPanel.status')}</th>
+              <th scope="col">{t('admin:healthRoutesPanel.p95-latency')}</th>
+              <th scope="col">{t('admin:healthRoutesPanel.error-rate')}</th>
+              <th scope="col">{t('admin:healthRoutesPanel.last-success')}</th>
+              <th scope="col">{t('admin:healthRoutesPanel.circuit')}</th>
             </tr>
           </thead>
           <tbody>
@@ -116,19 +118,19 @@ export function HealthRoutesPanel(): ReactNode {
           </tbody>
         </table>
       )}
-      <h3>Provider routes</h3>
+      <h3>{t('admin:healthRoutesPanel.provider-routes')}</h3>
       {routes.length === 0 ? (
         <div data-testid="admin-routes-empty">
-          <EmptyState title="No provider routes" description="No capability routes are configured." />
+          <EmptyState title={t('admin:healthRoutesPanel.no-provider-routes')} description={t('admin:healthRoutesPanel.no-capability-routes-are-configured')} />
         </div>
       ) : (
         <table data-testid="admin-routes-table">
           <thead>
             <tr>
-              <th scope="col">Capability</th>
-              <th scope="col">Provider</th>
-              <th scope="col">Priority</th>
-              <th scope="col">Enabled</th>
+              <th scope="col">{t('admin:healthRoutesPanel.capability')}</th>
+              <th scope="col">{t('admin:healthRoutesPanel.provider2')}</th>
+              <th scope="col">{t('admin:healthRoutesPanel.priority')}</th>
+              <th scope="col">{t('admin:healthRoutesPanel.enabled')}</th>
             </tr>
           </thead>
           <tbody>

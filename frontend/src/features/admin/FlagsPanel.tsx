@@ -9,6 +9,7 @@ import { useToast } from '../../components/Toast/useToast.js';
 import { DestructiveAction } from './DestructiveAction.js';
 import { applyFeatureFlags, invalidateAdminQueries, setFeatureFlagEnabled, useAdminFlags } from './useAdminQueries.js';
 import { isAdminForbiddenError, isAdminFreezeError } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Feature-flag panel (Task 036).
@@ -21,7 +22,8 @@ import { isAdminForbiddenError, isAdminFreezeError } from './types.js';
  * + reason + permission + audit receipt.
  */
 export function FlagsPanel(): ReactNode {
-  const queryClient = useQueryClient();
+    const { t } = useTranslation();
+const queryClient = useQueryClient();
   const { push } = useToast();
   const flagsQuery = useAdminFlags();
   const [pendingKeys, setPendingKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -30,7 +32,7 @@ export function FlagsPanel(): ReactNode {
 
   if (flagsQuery.isPending && flagsQuery.data === undefined) {
     return (
-      <section data-testid="admin-flags" aria-label="Feature flags">
+      <section data-testid="admin-flags" aria-label={t('admin:flagsPanel.feature-flags')}>
         <div data-testid="admin-flags-loading">
           <Skeleton lines={3} />
         </div>
@@ -41,22 +43,22 @@ export function FlagsPanel(): ReactNode {
   if (flagsQuery.isError && flagsQuery.data === undefined) {
     if (isAdminForbiddenError(flagsQuery.error)) {
       return (
-        <section data-testid="admin-flags" aria-label="Feature flags">
+        <section data-testid="admin-flags" aria-label={t('admin:flagsPanel.feature-flags2')}>
           <div data-testid="admin-flags-forbidden">
             <EmptyState
-              title="Flags unavailable"
-              description="You do not have permission to view feature flags. Contact your tenant admin for access."
+              title={t('admin:flagsPanel.flags-unavailable')}
+              description={t('admin:flagsPanel.you-do-not-have-permission-to')}
             />
           </div>
         </section>
       );
     }
     return (
-      <section data-testid="admin-flags" aria-label="Feature flags">
+      <section data-testid="admin-flags" aria-label={t('admin:flagsPanel.feature-flags3')}>
         <div data-testid="admin-flags-error">
           <ErrorState
-            title="Flags unavailable"
-            message={flagsQuery.error?.message ?? 'Feature flags could not be loaded. No data was changed.'}
+            title={t('admin:flagsPanel.flags-unavailable2')}
+            message={flagsQuery.error?.message ?? t('admin:flagsPanel.feature-flags-could-not-be-loaded')}
             correlationId={flagsQuery.error?.correlationId}
             onRetry={() => {
               void flagsQuery.refetch();
@@ -71,10 +73,10 @@ export function FlagsPanel(): ReactNode {
   const notProvisioned = flagsQuery.data?.notProvisioned === true;
   if (flags.length === 0) {
     return (
-      <section data-testid="admin-flags" aria-label="Feature flags">
+      <section data-testid="admin-flags" aria-label={t('admin:flagsPanel.feature-flags4')}>
         <div data-testid="admin-flags-empty">
           <EmptyState
-            title="No feature flags"
+            title={t('admin:flagsPanel.no-feature-flags')}
             description={notProvisioned ? 'Flag reads are not provisioned on this backend yet.' : 'No feature flags are defined.'}
           />
         </div>
@@ -123,8 +125,8 @@ export function FlagsPanel(): ReactNode {
   }
 
   return (
-    <section data-testid="admin-flags" aria-label="Feature flags">
-      <h3>Feature flags</h3>
+    <section data-testid="admin-flags" aria-label={t('admin:flagsPanel.feature-flags5')}>
+      <h3>{t('admin:flagsPanel.feature-flags6')}</h3>
       <ul data-testid="admin-flags-list">
         {flags.map((flag) => {
           const enabled = effectiveEnabled(flag.key, flag.enabled);
@@ -134,7 +136,7 @@ export function FlagsPanel(): ReactNode {
               {flag.description !== '' ? <span data-testid={`admin-flag-desc-${flag.key}`} className="dp-muted">{flag.description}</span> : null}
               {flag.frozen ? (
                 <span data-testid={`admin-flag-frozen-${flag.key}`} className="dp-muted">
-                  Frozen
+                  {t('admin:flagsPanel.frozen')}
                 </span>
               ) : null}
               <button
@@ -155,10 +157,10 @@ export function FlagsPanel(): ReactNode {
         })}
       </ul>
       {freezeDialog !== undefined ? (
-        <div role="dialog" aria-modal="true" aria-label="Rollout freeze" data-testid="admin-flag-freeze-dialog">
-          <Alert tone="warning" title="Rollout freeze">
+        <div role="dialog" aria-modal="true" aria-label={t('admin:flagsPanel.rollout-freeze')} data-testid="admin-flag-freeze-dialog">
+          <Alert tone="warning" title={t('admin:flagsPanel.rollout-freeze2')}>
             <p data-testid="admin-flag-freeze-text">
-              Flag {freezeDialog} cannot change during the rollout freeze. The toggle was reverted; try again after the freeze lifts.
+              {t('admin:flagsPanel.flag')} {freezeDialog} {t('admin:flagsPanel.cannot-change-during-the-rollout-freeze')}
             </p>
             <button
               type="button"
@@ -168,7 +170,7 @@ export function FlagsPanel(): ReactNode {
                 setFreezeDialog(undefined);
               }}
             >
-              Understood
+              {t('admin:flagsPanel.understood')}
             </button>
           </Alert>
         </div>
@@ -176,10 +178,10 @@ export function FlagsPanel(): ReactNode {
       <div data-testid="admin-flags-apply">
         <DestructiveAction
           action="flags.apply"
-          label="Apply flag rollout"
+          label={t('admin:flagsPanel.apply-flag-rollout')}
           confirmToken="APPLY-FLAGS"
           testId="admin-flags-apply"
-          description="Commits the current flag set as the rollout. This is a destructive, audited rollout step."
+          description={t('admin:flagsPanel.commits-the-current-flag-set-as')}
           onConfirm={(reason) => applyFeatureFlags(reason)}
         />
       </div>

@@ -7,6 +7,7 @@ import type { AppError } from '../../api/errors/index.js';
 import { useIsAuthenticated } from '../auth/useSession.js';
 import { NOTIFICATION_PREFERENCE_KEY, NOTIFICATION_TYPES } from './types.js';
 import type { NotificationTypeName } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Per-type delivery toggles bound to the `notificationPreferences` identity
@@ -126,7 +127,8 @@ export interface UseNotificationPrefsResult {
  * `fieldError` inline.
  */
 export function useNotificationPrefs(): UseNotificationPrefsResult {
-  const queryClient = useQueryClient();
+    const { t } = useTranslation();
+const queryClient = useQueryClient();
   const prefsQuery = useNotificationPrefsQuery();
   const [local, setLocal] = useState<NotificationPrefs | undefined>(undefined);
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
@@ -179,7 +181,7 @@ export function useNotificationPrefs(): UseNotificationPrefsResult {
     prefs,
     isPending: prefsQuery.isPending && local === undefined,
     fieldError: prefsQuery.isError
-      ? (prefsQuery.error?.message ?? 'Preferences could not be loaded.')
+      ? (prefsQuery.error?.message ?? t('notifications:useNotificationPrefs.preferences-could-not-be-loaded'))
       : fieldError,
     savePending,
     setTypeEnabled,

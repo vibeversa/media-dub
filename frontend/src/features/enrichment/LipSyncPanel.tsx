@@ -10,6 +10,7 @@ import { EnrichmentPrivacyNote, NotAvailableState, UnavailableState } from './En
 import { formatEnrichmentFileSize, formatLipSyncScore, resolveSegmentLink } from './types.js';
 import type { AppError } from '../../api/errors/index.js';
 import type { LipSyncAssetView, LipSyncSegmentView } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Lip-sync scores and the separate transformed asset (Task 044, §19.2, R3).
@@ -45,13 +46,14 @@ export interface LipSyncPanelProps {
 }
 
 export function LipSyncPanel({ projectId, enabled, knownSegmentIds }: LipSyncPanelProps): ReactNode {
-  const [dismissed, setDismissed] = useState(false);
+    const { t } = useTranslation();
+const [dismissed, setDismissed] = useState(false);
   const query = useLipSync(projectId, enabled);
 
   if (query.isPending && query.data === undefined) {
     return (
-      <section data-testid="enrichment-lip-sync" aria-label="Lip sync">
-        <h3 data-testid="enrichment-lip-sync-title">Lip sync</h3>
+      <section data-testid="enrichment-lip-sync" aria-label={t('enrichment:lipSyncPanel.lip-sync')}>
+        <h3 data-testid="enrichment-lip-sync-title">{t('enrichment:lipSyncPanel.lip-sync2')}</h3>
         <div data-testid="enrichment-lip-sync-loading">
           <Skeleton lines={3} />
         </div>
@@ -63,12 +65,12 @@ export function LipSyncPanel({ projectId, enabled, knownSegmentIds }: LipSyncPan
     const error = query.error;
     if (isEnrichmentForbiddenError(error)) {
       return (
-        <section data-testid="enrichment-lip-sync" aria-label="Lip sync">
-          <h3 data-testid="enrichment-lip-sync-title">Lip sync</h3>
+        <section data-testid="enrichment-lip-sync" aria-label={t('enrichment:lipSyncPanel.lip-sync3')}>
+          <h3 data-testid="enrichment-lip-sync-title">{t('enrichment:lipSyncPanel.lip-sync4')}</h3>
           <div data-testid="enrichment-lip-sync-forbidden">
             <EmptyState
-              title="Lip sync unavailable"
-              description="You do not have permission to view these scores. Contact your tenant admin for access."
+              title={t('enrichment:lipSyncPanel.lip-sync-unavailable')}
+              description={t('enrichment:lipSyncPanel.you-do-not-have-permission-to')}
             />
           </div>
         </section>
@@ -76,12 +78,12 @@ export function LipSyncPanel({ projectId, enabled, knownSegmentIds }: LipSyncPan
     }
     if (isNotProvisionedError(error)) {
       return (
-        <section data-testid="enrichment-lip-sync" aria-label="Lip sync">
-          <h3 data-testid="enrichment-lip-sync-title">Lip sync</h3>
+        <section data-testid="enrichment-lip-sync" aria-label={t('enrichment:lipSyncPanel.lip-sync5')}>
+          <h3 data-testid="enrichment-lip-sync-title">{t('enrichment:lipSyncPanel.lip-sync6')}</h3>
           <div data-testid="enrichment-lip-sync-not-available">
             <NotAvailableState
-              title="Lip sync not available"
-              description="Lip-sync scoring is an operator feature in setup for this deployment."
+              title={t('enrichment:lipSyncPanel.lip-sync-not-available')}
+              description={t('enrichment:lipSyncPanel.lip-sync-scoring-is-an-operator')}
             />
           </div>
         </section>
@@ -91,12 +93,12 @@ export function LipSyncPanel({ projectId, enabled, knownSegmentIds }: LipSyncPan
       return null;
     }
     return (
-      <section data-testid="enrichment-lip-sync" aria-label="Lip sync">
-        <h3 data-testid="enrichment-lip-sync-title">Lip sync</h3>
+      <section data-testid="enrichment-lip-sync" aria-label={t('enrichment:lipSyncPanel.lip-sync7')}>
+        <h3 data-testid="enrichment-lip-sync-title">{t('enrichment:lipSyncPanel.lip-sync8')}</h3>
         <div data-testid="enrichment-lip-sync-unavailable">
           <UnavailableState
-            title="Lip sync unavailable"
-            message={error?.message ?? 'Lip-sync scores could not be loaded. No data was changed.'}
+            title={t('enrichment:lipSyncPanel.lip-sync-unavailable2')}
+            message={error?.message ?? t('enrichment:lipSyncPanel.lip-sync-scores-could-not-be')}
             correlationId={error?.correlationId}
             onRetry={() => {
               setDismissed(false);
@@ -112,7 +114,7 @@ export function LipSyncPanel({ projectId, enabled, knownSegmentIds }: LipSyncPan
               setDismissed(true);
             }}
           >
-            Dismiss
+            {t('enrichment:lipSyncPanel.dismiss')}
           </button>
         </div>
       </section>
@@ -121,10 +123,10 @@ export function LipSyncPanel({ projectId, enabled, knownSegmentIds }: LipSyncPan
 
   const view = query.data;
   return (
-    <section data-testid="enrichment-lip-sync" aria-label="Lip sync">
-      <h3 data-testid="enrichment-lip-sync-title">Lip sync</h3>
+    <section data-testid="enrichment-lip-sync" aria-label={t('enrichment:lipSyncPanel.lip-sync9')}>
+      <h3 data-testid="enrichment-lip-sync-title">{t('enrichment:lipSyncPanel.lip-sync10')}</h3>
       <p data-testid="enrichment-lip-sync-separate-note" className="dp-muted">
-        Optional enrichment. The transformed asset below is a separate file from the project&apos;s core outputs and exports.
+        {t('enrichment:lipSyncPanel.optional-enrichment-the-transformed-asset-below')}
       </p>
       {view.overallScore !== undefined ? (
         <p data-testid="enrichment-lip-sync-overall">
@@ -134,8 +136,8 @@ export function LipSyncPanel({ projectId, enabled, knownSegmentIds }: LipSyncPan
       {view.empty ? (
         <div data-testid="enrichment-lip-sync-empty">
           <EmptyState
-            title="No lip-sync scores yet"
-            description="Nothing has been scored for this project. Scores appear once a run completes."
+            title={t('enrichment:lipSyncPanel.no-lip-sync-scores-yet')}
+            description={t('enrichment:lipSyncPanel.nothing-has-been-scored-for-this')}
           />
         </div>
       ) : (
@@ -152,8 +154,8 @@ export function LipSyncPanel({ projectId, enabled, knownSegmentIds }: LipSyncPan
       )}
       {view.scoreWithoutAsset ? (
         <div data-testid="enrichment-lip-sync-no-asset">
-          <Alert tone="info" title="Scores available, transformed asset not published">
-            <p>Scores were computed but no transformed audio asset was published, so there is nothing to download yet.</p>
+          <Alert tone="info" title={t('enrichment:lipSyncPanel.scores-available-transformed-asset-not-published')}>
+            <p>{t('enrichment:lipSyncPanel.scores-were-computed-but-no-transformed')}</p>
           </Alert>
         </div>
       ) : null}
@@ -170,7 +172,8 @@ interface SegmentRowProps {
 }
 
 function SegmentRow({ projectId, segment, knownSegmentIds }: SegmentRowProps): ReactNode {
-  const link = resolveSegmentLink(segment.segmentId, knownSegmentIds);
+    const { t } = useTranslation();
+const link = resolveSegmentLink(segment.segmentId, knownSegmentIds);
   const hasScore = segment.score !== undefined;
   return (
     <li
@@ -190,12 +193,12 @@ function SegmentRow({ projectId, segment, knownSegmentIds }: SegmentRowProps): R
           data-testid={`enrichment-lip-sync-link-${segment.segmentId}`}
           to={`/projects/${encodeURIComponent(projectId)}/transcript?segment=${encodeURIComponent(segment.segmentId)}`}
         >
-          Open segment
+          {t('enrichment:lipSyncPanel.open-segment')}
         </Link>
       ) : null}
       {link === 'gone' ? (
         <span data-testid={`enrichment-lip-sync-gone-${segment.segmentId}`} className="dp-muted">
-          The segment this score refers to no longer exists.
+          {t('enrichment:lipSyncPanel.the-segment-this-score-refers-to')}
         </span>
       ) : null}
       {hasScore && !segment.assetAvailable ? (
@@ -223,7 +226,8 @@ function LipSyncAssetDownload({
   readonly projectId: string;
   readonly asset: LipSyncAssetView | undefined;
 }): ReactNode {
-  const [pending, setPending] = useState(false);
+    const { t } = useTranslation();
+const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | undefined>(undefined);
   const size = formatEnrichmentFileSize(asset?.sizeBytes);
 
@@ -264,13 +268,13 @@ function LipSyncAssetDownload({
         </p>
       ) : null}
       <p data-testid="enrichment-lip-sync-asset-note" className="dp-muted">
-        A separate file from your project&apos;s outputs and exports. Links expire after 15 minutes and are generated when you click.
+        {t('enrichment:lipSyncPanel.a-separate-file-from-your-project')}
       </p>
       {error !== undefined ? (
         <div data-testid="enrichment-lip-sync-asset-error">
           <Alert
             tone="error"
-            title="Lip-sync download failed"
+            title={t('enrichment:lipSyncPanel.lip-sync-download-failed')}
             details={error.correlationId === '' ? undefined : `Ref: ${error.correlationId}`}
           >
             <p data-testid="enrichment-lip-sync-asset-error-message">{error.message}</p>
@@ -283,7 +287,7 @@ function LipSyncAssetDownload({
                 setError(undefined);
               }}
             >
-              Retry download
+              {t('enrichment:lipSyncPanel.retry-download')}
             </button>
           </Alert>
         </div>

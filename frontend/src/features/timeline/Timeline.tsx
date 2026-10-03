@@ -11,6 +11,7 @@ import {
   resolveIssueTarget,
 } from './types.js';
 import type { TimelineIssue, TimelineMarker, TimelineSegmentView } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface TimelineProps {
   readonly projectId: string;
@@ -44,10 +45,11 @@ function Lane({ testId, label, children }: LaneProps): ReactNode {
 }
 
 const MemoVideoLane = memo(function MemoVideoLane({ durationMs }: { readonly durationMs: number }): ReactNode {
-  return (
-    <Lane testId="timeline-lane-video" label="Video lane">
+    const { t } = useTranslation();
+return (
+    <Lane testId="timeline-lane-video" label={t('timeline:timeline.video-lane')}>
       <div data-testid="timeline-video-track" data-duration={String(durationMs)}>
-        <span className="dp-muted">Video preview track — read-only timing.</span>
+        <span className="dp-muted">{t('timeline:timeline.video-preview-track-read-only-timing')}</span>
       </div>
     </Lane>
   );
@@ -58,10 +60,11 @@ const MemoSourceAudioLane = memo(function MemoSourceAudioLane({
 }: {
   readonly durationMs: number;
 }): ReactNode {
-  return (
-    <Lane testId="timeline-lane-source-audio" label="Source audio lane">
+    const { t } = useTranslation();
+return (
+    <Lane testId="timeline-lane-source-audio" label={t('timeline:timeline.source-audio-lane')}>
       <div data-testid="timeline-source-audio-track" data-duration={String(durationMs)}>
-        <span className="dp-muted">Source audio track — read-only timing.</span>
+        <span className="dp-muted">{t('timeline:timeline.source-audio-track-read-only-timing')}</span>
       </div>
     </Lane>
   );
@@ -72,10 +75,11 @@ const MemoGeneratedAudioLane = memo(function MemoGeneratedAudioLane({
 }: {
   readonly durationMs: number;
 }): ReactNode {
-  return (
-    <Lane testId="timeline-lane-generated-audio" label="Generated audio lane">
+    const { t } = useTranslation();
+return (
+    <Lane testId="timeline-lane-generated-audio" label={t('timeline:timeline.generated-audio-lane')}>
       <div data-testid="timeline-generated-audio-track" data-duration={String(durationMs)}>
-        <span className="dp-muted">Generated audio track — read-only timing.</span>
+        <span className="dp-muted">{t('timeline:timeline.generated-audio-track-read-only-timing')}</span>
       </div>
     </Lane>
   );
@@ -93,7 +97,8 @@ const MemoGeneratedAudioLane = memo(function MemoGeneratedAudioLane({
  * virtualized to the viewport, and zoom/pan/seek handlers debounced.
  */
 export function Timeline({ projectId, segments, issues = [], selectedId, onSelect }: TimelineProps): ReactNode {
-  const positionMs = useTimelinePlayerStore((s) => s.positionMs);
+    const { t } = useTranslation();
+const positionMs = useTimelinePlayerStore((s) => s.positionMs);
   const viewportStartMs = useTimelinePlayerStore((s) => s.viewportStartMs);
   const pxPerMs = useTimelinePlayerStore((s) => s.pxPerMs);
   const playRegion = useTimelinePlayerStore((s) => s.playRegion);
@@ -223,7 +228,7 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
         data-testid={`timeline-marker-${marker.kind}-${marker.id}`}
         data-kind={marker.kind}
         data-pattern={marker.pattern}
-        title={`${marker.cause} Owner: ${marker.ownerSurface}.`}
+        title={t('timeline:timeline.owner', { v0: marker.cause, v1: marker.ownerSurface })}
         className={`dp-timeline-marker dp-timeline-marker-${marker.kind} dp-pattern-${marker.pattern}`}
       >
         <span data-testid={`timeline-marker-label-${marker.id}`}>{marker.label}</span>
@@ -240,7 +245,7 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
   return (
     <section
       data-testid="timeline"
-      aria-label="Timeline"
+      aria-label={t('timeline:timeline.timeline')}
       data-position={String(positionMs)}
       data-viewport-start={String(viewportStartMs)}
       data-viewport-end={String(viewportEndMs)}
@@ -250,24 +255,24 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
         <button
           type="button"
           data-testid="timeline-zoom-out"
-          aria-label="Zoom out"
+          aria-label={t('timeline:timeline.zoom-out')}
           className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
           onClick={() => {
             debouncedZoomRef.current?.(0.8);
           }}
         >
-          Zoom out
+          {t('timeline:timeline.zoom-out2')}
         </button>
         <button
           type="button"
           data-testid="timeline-zoom-in"
-          aria-label="Zoom in"
+          aria-label={t('timeline:timeline.zoom-in')}
           className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
           onClick={() => {
             debouncedZoomRef.current?.(1.25);
           }}
         >
-          Zoom in
+          {t('timeline:timeline.zoom-in2')}
         </button>
         <span data-testid="timeline-zoom-label" className="dp-muted">
           {`Zoom ${pxPerMs.toFixed(2)} px/ms`}
@@ -278,7 +283,7 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
           className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
           onClick={handleRegionFromSelection}
         >
-          Loop selection
+          {t('timeline:timeline.loop-selection')}
         </button>
         <button
           type="button"
@@ -289,7 +294,7 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
             useTimelinePlayerStore.getState().setLoopRegion(false);
           }}
         >
-          Clear region
+          {t('timeline:timeline.clear-region')}
         </button>
         <button
           type="button"
@@ -312,7 +317,7 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
         ref={rulerRef}
         data-testid="timeline-ruler"
         role="slider"
-        aria-label="Timeline ruler"
+        aria-label={t('timeline:timeline.timeline-ruler')}
         aria-valuemin={0}
         aria-valuemax={Math.max(1, durationMs)}
         aria-valuenow={Math.min(positionMs, Math.max(1, durationMs))}
@@ -365,9 +370,9 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
       </div>
       <MemoVideoLane durationMs={durationMs} />
       <MemoSourceAudioLane durationMs={durationMs} />
-      <div data-testid="timeline-lane-dialogue" aria-label="Dialogue lane">
+      <div data-testid="timeline-lane-dialogue" aria-label={t('timeline:timeline.dialogue-lane')}>
         <p className="dp-muted" aria-hidden="true">
-          Dialogue lane
+          {t('timeline:timeline.dialogue-lane2')}
         </p>
         <div data-testid="timeline-dialogue-track" data-total={String(segments.length)} data-rendered={String(segments.length)}>
           {segments.map((segment) => (
@@ -378,7 +383,7 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
               data-selected={activeSelectedId === segment.id ? 'true' : 'false'}
               data-start={String(segment.startMs)}
               data-end={String(segment.endMs)}
-              title={`${segment.id} ${toMsLabel(segment.startMs)}–${toMsLabel(segment.endMs)} (${segment.speakerLabel}) — read-only timing.`}
+              title={t('timeline:timeline.read-only-timing', { v0: segment.id, v1: toMsLabel(segment.startMs), v2: toMsLabel(segment.endMs), v3: segment.speakerLabel })}
               className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
               onClick={() => {
                 handleSelect(segment.id);
@@ -395,7 +400,7 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
               data-testid={`timeline-gap-${gap.id}`}
               data-start={String(gap.startMs)}
               data-end={String(gap.endMs)}
-              title={`Gap ${toMsLabel(gap.startMs)}–${toMsLabel(gap.endMs)} — explicit empty region, never collapsed.`}
+              title={t('timeline:timeline.gap-explicit-empty-region-never-collapsed', { v0: toMsLabel(gap.startMs), v1: toMsLabel(gap.endMs) })}
               className="dp-timeline-gap"
             >
               <span>{`Gap ${toMsLabel(gap.startMs)}–${toMsLabel(gap.endMs)}`}</span>
@@ -404,9 +409,9 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
         </div>
       </div>
       <MemoGeneratedAudioLane durationMs={durationMs} />
-      <div data-testid="timeline-lane-markers" aria-label="Markers lane">
+      <div data-testid="timeline-lane-markers" aria-label={t('timeline:timeline.markers-lane')}>
         <p className="dp-muted" aria-hidden="true">
-          Markers lane
+          {t('timeline:timeline.markers-lane2')}
         </p>
         <div
           data-testid="timeline-markers-track"
@@ -417,9 +422,9 @@ export function Timeline({ projectId, segments, issues = [], selectedId, onSelec
         </div>
       </div>
       {issues.length > 0 ? (
-        <div data-testid="timeline-issues" aria-label="Issues">
+        <div data-testid="timeline-issues" aria-label={t('timeline:timeline.issues')}>
           <p className="dp-muted" aria-hidden="true">
-            Issues — selecting an issue jumps the playhead.
+            {t('timeline:timeline.issues-selecting-an-issue-jumps-the')}
           </p>
           {issues.map((issue) => {
             const target = resolveIssueTarget(issue, segments);

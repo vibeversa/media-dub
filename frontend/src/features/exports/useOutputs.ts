@@ -15,6 +15,7 @@ import {
   parseProcessingRuns,
 } from './types.js';
 import type { ExportView, OutputView, ProcessingRunView } from './types.js';
+import i18n from '../../i18n/i18n.js';
 
 export const EXPORTS_PAGE_SIZE = 100;
 
@@ -251,7 +252,7 @@ export async function fetchExportDownloadUrl(projectId: string, exportId: string
     }
     if (!first.ok && first.status !== 302 && first.type !== 'opaqueredirect') {
       let code = 'INTERNAL_ERROR';
-      let message = 'The download could not be prepared.';
+      let message = i18n.t('exports:download.unavailable');
       try {
         const body = (await first.clone().json()) as { error?: { code?: string; message?: string } };
         if (typeof body.error?.code === 'string') {

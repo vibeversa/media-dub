@@ -17,5 +17,36 @@
   "gone": {
     "title": "This item is no longer available.",
     "description": "The linked project, review, or export was deleted. The notification is kept as read."
+  },
+  "notificationCenter": {
+    "preferences-could-not-be-saved": "Preferences could not be saved",
+    "toggles-disable-future-delivery-only-history": "Toggles disable future delivery only. History is never deleted.",
+    "delivery-preferences": "Delivery preferences",
+    "notification-preferences": "Notification preferences",
+    "next": "Next",
+    "previous": "Previous",
+    "showing-the-last-loaded-list-the": "Showing the last loaded list. The badge may be stale.",
+    "unread-count-unavailable": "Unread count unavailable",
+    "refresh-notifications": "Refresh notifications",
+    "the-unread-count-expired-the-first": "The unread count expired. The first page was refetched.",
+    "unread-count-expired": "Unread count expired",
+    "mark-all-read": "Mark all read",
+    "notifications": "Notifications",
+    "notification-center": "Notification center",
+    "new-activity-will-appear-here": "New activity will appear here.",
+    "no-notifications": "No notifications",
+    "notifications-could-not-be-loaded-no": "Notifications could not be loaded. No data was changed.",
+    "notifications-unavailable": "Notifications unavailable"
+  },
+  "notificationItem": {
+    "mark-read": "Mark read",
+    "open": "Open",
+    "back-to": "Back to",
+    "the-linked-project-review-or-export": "The linked project, review, or export was deleted. The notification is kept as read.",
+    "this-item-is-no-longer-available": "This item is no longer available.",
+    "deleted-notification-target": "Deleted notification target"
+  },
+  "useNotificationPrefs": {
+    "preferences-could-not-be-loaded": "Preferences could not be loaded."
   }
 }

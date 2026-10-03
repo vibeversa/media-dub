@@ -15,6 +15,7 @@ import { useMarkAllNotificationsRead } from './useMarkRead.js';
 import { useNotificationPrefs } from './useNotificationPrefs.js';
 import { useNotificationStream } from './useNotificationStream.js';
 import { useUnreadCount } from './useUnreadCount.js';
+import { useTranslation } from 'react-i18next';
 
 export interface NotificationCenterProps {
   /** Deleted-target ids that render `GoneState` rows (tests + tombstones). */
@@ -33,7 +34,8 @@ export interface NotificationCenterProps {
  * payloads, tokens, signed URLs, and transcript/media bodies never render.
  */
 export function NotificationCenter({ deletedIds = [] }: NotificationCenterProps): ReactNode {
-  const { push } = useToast();
+    const { t } = useTranslation();
+const { push } = useToast();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const listQuery = useNotifications(page);
@@ -73,8 +75,8 @@ export function NotificationCenter({ deletedIds = [] }: NotificationCenterProps)
     listBody = (
       <div data-testid="notifications-error">
         <ErrorState
-          title="Notifications unavailable"
-          message={listQuery.error?.message ?? 'Notifications could not be loaded. No data was changed.'}
+          title={t('notifications:notificationCenter.notifications-unavailable')}
+          message={listQuery.error?.message ?? t('notifications:notificationCenter.notifications-could-not-be-loaded-no')}
           correlationId={listQuery.error?.correlationId}
           onRetry={() => {
             void listQuery.refetch();
@@ -85,7 +87,7 @@ export function NotificationCenter({ deletedIds = [] }: NotificationCenterProps)
   } else if (items.length === 0) {
     listBody = (
       <div data-testid="notifications-empty">
-        <EmptyState title="No notifications" description="New activity will appear here." />
+        <EmptyState title={t('notifications:notificationCenter.no-notifications')} description={t('notifications:notificationCenter.new-activity-will-appear-here')} />
       </div>
     );
   } else {
@@ -95,9 +97,9 @@ export function NotificationCenter({ deletedIds = [] }: NotificationCenterProps)
   const unreadConflict = unreadQuery.isError && unreadQuery.error?.status === 409;
 
   return (
-    <section data-testid="notifications-center" aria-label="Notification center">
+    <section data-testid="notifications-center" aria-label={t('notifications:notificationCenter.notification-center')}>
       <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-        <h2>Notifications</h2>
+        <h2>{t('notifications:notificationCenter.notifications')}</h2>
         <p data-testid="notifications-unread-count" className="dp-muted">
           {`${String(unreadCount)} unread`}
         </p>
@@ -110,28 +112,28 @@ export function NotificationCenter({ deletedIds = [] }: NotificationCenterProps)
             void handleReadAll();
           }}
         >
-          Mark all read
+          {t('notifications:notificationCenter.mark-all-read')}
         </button>
       </div>
       {unreadConflict ? (
         <div data-testid="notifications-unread-conflict">
-          <Alert tone="warning" title="Unread count expired" details={unreadQuery.error?.correlationId}>
-            <p>The unread count expired. The first page was refetched.</p>
+          <Alert tone="warning" title={t('notifications:notificationCenter.unread-count-expired')} details={unreadQuery.error?.correlationId}>
+            <p>{t('notifications:notificationCenter.the-unread-count-expired-the-first')}</p>
             <button
               type="button"
               data-testid="notifications-unread-retry"
               className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
               onClick={handleUnreadConflictRetry}
             >
-              Refresh notifications
+              {t('notifications:notificationCenter.refresh-notifications')}
             </button>
           </Alert>
         </div>
       ) : null}
       {unreadQuery.isError && !unreadConflict ? (
         <div data-testid="notifications-unread-error">
-          <Alert tone="warning" title="Unread count unavailable" details={unreadQuery.error?.correlationId}>
-            <p>Showing the last loaded list. The badge may be stale.</p>
+          <Alert tone="warning" title={t('notifications:notificationCenter.unread-count-unavailable')} details={unreadQuery.error?.correlationId}>
+            <p>{t('notifications:notificationCenter.showing-the-last-loaded-list-the')}</p>
           </Alert>
         </div>
       ) : null}
@@ -147,7 +149,7 @@ export function NotificationCenter({ deletedIds = [] }: NotificationCenterProps)
               setPage((current) => Math.max(1, current - 1));
             }}
           >
-            Previous
+            {t('notifications:notificationCenter.previous')}
           </button>
           <p data-testid="notifications-page-info" className="dp-muted">
             {`Page ${String(pageData.page)} of ${String(Math.max(1, Math.ceil(pageData.total / pageData.pageSize)))}`}
@@ -161,13 +163,13 @@ export function NotificationCenter({ deletedIds = [] }: NotificationCenterProps)
               setPage((current) => current + 1);
             }}
           >
-            Next
+            {t('notifications:notificationCenter.next')}
           </button>
         </div>
       ) : null}
-      <section data-testid="notifications-prefs" aria-label="Notification preferences">
-        <h3>Delivery preferences</h3>
-        <p className="dp-muted">Toggles disable future delivery only. History is never deleted.</p>
+      <section data-testid="notifications-prefs" aria-label={t('notifications:notificationCenter.notification-preferences')}>
+        <h3>{t('notifications:notificationCenter.delivery-preferences')}</h3>
+        <p className="dp-muted">{t('notifications:notificationCenter.toggles-disable-future-delivery-only-history')}</p>
         {prefs.isPending ? (
           <div data-testid="notifications-prefs-loading">
             <Skeleton lines={3} />
@@ -194,7 +196,7 @@ export function NotificationCenter({ deletedIds = [] }: NotificationCenterProps)
         )}
         {prefs.fieldError !== undefined ? (
           <div data-testid="notifications-prefs-error">
-            <Alert tone="error" title="Preferences could not be saved">
+            <Alert tone="error" title={t('notifications:notificationCenter.preferences-could-not-be-saved')}>
               <p data-testid="notifications-prefs-error-message">{prefs.fieldError}</p>
             </Alert>
           </div>

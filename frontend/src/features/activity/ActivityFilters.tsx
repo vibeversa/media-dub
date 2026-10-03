@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { DEFAULT_ACTIVITY_FILTERS, isDefaultActivityFilters } from './types.js';
 import type { ActivityFilters } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Shareable filter bar for the audit timeline. Controlled via URL state from
@@ -14,42 +15,43 @@ export interface ActivityFiltersProps {
 }
 
 export function ActivityFilters({ filters, onChange, onReset }: ActivityFiltersProps): ReactNode {
-  const isDefault = isDefaultActivityFilters(filters);
+    const { t } = useTranslation();
+const isDefault = isDefaultActivityFilters(filters);
   return (
     <form
       data-testid="activity-filters"
-      aria-label="Activity filters"
+      aria-label={t('activity:activityFilters.activity-filters')}
       onSubmit={(event) => {
         event.preventDefault();
       }}
     >
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'end' }}>
         <label>
-          <span>Actor</span>
+          <span>{t('activity:activityFilters.actor')}</span>
           <input
             type="text"
             data-testid="activity-filter-actor"
             value={filters.actor}
-            placeholder="System"
+            placeholder={t('activity:activityFilters.system')}
             onChange={(event) => {
               onChange({ ...filters, actor: event.target.value.slice(0, 80) });
             }}
           />
         </label>
         <label>
-          <span>Action</span>
+          <span>{t('activity:activityFilters.action')}</span>
           <input
             type="text"
             data-testid="activity-filter-action"
             value={filters.action}
-            placeholder="Updated"
+            placeholder={t('activity:activityFilters.updated')}
             onChange={(event) => {
               onChange({ ...filters, action: event.target.value.slice(0, 80) });
             }}
           />
         </label>
         <label>
-          <span>From</span>
+          <span>{t('activity:activityFilters.from')}</span>
           <input
             type="date"
             data-testid="activity-filter-from"
@@ -60,7 +62,7 @@ export function ActivityFilters({ filters, onChange, onReset }: ActivityFiltersP
           />
         </label>
         <label>
-          <span>To</span>
+          <span>{t('activity:activityFilters.to')}</span>
           <input
             type="date"
             data-testid="activity-filter-to"
@@ -77,7 +79,7 @@ export function ActivityFilters({ filters, onChange, onReset }: ActivityFiltersP
           disabled={isDefault}
           onClick={onReset}
         >
-          Reset filters
+          {t('activity:activityFilters.reset-filters')}
         </button>
       </div>
       <p data-testid="activity-filters-default" hidden>

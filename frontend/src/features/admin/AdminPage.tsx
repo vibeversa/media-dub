@@ -11,6 +11,7 @@ import { UsageQuotasPanel } from './UsageQuotasPanel.js';
 import { UsersRolesPanel } from './UsersRolesPanel.js';
 import { useAdminGuard } from './adminGuard.js';
 import { useFeatureFlag } from '../../hooks/useFeatureFlag.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Role-gated Admin area (Task 036).
@@ -38,12 +39,13 @@ import { useFeatureFlag } from '../../hooks/useFeatureFlag.js';
  * first and `LocalGpuPanel` re-checks the permission itself.
  */
 export function AdminPage(): ReactNode {
-  const guard = useAdminGuard();
+    const { t } = useTranslation();
+const guard = useAdminGuard();
   const localInference = useFeatureFlag('localInference');
 
   if (guard.isPending) {
     return (
-      <section data-testid="admin-page" aria-label="Admin">
+      <section data-testid="admin-page" aria-label={t('admin:adminPage.admin')}>
         <div data-testid="admin-loading">
           <Skeleton lines={6} />
         </div>
@@ -53,11 +55,11 @@ export function AdminPage(): ReactNode {
 
   if (!guard.allowed) {
     return (
-      <section data-testid="admin-page" aria-label="Admin">
+      <section data-testid="admin-page" aria-label={t('admin:adminPage.admin2')}>
         <div data-testid="admin-forbidden">
           <EmptyState
-            title="Admin unavailable"
-            description="You do not have permission to view the admin area. Contact your tenant admin for access."
+            title={t('admin:adminPage.admin-unavailable')}
+            description={t('admin:adminPage.you-do-not-have-permission-to')}
           />
         </div>
       </section>
@@ -65,9 +67,9 @@ export function AdminPage(): ReactNode {
   }
 
   return (
-    <section data-testid="admin-page" aria-label="Admin">
-      <h2>Admin</h2>
-      <p className="dp-muted">Tenants, usage, provider health, and operator diagnostics.</p>
+    <section data-testid="admin-page" aria-label={t('admin:adminPage.admin3')}>
+      <h2>{t('admin:adminPage.admin4')}</h2>
+      <p className="dp-muted">{t('admin:adminPage.tenants-usage-provider-health-and-operator')}</p>
       <div data-testid="admin-section-tenants">
         <TenantsPanel />
       </div>

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Modal } from '../../components/Modal/Modal.js';
+import { useTranslation } from 'react-i18next';
 
 export type ImpactMode = 'assign' | 'replace' | 'reset';
 
@@ -46,7 +47,8 @@ export function ImpactDialog({
   onConfirm,
   onCancel,
 }: ImpactDialogProps): ReactNode {
-  const segmentsText =
+    const { t } = useTranslation();
+const segmentsText =
     segmentCount === 0
       ? `Speaker ${speakerLabel} has no segments yet. No segments will be affected, but future segments will use ${voiceLabel}.`
       : `This will affect ${String(segmentCount)} ${segmentCount === 1 ? 'segment' : 'segments'} for speaker ${speakerLabel} with voice ${voiceLabel}.`;
@@ -61,7 +63,7 @@ export function ImpactDialog({
       <div data-testid="voices-impact-dialog">
         <p data-testid="voices-impact-segments">{segmentsText}</p>
         <p data-testid="voices-impact-invalidation">
-          Assigning a new voice invalidates dependent translations and re-renders dub audio for the affected segments.
+          {t('voices:impactDialog.assigning-a-new-voice-invalidates-dependent')}
         </p>
         {costNote !== undefined && costNote !== '' ? (
           <p data-testid="voices-impact-cost">{costNote}</p>
@@ -74,7 +76,7 @@ export function ImpactDialog({
             disabled={isPending}
             onClick={onConfirm}
           >
-            Confirm voice change
+            {t('voices:impactDialog.confirm-voice-change')}
           </button>
           <button
             type="button"
@@ -83,10 +85,10 @@ export function ImpactDialog({
             disabled={isPending}
             onClick={onCancel}
           >
-            Cancel
+            {t('voices:impactDialog.cancel')}
           </button>
         </div>
-        {isPending ? <p data-testid="voices-impact-pending">Applying voice change…</p> : null}
+        {isPending ? <p data-testid="voices-impact-pending">{t('voices:impactDialog.applying-voice-change')}</p> : null}
       </div>
     </Modal>
   );

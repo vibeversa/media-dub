@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { readingSpeedHint, splitGlossaryRuns, syncToneFor, windowDurationMs } from './types.js';
 import type { TranslationSegmentView } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface TranslationEditorProps {
   readonly projectId: string;
@@ -30,11 +31,12 @@ export function TranslationEditor({
   onSave,
   isSaving,
 }: TranslationEditorProps): ReactNode {
-  void projectId;
+    const { t } = useTranslation();
+void projectId;
   if (segment === undefined) {
     return (
-      <section data-testid="translation-editor" aria-label="Translation editor">
-        <p data-testid="translation-editor-empty">Select a segment to edit its translation.</p>
+      <section data-testid="translation-editor" aria-label={t('translation:translationEditor.translation-editor')}>
+        <p data-testid="translation-editor-empty">{t('translation:translationEditor.select-a-segment-to-edit-its')}</p>
       </section>
     );
   }
@@ -48,7 +50,7 @@ export function TranslationEditor({
   const draftRuns = draft !== '' ? splitGlossaryRuns(draft, segment.glossaryHits) : [];
 
   return (
-    <section data-testid="translation-editor" aria-label="Translation editor">
+    <section data-testid="translation-editor" aria-label={t('translation:translationEditor.translation-editor2')}>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
         <span
           data-testid="translation-sync-indicator"
@@ -56,16 +58,16 @@ export function TranslationEditor({
         >
           {tone === 'unknown' ? '—' : tone}
         </span>
-        <span data-testid="translation-duration-display" title="Dub window duration (read-only; timing lives in the timeline).">
+        <span data-testid="translation-duration-display" title={t('translation:translationEditor.dub-window-duration-read-only-timing')}>
           {`${String(durationMs)} ms window`}
         </span>
-        <span data-testid="translation-reading-hint" title="Characters and reading speed over the dub window.">
+        <span data-testid="translation-reading-hint" title={t('translation:translationEditor.characters-and-reading-speed-over-the')}>
           {hint}
         </span>
       </div>
-      <div data-testid="translation-glossary-preview" aria-label="Glossary preview">
+      <div data-testid="translation-glossary-preview" aria-label={t('translation:translationEditor.glossary-preview')}>
         {segment.glossaryHits.length === 0 ? (
-          <span data-testid="translation-glossary-preview-empty" title="No glossary matches for this segment.">
+          <span data-testid="translation-glossary-preview-empty" title={t('translation:translationEditor.no-glossary-matches-for-this-segment')}>
             —
           </span>
         ) : (
@@ -87,7 +89,7 @@ export function TranslationEditor({
         )}
       </div>
       {draft !== '' ? (
-        <div data-testid="translation-draft-preview" aria-label="Draft glossary preview">
+        <div data-testid="translation-draft-preview" aria-label={t('translation:translationEditor.draft-glossary-preview')}>
           <p>
             {draftRuns.map((run, index) =>
               run.term === undefined ? (
@@ -105,7 +107,7 @@ export function TranslationEditor({
           </p>
         </div>
       ) : null}
-      <label htmlFor="translation-draft">Translation draft</label>
+      <label htmlFor="translation-draft">{t('translation:translationEditor.translation-draft')}</label>
       <textarea
         id="translation-draft"
         data-testid="translation-draft"
@@ -116,7 +118,7 @@ export function TranslationEditor({
           onDraftChange(event.target.value);
         }}
       />
-      {isDirty ? <p data-testid="translation-draft-dirty">Unsaved draft</p> : null}
+      {isDirty ? <p data-testid="translation-draft-dirty">{t('translation:translationEditor.unsaved-draft')}</p> : null}
       <button
         type="button"
         data-testid="translation-draft-save"
@@ -124,9 +126,9 @@ export function TranslationEditor({
         disabled={isSaving || draft.trim() === ''}
         onClick={onSave}
       >
-        Save manual version
+        {t('translation:translationEditor.save-manual-version')}
       </button>
-      {isSaving ? <p data-testid="translation-editor-saving">Saving…</p> : null}
+      {isSaving ? <p data-testid="translation-editor-saving">{t('translation:translationEditor.saving')}</p> : null}
     </section>
   );
 }

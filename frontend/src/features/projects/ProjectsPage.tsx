@@ -363,7 +363,7 @@ export function ProjectsPage(): ReactNode {
                 setDeleteName('');
               }}
             >
-              Cancel
+              {t('projects:projectsPage.cancel')}
             </button>
             <button
               type="button"

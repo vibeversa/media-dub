@@ -3,6 +3,7 @@ import { Alert } from '../../components/Alert/Alert.js';
 import { Badge } from '../../components/Badge/Badge.js';
 import { EmptyState } from '../../components/EmptyState/EmptyState.js';
 import { ErrorState } from '../../components/ErrorState/ErrorState.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Operator-only enrichment states (Task 044, §19.3).
@@ -24,14 +25,15 @@ import { ErrorState } from '../../components/ErrorState/ErrorState.js';
 
 /** Flag on, backend not provisioned in this deployment. Not an error. */
 export function LocalGpuNotAvailableState(): ReactNode {
-  return (
+    const { t } = useTranslation();
+return (
     <div data-testid="admin-local-gpu-not-available">
       <EmptyState
-        title="Local GPU health not reported"
-        description="This deployment has not provisioned a local-inference device health endpoint."
+        title={t('admin:localGpuStates.local-gpu-health-not-reported')}
+        description={t('admin:localGpuStates.this-deployment-has-not-provisioned-a')}
       />
       <p data-testid="enrichment-not-available-copy" className="dp-muted">
-        This is an operator feature in setup. Everything else on the page works without it.
+        {t('admin:localGpuStates.this-is-an-operator-feature-in')}
       </p>
     </div>
   );
@@ -45,11 +47,12 @@ export function LocalGpuNotAvailableState(): ReactNode {
  * operator asked.
  */
 export function LocalGpuUnknownState({ detail }: { readonly detail: string }): ReactNode {
-  return (
+    const { t } = useTranslation();
+return (
     <div data-testid="admin-local-gpu-unknown">
-      <EmptyState title="Local GPU health unknown" description={detail} />
+      <EmptyState title={t('admin:localGpuStates.local-gpu-health-unknown')} description={detail} />
       <p data-testid="enrichment-unknown-badge">
-        <Badge tone="neutral">unknown</Badge>
+        <Badge tone="neutral">{t('admin:localGpuStates.unknown')}</Badge>
       </p>
     </div>
   );
@@ -75,17 +78,18 @@ export function LocalGpuUnavailableState({
   readonly retryPending: boolean;
   readonly onDismiss: () => void;
 }): ReactNode {
-  return (
+    const { t } = useTranslation();
+return (
     <div data-testid="admin-local-gpu-unavailable">
       <ErrorState
-        title="Local GPU health unavailable"
+        title={t('admin:localGpuStates.local-gpu-health-unavailable')}
         message={message}
         correlationId={correlationId}
         onRetry={onRetry}
       />
       {retryPending ? (
         <p data-testid="admin-local-gpu-retrying" className="dp-muted">
-          Retrying…
+          {t('admin:localGpuStates.retrying')}
         </p>
       ) : null}
       <button
@@ -94,10 +98,10 @@ export function LocalGpuUnavailableState({
         data-testid="admin-local-gpu-dismiss"
         onClick={onDismiss}
       >
-        Dismiss
+        {t('admin:localGpuStates.dismiss')}
       </button>
       <p data-testid="admin-local-gpu-nonblocking" className="dp-muted">
-        The rest of the admin area is unaffected.
+        {t('admin:localGpuStates.the-rest-of-the-admin-area')}
       </p>
     </div>
   );
@@ -113,15 +117,14 @@ export function LocalGpuUnavailableState({
  * what the platform does is worse than no claim.
  */
 export function LocalGpuPrivacyNote(): ReactNode {
-  return (
-    <Alert tone="info" title="Where this processing runs">
+    const { t } = useTranslation();
+return (
+    <Alert tone="info" title={t('admin:localGpuStates.where-this-processing-runs')}>
       <p data-testid="enrichment-privacy-note">
-        Local processing path declared: the operator&apos;s own local-inference host. Media, audio and transcript data processed here
-        stays inside the operator&apos;s boundary and is never sent to a third-party provider. Any change that would move data
-        outside that boundary is a policy change and requires explicit operator opt-in before it takes effect.
+        {t('admin:localGpuStates.local-processing-path-declared-the-operator')}
       </p>
       <p data-testid="enrichment-privacy-route" className="dp-muted">
-        Privacy policy and data-residency terms are published with your organisation&apos;s admin documentation.
+        {t('admin:localGpuStates.privacy-policy-and-data-residency-terms')}
       </p>
     </Alert>
   );

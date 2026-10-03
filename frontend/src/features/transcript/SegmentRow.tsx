@@ -2,6 +2,7 @@ import { memo } from 'react';
 import type { ReactNode } from 'react';
 import { deriveLineage, formatTimestamp } from './types.js';
 import type { TranscriptSegmentView } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface SegmentRowProps {
   readonly segment: TranscriptSegmentView;
@@ -21,7 +22,8 @@ export interface SegmentRowProps {
  * selection with Up/Down and seeks with Enter (row itself is a button grid).
  */
 export const SegmentRow = memo(function SegmentRow({ segment, isSelected, isActive, onSelect, onSeek }: SegmentRowProps): ReactNode {
-  const lineage = deriveLineage(segment);
+    const { t } = useTranslation();
+const lineage = deriveLineage(segment);
   const confidenceText =
     segment.confidence === undefined ? 'confidence unknown' : `confidence ${String(Math.round(segment.confidence * 100))}%`;
   return (
@@ -45,7 +47,7 @@ export const SegmentRow = memo(function SegmentRow({ segment, isSelected, isActi
       <button
         type="button"
         data-testid={`transcript-play-${segment.id}`}
-        aria-label={`Play segment starting at ${formatTimestamp(segment.startMs)}`}
+        aria-label={t('transcript:segmentRow.play-segment-starting-at', { v0: formatTimestamp(segment.startMs) })}
         className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
         onClick={() => {
           onSeek(segment.id);
@@ -61,7 +63,7 @@ export const SegmentRow = memo(function SegmentRow({ segment, isSelected, isActi
         onClick={() => {
           onSelect(segment.id);
         }}
-        aria-label={`Select segment ${segment.id}`}
+        aria-label={t('transcript:segmentRow.select-segment', { v0: segment.id })}
       >
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
           <span data-testid={`transcript-time-${segment.id}`} className="dp-muted">
@@ -79,7 +81,7 @@ export const SegmentRow = memo(function SegmentRow({ segment, isSelected, isActi
                 event.stopPropagation();
               }}
             >
-              needs review
+              {t('transcript:segmentRow.needs-review')}
             </a>
           ) : null}
         </div>
@@ -87,9 +89,9 @@ export const SegmentRow = memo(function SegmentRow({ segment, isSelected, isActi
           {segment.text === '' ? '(empty segment)' : segment.text}
         </p>
         <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-          <span data-testid={`transcript-badge-original-${segment.id}`}>original</span>
+          <span data-testid={`transcript-badge-original-${segment.id}`}>{t('transcript:segmentRow.original')}</span>
           <span data-testid={`transcript-badge-selected-${segment.id}`}>{lineage.selectedBadge}</span>
-          {lineage.hasManual ? <span data-testid={`transcript-badge-manual-${segment.id}`}>manual</span> : null}
+          {lineage.hasManual ? <span data-testid={`transcript-badge-manual-${segment.id}`}>{t('transcript:segmentRow.manual')}</span> : null}
         </div>
       </button>
     </div>

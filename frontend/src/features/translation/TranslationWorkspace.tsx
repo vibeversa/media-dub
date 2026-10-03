@@ -14,6 +14,7 @@ import { formatTimestamp, isTranslationConflict, syncToneFor, windowDurationMs }
 import type { TranslationSegmentView } from './types.js';
 import { invalidateTranslations, useCreateManualTranslationVersion, useSelectTranslationVersion, useTranslations } from './useTranslations.js';
 import { useDirtyGuard } from './useDirtyGuard.js';
+import { useTranslation } from 'react-i18next';
 
 export interface TranslationWorkspaceProps {
   readonly projectId: string;
@@ -35,7 +36,8 @@ export interface TranslationWorkspaceProps {
  * (save/discard/cancel).
  */
 export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): ReactNode {
-  const { push } = useToast();
+    const { t } = useTranslation();
+const { push } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const translationsQuery = useTranslations(projectId);
@@ -152,7 +154,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
         return false;
       }
       setDraft(previousDraft);
-      push('error', appError.message ?? 'Manual translation failed; draft kept.');
+      push('error', appError.message ?? t('translation:translationWorkspace.manual-translation-failed-draft-kept'));
       return false;
     }
   }
@@ -178,7 +180,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
         await invalidateTranslations(queryClient, projectId, selected.id);
         return;
       }
-      push('error', appError.message ?? 'Translation selection failed.');
+      push('error', appError.message ?? t('translation:translationWorkspace.translation-selection-failed'));
     }
   }
 
@@ -231,7 +233,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
 
   if (translationsQuery.isPending && segments.length === 0) {
     return (
-      <section data-testid="translation-workspace" aria-label="Translation workspace">
+      <section data-testid="translation-workspace" aria-label={t('translation:translationWorkspace.translation-workspace')}>
         <div data-testid="translation-loading">
           <Skeleton lines={8} />
         </div>
@@ -241,11 +243,11 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
 
   if (translationsQuery.isError) {
     return (
-      <section data-testid="translation-workspace" aria-label="Translation workspace">
+      <section data-testid="translation-workspace" aria-label={t('translation:translationWorkspace.translation-workspace2')}>
         <div data-testid="translation-error">
           <ErrorState
-            title="Translation unavailable"
-            message={translationsQuery.error?.message ?? 'The translation could not be loaded. No data was changed.'}
+            title={t('translation:translationWorkspace.translation-unavailable')}
+            message={translationsQuery.error?.message ?? t('translation:translationWorkspace.the-translation-could-not-be-loaded')}
             correlationId={translationsQuery.error?.correlationId}
             onRetry={() => {
               void translationsQuery.refetch();
@@ -258,14 +260,14 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
 
   if (segments.length === 0) {
     return (
-      <section data-testid="translation-workspace" aria-label="Translation workspace">
+      <section data-testid="translation-workspace" aria-label={t('translation:translationWorkspace.translation-workspace3')}>
         <div data-testid="translation-empty">
           <EmptyState
-            title="No translations yet"
-            description="Start processing to generate translations. Review appears here once candidates exist."
+            title={t('translation:translationWorkspace.no-translations-yet')}
+            description={t('translation:translationWorkspace.start-processing-to-generate-translations-review')}
           />
           <Link data-testid="translation-empty-progress-link" to={`/projects/${projectId}`}>
-            Go to processing
+            {t('translation:translationWorkspace.go-to-processing')}
           </Link>
         </div>
       </section>
@@ -276,10 +278,10 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
   const syncTone = selected !== undefined ? syncToneFor(selected, selected.selectedText, durationMs) : 'unknown';
 
   return (
-    <section data-testid="translation-workspace" aria-label="Translation workspace">
+    <section data-testid="translation-workspace" aria-label={t('translation:translationWorkspace.translation-workspace4')}>
       {staleMessage !== null ? (
         <div data-testid="translation-stale-banner">
-          <Alert tone="warning" title="Segment changed elsewhere">
+          <Alert tone="warning" title={t('translation:translationWorkspace.segment-changed-elsewhere')}>
             <p>{staleMessage}</p>
             <button
               type="button"
@@ -289,14 +291,14 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                 void handleStaleRefresh();
               }}
             >
-              Refresh translations
+              {t('translation:translationWorkspace.refresh-translations')}
             </button>
           </Alert>
         </div>
       ) : null}
       {sourceNotice !== null ? (
         <div data-testid="translation-source-changed">
-          <Alert tone="info" title="Source transcript changed">
+          <Alert tone="info" title={t('translation:translationWorkspace.source-transcript-changed')}>
             <p data-testid="translation-source-changed-text">
               {`The source transcript moved from ${sourceNotice.previous} to ${sourceNotice.current} while your draft was open.`}
             </p>
@@ -306,7 +308,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
               className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
               onClick={handleRebase}
             >
-              Rebase onto current source
+              {t('translation:translationWorkspace.rebase-onto-current-source')}
             </button>
           </Alert>
         </div>
@@ -316,7 +318,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
           <div
             data-testid="translation-list-scroll"
             role="listbox"
-            aria-label="Translation segments"
+            aria-label={t('translation:translationWorkspace.translation-segments')}
             tabIndex={0}
             onKeyDown={(event) => {
               if (segments.length === 0) {
@@ -363,7 +365,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                       onClick={() => {
                         handleRequestSegment(segment.id);
                       }}
-                      aria-label={`Select segment ${segment.id}`}
+                      aria-label={t('translation:translationWorkspace.select-segment', { v0: segment.id })}
                     >
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
                         <span data-testid={`translation-time-${segment.id}`} className="dp-muted">
@@ -379,7 +381,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                           {segment.selectedVersionId !== undefined ? `selected ${segment.selectedVersionId.slice(0, 8)}` : 'selected'}
                         </span>
                         {segment.manualVersionId !== undefined ? (
-                          <span data-testid={`translation-badge-manual-${segment.id}`}>manual</span>
+                          <span data-testid={`translation-badge-manual-${segment.id}`}>{t('translation:translationWorkspace.manual')}</span>
                         ) : null}
                       </div>
                     </button>
@@ -394,25 +396,25 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
             className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
             onClick={handleLeaveProject}
           >
-            Back to project
+            {t('translation:translationWorkspace.back-to-project')}
           </button>
         </div>
         <div data-testid="translation-detail" style={{ flexGrow: 1, minWidth: 0 }}>
           {selected === undefined ? (
-            <p data-testid="translation-detail-empty">Select a segment to review its translation.</p>
+            <p data-testid="translation-detail-empty">{t('translation:translationWorkspace.select-a-segment-to-review-its')}</p>
           ) : (
             <>
               <div data-testid="translation-header" data-segment-id={selected.id}>
-                <span data-testid="translation-speaker" title="Speaker for this segment.">
+                <span data-testid="translation-speaker" title={t('translation:translationWorkspace.speaker-for-this-segment')}>
                   {selected.speakerLabel}
                 </span>{' '}
                 <span
                   data-testid="translation-time"
-                  title={`Window ${formatTimestamp(selected.startMs)} → ${formatTimestamp(selected.endMs)}.`}
+                  title={t('translation:translationWorkspace.window', { v0: formatTimestamp(selected.startMs), v1: formatTimestamp(selected.endMs) })}
                 >
                   {`${formatTimestamp(selected.startMs)} → ${formatTimestamp(selected.endMs)}`}
                 </span>{' '}
-                <span data-testid="translation-duration" title="Dub window duration (read-only; timing lives in the timeline).">
+                <span data-testid="translation-duration" title={t('translation:translationWorkspace.dub-window-duration-read-only-timing')}>
                   {`${String(durationMs)} ms`}
                 </span>{' '}
                 <span
@@ -444,26 +446,26 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                   <Link
                     data-testid="translation-voice"
                     to={`/projects/${projectId}/voices`}
-                    title={`Assigned voice ${selected.assignedVoice.label}. Open voice assignment.`}
+                    title={t('translation:translationWorkspace.assigned-voice-open-voice-assignment', { v0: selected.assignedVoice.label })}
                   >
                     {selected.assignedVoice.label}
                   </Link>
                 ) : (
-                  <span data-testid="translation-voice" title="No voice assigned yet — assign in Voices.">
+                  <span data-testid="translation-voice" title={t('translation:translationWorkspace.no-voice-assigned-yet-assign-in')}>
                     —
                   </span>
                 )}
               </div>
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
                 <div data-testid="translation-side-source" style={{ flex: 1, minWidth: 0 }}>
-                  <h3>Source</h3>
+                  <h3>{t('translation:translationWorkspace.source')}</h3>
                   <p data-testid="translation-source">{selected.sourceText === '' ? '(empty source)' : selected.sourceText}</p>
-                  <span data-testid="translation-source-version" title="Currently-selected transcript version.">
+                  <span data-testid="translation-source-version" title={t('translation:translationWorkspace.currently-selected-transcript-version')}>
                     {selected.sourceVersionLabel}
                   </span>
                 </div>
                 <div data-testid="translation-side-selected" style={{ flex: 1, minWidth: 0 }}>
-                  <h3>Selected translation</h3>
+                  <h3>{t('translation:translationWorkspace.selected-translation')}</h3>
                   <p data-testid="translation-selected">
                     {selected.selectedText === '' ? '(no translation yet)' : selected.selectedText}
                   </p>
@@ -479,15 +481,15 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                   />
                 </div>
                 <div data-testid="translation-side-alternatives" style={{ flex: 1, minWidth: 0 }}>
-                  <h3>Alternatives</h3>
+                  <h3>{t('translation:translationWorkspace.alternatives')}</h3>
                   {selected.versions.length === 0 ? (
                     <div data-testid="translation-no-candidates">
                       <EmptyState
-                        title="Translation pending"
-                        description="No candidates yet for this segment. Processing will fill alternatives here."
+                        title={t('translation:translationWorkspace.translation-pending')}
+                        description={t('translation:translationWorkspace.no-candidates-yet-for-this-segment')}
                       />
                       <Link data-testid="translation-no-candidates-progress-link" to={`/projects/${projectId}`}>
-                        Go to processing
+                        {t('translation:translationWorkspace.go-to-processing2')}
                       </Link>
                     </div>
                   ) : (
@@ -517,7 +519,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                                 void handleSelect(version.id);
                               }}
                             >
-                              Select this translation
+                              {t('translation:translationWorkspace.select-this-translation')}
                             </button>
                           )}
                         </li>
@@ -538,9 +540,9 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
         inner content so the existing 028 suites keep addressing it.
       */}
       {guard.dialogOpen ? (
-        <Modal open title="Unsaved translation draft" onClose={guard.confirmCancel}>
+        <Modal open title={t('translation:translationWorkspace.unsaved-translation-draft')} onClose={guard.confirmCancel}>
           <div data-testid="translation-dirty-dialog">
-          <Alert tone="warning" title="Unsaved translation draft">
+          <Alert tone="warning" title={t('translation:translationWorkspace.unsaved-translation-draft2')}>
             <p data-testid="translation-dirty-text">
               {guard.pendingLabel !== undefined
                 ? `You have an unsaved draft (navigating to ${guard.pendingLabel}). Save it as a manual version, discard it, or stay.`
@@ -556,7 +558,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                   void guard.confirmSave();
                 }}
               >
-                Save draft
+                {t('translation:translationWorkspace.save-draft')}
               </button>
               <button
                 type="button"
@@ -564,7 +566,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                 className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
                 onClick={guard.confirmDiscard}
               >
-                Discard draft
+                {t('translation:translationWorkspace.discard-draft')}
               </button>
               <button
                 type="button"
@@ -572,7 +574,7 @@ export function TranslationWorkspace({ projectId }: TranslationWorkspaceProps): 
                 className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
                 onClick={guard.confirmCancel}
               >
-                Stay
+                {t('translation:translationWorkspace.stay')}
               </button>
             </div>
           </Alert>

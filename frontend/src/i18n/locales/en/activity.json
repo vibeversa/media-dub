@@ -21,5 +21,40 @@
     "action": "Action",
     "summary": "Summary",
     "details": "Details"
+  },
+  "activityFilters": {
+    "reset-filters": "Reset filters",
+    "to": "To",
+    "from": "From",
+    "updated": "Updated",
+    "action": "Action",
+    "system": "System",
+    "actor": "Actor",
+    "activity-filters": "Activity filters"
+  },
+  "auditTimeline": {
+    "next": "Next",
+    "previous": "Previous",
+    "refresh-activity2": "Refresh activity",
+    "showing-the-last-loaded-events-new": "Showing the last loaded events. New activity may be missing.",
+    "activity-refresh-failed": "Activity refresh failed",
+    "refresh-activity": "Refresh activity",
+    "new-events-are-still-projecting-showing": "New events are still projecting. Showing the last loaded events.",
+    "activity-may-be-incomplete": "Activity may be incomplete",
+    "activity-timeline": "Activity timeline",
+    "details": "Details",
+    "summary": "Summary",
+    "action": "Action",
+    "actor": "Actor",
+    "timestamp": "Timestamp",
+    "adjust-the-filters-or-reset-to": "Adjust the filters or reset to the defaults.",
+    "no-matching-events": "No matching events",
+    "events-appear-as-work-progresses": "Events appear as work progresses.",
+    "no-activity-yet": "No activity yet",
+    "activity-could-not-be-loaded-no": "Activity could not be loaded. No data was changed.",
+    "activity-unavailable": "Activity unavailable",
+    "enter-a-project-id-to-load": "Enter a project id to load its activity.",
+    "select-a-project": "Select a project",
+    "advanced-details-hidden": "Advanced details hidden"
   }
 }

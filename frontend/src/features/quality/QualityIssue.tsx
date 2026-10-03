@@ -16,6 +16,7 @@ import {
   patternForQualityStatus,
 } from './types.js';
 import type { QualityIssueView } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface QualityIssueProps {
   readonly projectId: string;
@@ -66,7 +67,8 @@ function drawMiniWaveform(canvas: HTMLCanvasElement, seed: string): void {
  * actions are omitted with a reason tooltip.
  */
 export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode {
-  const queryClient = useQueryClient();
+    const { t } = useTranslation();
+const queryClient = useQueryClient();
   const preview = usePreviewMedia(projectId);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [artifactFailed, setArtifactFailed] = useState(false);
@@ -121,7 +123,7 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
   return (
     <article
       data-testid={`quality-issue-${issue.id}`}
-      aria-label={`Quality issue ${issue.code}`}
+      aria-label={t('quality:qualityIssue.quality-issue', { v0: issue.code })}
       data-status={issue.status}
       data-severity={issue.severity}
       data-scope={issue.scope}
@@ -144,7 +146,7 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
           <span data-testid={`quality-status-pattern-${issue.id}`}>{statusPattern}</span>
         </p>
         <p data-testid={`quality-scope-${issue.id}`}>
-          Scope: {issue.scope}
+          {t('quality:qualityIssue.scope')} {issue.scope}
           {issue.scope === 'segment' && issue.segmentId !== undefined ? ` · segment ${issue.segmentId}` : ''}
         </p>
         <p data-testid={`quality-segment-${issue.id}`} className="dp-muted">
@@ -154,11 +156,11 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
 
       <p data-testid={`quality-description-${issue.id}`}>{issue.description}</p>
       <p data-testid={`quality-action-${issue.id}`} className="dp-muted">
-        Suggested action: {issue.suggestedAction}
+        {t('quality:qualityIssue.suggested-action')} {issue.suggestedAction}
       </p>
 
       <div data-testid={`quality-evidence-${issue.id}`}>
-        <h5>Evidence</h5>
+        <h5>{t('quality:qualityIssue.evidence')}</h5>
         {issue.startMs !== undefined && issue.endMs !== undefined ? (
           <div>
             <canvas
@@ -166,14 +168,14 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
               data-testid={`quality-evidence-waveform-${issue.id}`}
               data-peaks="44"
               role="img"
-              aria-label={`Waveform excerpt for ${issue.code}`}
+              aria-label={t('quality:qualityIssue.waveform-excerpt-for', { v0: issue.code })}
               style={{ width: '220px', height: '48px', display: 'block' }}
             />
             <button
               type="button"
               data-testid={`quality-evidence-timestamp-${issue.id}`}
               className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
-              title={`Jump to ${formatPlayerTime(issue.startMs)} in the timeline`}
+              title={t('quality:qualityIssue.jump-to-in-the-timeline', { v0: formatPlayerTime(issue.startMs) })}
               onClick={() => {
                 useTimelinePlayerStore.getState().requestSeek(issue.startMs ?? 0);
               }}
@@ -182,7 +184,7 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
             </button>
           </div>
         ) : (
-          <p className="dp-muted">No timestamp evidence for this issue.</p>
+          <p className="dp-muted">{t('quality:qualityIssue.no-timestamp-evidence-for-this-issue')}</p>
         )}
 
         <div>
@@ -192,15 +194,15 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
               src={audioSrc}
               controls
               preload="metadata"
-              aria-label={`Audio excerpt for ${issue.code}`}
+              aria-label={t('quality:qualityIssue.audio-excerpt-for', { v0: issue.code })}
             />
           ) : preview.isPending ? (
             <p data-testid={`quality-evidence-audio-loading-${issue.id}`} className="dp-muted">
-              Loading audio excerpt…
+              {t('quality:qualityIssue.loading-audio-excerpt')}
             </p>
           ) : (
             <p data-testid={`quality-evidence-audio-missing-${issue.id}`} className="dp-muted">
-              Audio excerpt unavailable (preview not ready).
+              {t('quality:qualityIssue.audio-excerpt-unavailable-preview-not-ready')}
             </p>
           )}
         </div>
@@ -212,7 +214,7 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
           </p>
         ) : (
           <p data-testid={`quality-evidence-metric-${issue.id}`} className="dp-muted">
-            No metric readout for this issue.
+            {t('quality:qualityIssue.no-metric-readout-for-this-issue')}
           </p>
         )}
 
@@ -228,7 +230,7 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
             }}
             onAuxClick={() => undefined}
           >
-            Open evidence artifact{issue.artifactId !== undefined ? ` ${issue.artifactId}` : ''}
+            {t('quality:qualityIssue.open-evidence-artifact')}{issue.artifactId !== undefined ? ` ${issue.artifactId}` : ''}
           </a>
         ) : null}
         {issue.artifactUrl !== undefined && !showArtifact ? (
@@ -240,17 +242,17 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
               void handleArtifactError();
             }}
           >
-            Retry evidence artifact
+            {t('quality:qualityIssue.retry-evidence-artifact')}
           </button>
         ) : null}
         {showUnavailable && issue.artifactId !== undefined ? (
           <p data-testid={`quality-evidence-unavailable-${issue.id}`} className="dp-muted">
-            Evidence unavailable for artifact {issue.artifactId} (signed link expired; refreshed once).
+            {t('quality:qualityIssue.evidence-unavailable-for-artifact')} {issue.artifactId} {t('quality:qualityIssue.signed-link-expired-refreshed-once')}
           </p>
         ) : null}
         {issue.artifactId === undefined && issue.artifactUrl === undefined ? (
           <p data-testid={`quality-evidence-no-artifact-${issue.id}`} className="dp-muted">
-            No linked artifact for this issue.
+            {t('quality:qualityIssue.no-linked-artifact-for-this-issue')}
           </p>
         ) : null}
       </div>
@@ -261,12 +263,12 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
             type="button"
             data-testid={`quality-jump-${issue.id}`}
             className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
-            title={`Jump to ${formatPlayerTime(issue.startMs)} in the timeline`}
+            title={t('quality:qualityIssue.jump-to-in-the-timeline2', { v0: formatPlayerTime(issue.startMs) })}
             onClick={() => {
               useTimelinePlayerStore.getState().requestSeek(issue.startMs ?? 0);
             }}
           >
-            Jump to timeline
+            {t('quality:qualityIssue.jump-to-timeline')}
           </button>
         ) : null}
         {issue.actions.canOpenReview ? (
@@ -274,15 +276,15 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
             data-testid={`quality-review-link-${issue.id}`}
             to={issue.reviewId !== undefined ? `/review?project=${encodeURIComponent(projectId)}` : `/review?project=${encodeURIComponent(projectId)}`}
           >
-            Open in review
+            {t('quality:qualityIssue.open-in-review')}
           </Link>
         ) : (
           <span
             data-testid={`quality-action-unavailable-${issue.id}`}
-            title="No open review for this segment."
+            title={t('quality:qualityIssue.no-open-review-for-this-segment')}
             className="dp-muted"
           >
-            Review unavailable
+            {t('quality:qualityIssue.review-unavailable')}
           </span>
         )}
         {issue.actions.canRetry && issue.segmentId !== undefined ? (
@@ -290,29 +292,29 @@ export function QualityIssue({ projectId, issue }: QualityIssueProps): ReactNode
             type="button"
             data-testid={`quality-retry-${issue.id}`}
             className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
-            title="Retry this segment upstream"
+            title={t('quality:qualityIssue.retry-this-segment-upstream')}
             onClick={() => {
               void handleRetry();
             }}
           >
-            Retry segment
+            {t('quality:qualityIssue.retry-segment')}
           </button>
         ) : (
           <span
             data-testid={`quality-retry-unavailable-${issue.id}`}
-            title={issue.actions.retryReason ?? 'Retry is not advertised for this project.'}
+            title={issue.actions.retryReason ?? t('quality:qualityIssue.retry-is-not-advertised-for-this')}
             className="dp-muted"
           >
-            Retry unavailable
+            {t('quality:qualityIssue.retry-unavailable')}
           </span>
         )}
       </div>
 
       {issue.status === 'Blocked' ? (
         <div data-testid={`quality-blocked-note-${issue.id}`}>
-          <Alert tone="error" title="Blocking issue">
+          <Alert tone="error" title={t('quality:qualityIssue.blocking-issue')}>
             <p>
-              <span aria-hidden="true">■</span> blocked · pattern hatched-block — this issue blocks the render.
+              <span aria-hidden="true">■</span> {t('quality:qualityIssue.blocked-pattern-hatched-block-this-issue')}
             </p>
           </Alert>
         </div>

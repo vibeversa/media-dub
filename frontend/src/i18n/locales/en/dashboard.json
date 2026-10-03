@@ -46,7 +46,8 @@
   "warnings": {
     "title": "Warnings",
     "viewAll": "View projects",
-    "openProject": "Open project"
+    "openProject": "Open project",
+    "unnamedFallback": "A warning needs attention."
   },
   "backlog": {
     "title": "Backlog",

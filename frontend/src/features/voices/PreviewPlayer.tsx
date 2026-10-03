@@ -6,6 +6,7 @@ import { Alert } from '../../components/Alert/Alert.js';
 import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { PREVIEW_DEFAULT_TEXT, isConsentError, isExpiredError, isQuotaError } from './types.js';
 import { fetchPreviewDetail, useRequestVoicePreview } from './useVoices.js';
+import { useTranslation } from 'react-i18next';
 
 export interface PreviewPlayerProps {
   readonly projectId: string;
@@ -28,7 +29,8 @@ type PreviewPhase = 'idle' | 'requesting' | 'ready' | 'pending' | 'quota' | 'con
  * tenant-policy message verbatim.
  */
 export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: PreviewPlayerProps): ReactNode {
-  const requestMutation = useRequestVoicePreview(projectId);
+    const { t } = useTranslation();
+const requestMutation = useRequestVoicePreview(projectId);
   const [phase, setPhase] = useState<PreviewPhase>('idle');
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
   const [previewStatus, setPreviewStatus] = useState<string | undefined>(undefined);
@@ -167,7 +169,7 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
     // landmarks and have no way to tell which voice each belongs to. Naming the
     // voice makes each one distinguishable, which is the whole point of a
     // landmark's accessible name.
-    <section data-testid="voices-preview" aria-label={`Voice preview: ${voiceId}`}>
+    <section data-testid="voices-preview" aria-label={t('voices:previewPlayer.voice-preview', { voiceId: voiceId })}>
       {phase === 'idle' ? (
         <button
           type="button"
@@ -177,7 +179,7 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
             void handleRequest();
           }}
         >
-          Preview voice
+          {t('voices:previewPlayer.preview-voice')}
         </button>
       ) : null}
       {phase === 'requesting' ? (
@@ -197,13 +199,13 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
               void handleAudioError();
             }}
           />
-          <p data-testid="voices-preview-status" className="dp-muted" title="Preview synthesis status.">
+          <p data-testid="voices-preview-status" className="dp-muted" title={t('voices:previewPlayer.preview-synthesis-status')}>
             {previewStatus ?? 'Completed'}
           </p>
           {resumePrompt ? (
             <div data-testid="voices-preview-resume">
-              <Alert tone="info" title="Preview link refreshed">
-                <p>Preview link expired and was refetched — press play to resume.</p>
+              <Alert tone="info" title={t('voices:previewPlayer.preview-link-refreshed')}>
+                <p>{t('voices:previewPlayer.preview-link-expired-and-was-refetched')}</p>
               </Alert>
             </div>
           ) : null}
@@ -215,14 +217,14 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
               void handleRequest();
             }}
           >
-            Preview again
+            {t('voices:previewPlayer.preview-again')}
           </button>
         </div>
       ) : null}
       {phase === 'pending' ? (
         <div data-testid="voices-preview-pending">
-          <Alert tone="info" title="Preview pending">
-            <p>Preview synthesis has not completed yet. Retry to refresh its status.</p>
+          <Alert tone="info" title={t('voices:previewPlayer.preview-pending')}>
+            <p>{t('voices:previewPlayer.preview-synthesis-has-not-completed-yet')}</p>
             <button
               type="button"
               data-testid="voices-preview-retry"
@@ -231,7 +233,7 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
                 void handleRetryDetail();
               }}
             >
-              Refresh preview status
+              {t('voices:previewPlayer.refresh-preview-status')}
             </button>
           </Alert>
         </div>
@@ -240,10 +242,10 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
         <div data-testid="voices-preview-quota">
           <Alert
             tone="warning"
-            title="Preview quota exceeded"
+            title={t('voices:previewPlayer.preview-quota-exceeded')}
             details={failure?.correlationId !== undefined && failure.correlationId !== '' ? `Ref: ${failure.correlationId}` : undefined}
           >
-            <p>Preview quota exceeded. Try again later once the quota window resets.</p>
+            <p>{t('voices:previewPlayer.preview-quota-exceeded-try-again-later')}</p>
           </Alert>
         </div>
       ) : null}
@@ -251,10 +253,10 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
         <div data-testid="voices-preview-consent">
           <Alert
             tone="error"
-            title="Voice consent required"
+            title={t('voices:previewPlayer.voice-consent-required')}
             details={failure?.correlationId !== undefined && failure.correlationId !== '' ? `Ref: ${failure.correlationId}` : undefined}
           >
-            <p>{failure?.message ?? 'Voice consent is required for this preview.'}</p>
+            <p>{failure?.message ?? t('voices:previewPlayer.voice-consent-is-required-for-this')}</p>
           </Alert>
         </div>
       ) : null}
@@ -262,10 +264,10 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
         <div data-testid="voices-preview-expired">
           <Alert
             tone="warning"
-            title="Preview link expired"
+            title={t('voices:previewPlayer.preview-link-expired')}
             details={failure?.correlationId !== undefined && failure.correlationId !== '' ? `Ref: ${failure.correlationId}` : undefined}
           >
-            <p>Preview link expired. Request a fresh preview to continue.</p>
+            <p>{t('voices:previewPlayer.preview-link-expired-request-a-fresh')}</p>
             <button
               type="button"
               data-testid="voices-preview-retry"
@@ -274,7 +276,7 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
                 void handleRequest();
               }}
             >
-              Request fresh preview
+              {t('voices:previewPlayer.request-fresh-preview')}
             </button>
           </Alert>
         </div>
@@ -283,7 +285,7 @@ export function PreviewPlayer({ projectId, speakerId, voiceId, previewText }: Pr
         <div data-testid="voices-preview-error">
           <Alert
             tone="error"
-            title="Preview failed"
+            title={t('voices:previewPlayer.preview-failed')}
             details={
               failure?.correlationId !== undefined && failure.correlationId !== ''
                 ? `${failure.message}\nRef: ${failure.correlationId}`

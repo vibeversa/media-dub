@@ -7,6 +7,7 @@ import { isExpiredError } from './types.js';
 import { FRAME_MS, SEEK_STEP_MS } from './types.js';
 import { invalidateTimelineMedia, usePreviewMedia } from './useTimelineMedia.js';
 import { useTimelinePlayerStore } from './playerStore.js';
+import { useTranslation } from 'react-i18next';
 
 export interface MediaPlayerSegment {
   readonly id: string;
@@ -36,7 +37,8 @@ const RATE_OPTIONS: readonly number[] = [0.5, 1, 1.25, 1.5, 2];
  * `useTimelinePlayerStore`, so no second media element is needed.
  */
 export function MediaPlayer({ projectId, segments = [], compact = false }: MediaPlayerProps): ReactNode {
-  const queryClient = useQueryClient();
+    const { t } = useTranslation();
+const queryClient = useQueryClient();
   const mediaQuery = usePreviewMedia(projectId);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLElement>(null);
@@ -390,7 +392,7 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
 
   if (mediaQuery.isPending) {
     return (
-      <section data-testid="timeline-player" aria-label="Media player" data-compact={compact ? 'true' : 'false'}>
+      <section data-testid="timeline-player" aria-label={t('timeline:mediaPlayer.media-player')} data-compact={compact ? 'true' : 'false'}>
         <div data-testid="timeline-loading">
           <Skeleton lines={3} />
         </div>
@@ -400,14 +402,14 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
 
   if (doubleExpired || (mediaQuery.isError && refetchedOnce)) {
     return (
-      <section data-testid="timeline-player" aria-label="Media player" data-compact={compact ? 'true' : 'false'}>
+      <section data-testid="timeline-player" aria-label={t('timeline:mediaPlayer.media-player2')} data-compact={compact ? 'true' : 'false'}>
         <div data-testid="timeline-error">
           <Alert
             tone="warning"
-            title="Media link expired"
+            title={t('timeline:mediaPlayer.media-link-expired')}
             details={mediaQuery.error?.correlationId !== undefined ? `Ref: ${mediaQuery.error.correlationId}` : undefined}
           >
-            <p>{localError ?? 'Media link expired. Request a fresh link to continue.'}</p>
+            <p>{localError ?? t('timeline:mediaPlayer.media-link-expired-request-a-fresh')}</p>
             <button
               type="button"
               data-testid="timeline-retry"
@@ -422,7 +424,7 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
                 })();
               }}
             >
-              Retry media link
+              {t('timeline:mediaPlayer.retry-media-link')}
             </button>
           </Alert>
         </div>
@@ -432,14 +434,14 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
 
   if (mediaQuery.isError || mediaUrl === undefined) {
     return (
-      <section data-testid="timeline-player" aria-label="Media player" data-compact={compact ? 'true' : 'false'}>
+      <section data-testid="timeline-player" aria-label={t('timeline:mediaPlayer.media-player3')} data-compact={compact ? 'true' : 'false'}>
         <div data-testid="timeline-error">
           <Alert
             tone="error"
-            title="Media unavailable"
+            title={t('timeline:mediaPlayer.media-unavailable')}
             details={mediaQuery.error?.correlationId !== undefined ? `Ref: ${mediaQuery.error.correlationId}` : undefined}
           >
-            <p>{mediaQuery.error?.message ?? 'Media could not be loaded. No data was changed.'}</p>
+            <p>{mediaQuery.error?.message ?? t('timeline:mediaPlayer.media-could-not-be-loaded-no')}</p>
             <button
               type="button"
               data-testid="timeline-retry"
@@ -448,7 +450,7 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
                 void mediaQuery.refetch();
               }}
             >
-              Retry media link
+              {t('timeline:mediaPlayer.retry-media-link2')}
             </button>
           </Alert>
         </div>
@@ -460,7 +462,7 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
     <section
       ref={containerRef}
       data-testid="timeline-player"
-      aria-label="Media player"
+      aria-label={t('timeline:mediaPlayer.media-player4')}
       data-compact={compact ? 'true' : 'false'}
       tabIndex={0}
       onKeyDown={handleKeyDown}
@@ -496,79 +498,79 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
         <button
           type="button"
           data-testid="timeline-seek-back"
-          aria-label="Back 5 seconds"
-          title="Back 5 seconds (ArrowLeft)"
+          aria-label={t('timeline:mediaPlayer.back-5-seconds')}
+          title={t('timeline:mediaPlayer.back-5-seconds-arrowleft')}
           className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
           onClick={() => {
             seekBy(-SEEK_STEP_MS);
           }}
         >
-          −5s
+          {t('timeline:mediaPlayer.5s')}
         </button>
         <button
           type="button"
           data-testid="timeline-seek-forward"
-          aria-label="Forward 5 seconds"
-          title="Forward 5 seconds (ArrowRight)"
+          aria-label={t('timeline:mediaPlayer.forward-5-seconds')}
+          title={t('timeline:mediaPlayer.forward-5-seconds-arrowright')}
           className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
           onClick={() => {
             seekBy(SEEK_STEP_MS);
           }}
         >
-          +5s
+          {t('timeline:mediaPlayer.5s2')}
         </button>
         {!compact ? (
           <>
             <button
               type="button"
               data-testid="timeline-frame-back"
-              aria-label="Back one frame"
-              title="Back one frame"
+              aria-label={t('timeline:mediaPlayer.back-one-frame')}
+              title={t('timeline:mediaPlayer.back-one-frame2')}
               className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
               onClick={() => {
                 seekBy(-FRAME_MS);
               }}
             >
-              −1f
+              {t('timeline:mediaPlayer.1f')}
             </button>
             <button
               type="button"
               data-testid="timeline-frame-forward"
-              aria-label="Forward one frame"
-              title="Forward one frame"
+              aria-label={t('timeline:mediaPlayer.forward-one-frame')}
+              title={t('timeline:mediaPlayer.forward-one-frame2')}
               className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
               onClick={() => {
                 seekBy(FRAME_MS);
               }}
             >
-              +1f
+              {t('timeline:mediaPlayer.1f2')}
             </button>
             <button
               type="button"
               data-testid="timeline-prev-segment"
-              aria-label="Previous segment"
+              aria-label={t('timeline:mediaPlayer.previous-segment')}
               className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
               onClick={() => {
                 stepSegment(-1);
               }}
             >
-              Prev
+              {t('timeline:mediaPlayer.prev')}
             </button>
             <button
               type="button"
               data-testid="timeline-next-segment"
-              aria-label="Next segment"
+              aria-label={t('timeline:mediaPlayer.next-segment')}
               className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
               onClick={() => {
                 stepSegment(1);
               }}
             >
-              Next
+              {t('timeline:mediaPlayer.next')}
             </button>
           </>
         ) : null}
         <label htmlFor={compact ? 'timeline-scrub-compact' : 'timeline-scrub'}>
-          Playback position
+          {t('timeline:mediaPlayer.playback-position')}
         </label>
         <input
           id={compact ? 'timeline-scrub-compact' : 'timeline-scrub'}
@@ -581,7 +583,7 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
           onChange={(event) => {
             seekTo(Number(event.target.value));
           }}
-          aria-valuetext={`${String(positionMs)} of ${String(scrubMax)} milliseconds`}
+          aria-valuetext={t('timeline:mediaPlayer.of-milliseconds', { v0: String(positionMs), v1: String(scrubMax) })}
         />
         <p data-testid="timeline-position" className="dp-muted">
           {`${String(positionMs)} ms`}
@@ -591,7 +593,7 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
         </p>
         {!compact ? (
           <>
-            <label htmlFor="timeline-volume">Volume</label>
+            <label htmlFor="timeline-volume">{t('timeline:mediaPlayer.volume')}</label>
             <input
               id="timeline-volume"
               data-testid="timeline-volume"
@@ -618,7 +620,7 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
             >
               {muted ? 'Unmute' : 'Mute'}
             </button>
-            <label htmlFor="timeline-rate">Speed</label>
+            <label htmlFor="timeline-rate">{t('timeline:mediaPlayer.speed')}</label>
             <select
               id="timeline-rate"
               data-testid="timeline-rate"
@@ -637,32 +639,32 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
               <button
                 type="button"
                 data-testid="timeline-fullscreen"
-                aria-label="Fullscreen"
-                title="Fullscreen"
+                aria-label={t('timeline:mediaPlayer.fullscreen')}
+                title={t('timeline:mediaPlayer.fullscreen2')}
                 className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
                 onClick={handleFullscreen}
               >
-                Fullscreen
+                {t('timeline:mediaPlayer.fullscreen3')}
               </button>
             ) : (
-              <span data-testid="timeline-fullscreen" title="Fullscreen is not supported on this device.">
-                Fullscreen unavailable
+              <span data-testid="timeline-fullscreen" title={t('timeline:mediaPlayer.fullscreen-is-not-supported-on-this')}>
+                {t('timeline:mediaPlayer.fullscreen-unavailable')}
               </span>
             )}
             {pipSupported ? (
               <button
                 type="button"
                 data-testid="timeline-pip"
-                aria-label="Picture in picture"
-                title="Picture in picture"
+                aria-label={t('timeline:mediaPlayer.picture-in-picture')}
+                title={t('timeline:mediaPlayer.picture-in-picture2')}
                 className="dp-btn dp-btn-secondary dp-btn-sm dp-focus-ring"
                 onClick={handlePictureInPicture}
               >
-                PiP
+                {t('timeline:mediaPlayer.pip')}
               </button>
             ) : (
-              <span data-testid="timeline-pip" title="Picture in picture is not supported on this device.">
-                PiP unavailable
+              <span data-testid="timeline-pip" title={t('timeline:mediaPlayer.picture-in-picture-is-not-supported')}>
+                {t('timeline:mediaPlayer.pip-unavailable')}
               </span>
             )}
             {playRegion !== undefined ? (
@@ -674,12 +676,12 @@ export function MediaPlayer({ projectId, segments = [], compact = false }: Media
         ) : null}
         {resumeNote ? (
           <p data-testid="timeline-resume-note" className="dp-muted">
-            Media link refreshed — playback resumed.
+            {t('timeline:mediaPlayer.media-link-refreshed-playback-resumed')}
           </p>
         ) : null}
         {expired && !refetchedOnce ? (
           <p data-testid="timeline-refreshing" className="dp-muted">
-            Refreshing expired media link…
+            {t('timeline:mediaPlayer.refreshing-expired-media-link')}
           </p>
         ) : null}
       </div>

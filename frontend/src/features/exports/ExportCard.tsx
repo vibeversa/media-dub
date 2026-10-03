@@ -16,6 +16,7 @@ import {
 } from './types.js';
 import type { OutputView } from './types.js';
 import { invalidateExports, useCreateExport, useProcessingRuns } from './useOutputs.js';
+import { useTranslation } from 'react-i18next';
 
 export interface ExportCardProps {
   readonly projectId: string;
@@ -45,7 +46,8 @@ const LATEST_RUN_VALUE = '';
  * misconfig) shows an `EmptyState` with a support hint and hides submit.
  */
 export function ExportCard({ projectId, output, availableFormats, availableTypes }: ExportCardProps): ReactNode {
-  const { push } = useToast();
+    const { t } = useTranslation();
+const { push } = useToast();
   const queryClient = useQueryClient();
   const createMutation = useCreateExport(projectId);
   const runsQuery = useProcessingRuns(projectId);
@@ -129,7 +131,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
         close();
         return;
       }
-      setSubmitError(appError.message ?? 'Export request failed. No data was changed.');
+      setSubmitError(appError.message ?? t('exports:exportCard.export-request-failed-no-data-was'));
     }
   }
 
@@ -145,7 +147,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
             setSubmitError(null);
           }}
         >
-          Request export
+          {t('exports:exportCard.request-export')}
         </button>
       </div>
     );
@@ -164,7 +166,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
           setSubmitError(null);
         }}
       >
-        Request export
+        {t('exports:exportCard.request-export2')}
       </button>
       {/*
         Task 041C: this was a `role="dialog"` panel rendered inline in the page.
@@ -174,13 +176,13 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
         dialog promises - no focus trap, no Escape, no focus restore. It is the
         `Modal` primitive now, which is what it was claiming to be.
       */}
-      <Modal open title="Request export" onClose={close}>
+      <Modal open title={t('exports:exportCard.request-export3')} onClose={close}>
         <div data-testid="export-dialog">
         {formatsEmpty ? (
           <div data-testid="export-empty-formats">
             <EmptyState
-              title="No export formats available"
-              description="The export catalog is empty. Contact support with the project id."
+              title={t('exports:exportCard.no-export-formats-available')}
+              description={t('exports:exportCard.the-export-catalog-is-empty-contact')}
             />
             <button
               type="button"
@@ -188,7 +190,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
               className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
               onClick={close}
             >
-              Close
+              {t('exports:exportCard.close')}
             </button>
           </div>
         ) : (
@@ -199,7 +201,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
             }}
           >
             <label>
-              Type
+              {t('exports:exportCard.type')}
               <select
                 data-testid="export-type"
                 value={selectedType}
@@ -215,7 +217,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
               </select>
             </label>
             <label>
-              Scope
+              {t('exports:exportCard.scope')}
               <select
                 data-testid="export-scope"
                 value={selectedScope}
@@ -231,7 +233,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
               </select>
             </label>
             <label>
-              Run
+              {t('exports:exportCard.run')}
               <select
                 data-testid="export-run"
                 value={selectedRun}
@@ -240,7 +242,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
                 }}
               >
                 <option value={LATEST_RUN_VALUE} data-testid="export-run-option-latest">
-                  Latest run
+                  {t('exports:exportCard.latest-run')}
                 </option>
                 {runs.map((run) => (
                   <option key={run.id} value={run.id} data-testid={`export-run-option-${run.id}`}>
@@ -251,11 +253,11 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
             </label>
             {runsQuery.isError ? (
               <p data-testid="export-runs-error" className="dp-muted">
-                {runsQuery.error?.message ?? 'Runs could not be loaded. Latest run will be used.'}
+                {runsQuery.error?.message ?? t('exports:exportCard.runs-could-not-be-loaded-latest')}
               </p>
             ) : null}
             <label>
-              Format
+              {t('exports:exportCard.format')}
               <select
                 data-testid="export-format"
                 value={selectedFormat}
@@ -279,11 +281,11 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
                   setAllowPartial(event.target.checked);
                 }}
               />
-              Allow partial export
+              {t('exports:exportCard.allow-partial-export')}
             </label>
             {submitError !== null ? (
               <div data-testid="export-error">
-                <Alert tone="error" title="Export request failed">
+                <Alert tone="error" title={t('exports:exportCard.export-request-failed')}>
                   <p data-testid="export-error-message">{submitError}</p>
                 </Alert>
               </div>
@@ -295,7 +297,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
                 className="dp-btn dp-btn-primary dp-btn-md dp-focus-ring"
                 disabled={createMutation.isPending}
               >
-                Submit export
+                {t('exports:exportCard.submit-export')}
               </button>
               <button
                 type="button"
@@ -303,7 +305,7 @@ export function ExportCard({ projectId, output, availableFormats, availableTypes
                 className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
                 onClick={close}
               >
-                Cancel
+                {t('exports:exportCard.cancel')}
               </button>
             </div>
           </form>

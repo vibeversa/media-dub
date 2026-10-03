@@ -13,6 +13,7 @@ import { Waveform } from './Waveform.js';
 import { TIMELINE_LIST_MEDIA_QUERY } from './timelineResponsive.js';
 import { TimelineListMode } from './TimelineListMode.js';
 import type { TimelineIssue } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface TimelineWorkspaceProps {
   readonly projectId: string;
@@ -27,7 +28,8 @@ export interface TimelineWorkspaceProps {
  * surface only jumps the playhead). Timing stays display-only throughout.
  */
 export function TimelineWorkspace({ projectId }: TimelineWorkspaceProps): ReactNode {
-  const transcriptQuery = useTranscript(projectId);
+    const { t } = useTranslation();
+const transcriptQuery = useTranscript(projectId);
 
   // GAP-023: below the tablet breakpoint the canvas waveform plus the
   // five-lane timeline degrade to a stacked list of the same segments.
@@ -53,7 +55,7 @@ export function TimelineWorkspace({ projectId }: TimelineWorkspaceProps): ReactN
 
   if (transcriptQuery.isPending) {
     return (
-      <section data-testid="timeline-workspace" aria-label="Timeline workspace">
+      <section data-testid="timeline-workspace" aria-label={t('timeline:timelineWorkspace.timeline-workspace')}>
         <div data-testid="timeline-workspace-loading">
           <Skeleton lines={6} />
         </div>
@@ -63,11 +65,11 @@ export function TimelineWorkspace({ projectId }: TimelineWorkspaceProps): ReactN
 
   if (transcriptQuery.isError) {
     return (
-      <section data-testid="timeline-workspace" aria-label="Timeline workspace">
+      <section data-testid="timeline-workspace" aria-label={t('timeline:timelineWorkspace.timeline-workspace2')}>
         <div data-testid="timeline-workspace-error">
           <ErrorState
-            title="Timeline unavailable"
-            message={transcriptQuery.error?.message ?? 'The timeline could not be loaded. No data was changed.'}
+            title={t('timeline:timelineWorkspace.timeline-unavailable')}
+            message={transcriptQuery.error?.message ?? t('timeline:timelineWorkspace.the-timeline-could-not-be-loaded')}
             correlationId={transcriptQuery.error?.correlationId}
             onRetry={() => {
               void transcriptQuery.refetch();
@@ -80,12 +82,12 @@ export function TimelineWorkspace({ projectId }: TimelineWorkspaceProps): ReactN
 
   if (segments.length === 0) {
     return (
-      <section data-testid="timeline-workspace" aria-label="Timeline workspace">
+      <section data-testid="timeline-workspace" aria-label={t('timeline:timelineWorkspace.timeline-workspace3')}>
         <div data-testid="timeline-workspace-empty">
-          <Alert tone="info" title="No timeline yet">
-            <p>No segments exist for this project yet. Start processing to populate the timeline.</p>
+          <Alert tone="info" title={t('timeline:timelineWorkspace.no-timeline-yet')}>
+            <p>{t('timeline:timelineWorkspace.no-segments-exist-for-this-project')}</p>
             <Link data-testid="timeline-workspace-empty-link" to={`/projects/${projectId}`}>
-              Go to processing
+              {t('timeline:timelineWorkspace.go-to-processing')}
             </Link>
           </Alert>
         </div>
@@ -94,7 +96,7 @@ export function TimelineWorkspace({ projectId }: TimelineWorkspaceProps): ReactN
   }
 
   return (
-    <section data-testid="timeline-workspace" aria-label="Timeline workspace">
+    <section data-testid="timeline-workspace" aria-label={t('timeline:timelineWorkspace.timeline-workspace4')}>
       <div data-testid="timeline-workspace-player">
         <MediaPlayer projectId={projectId} segments={segments} />
       </div>

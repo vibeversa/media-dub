@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { iconForQuotaState, toneForQuotaState } from './types.js';
 import type { QuotaState } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface QuotaBadgeProps {
   readonly state: QuotaState;
@@ -16,7 +17,8 @@ export interface QuotaBadgeProps {
  * Never renders reservation ids or provider internals.
  */
 export function QuotaBadge({ state, remaining }: QuotaBadgeProps): ReactNode {
-  const tone = toneForQuotaState(state);
+    const { t } = useTranslation();
+const tone = toneForQuotaState(state);
   const icon = iconForQuotaState(state);
   return (
     <span data-testid={`quota-badge-${state}`} data-tone={tone} data-state={state}>
@@ -25,7 +27,7 @@ export function QuotaBadge({ state, remaining }: QuotaBadgeProps): ReactNode {
       </span>{' '}
       <span data-testid="quota-badge-state">{state}</span>
       {remaining !== undefined ? (
-        <span data-testid="quota-badge-remaining"> · {String(remaining)} remaining</span>
+        <span data-testid="quota-badge-remaining"> · {String(remaining)} {t('cost:quotaBadge.remaining')}</span>
       ) : null}
     </span>
   );

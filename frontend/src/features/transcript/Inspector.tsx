@@ -5,6 +5,7 @@ import { useToast } from '../../components/Toast/useToast.js';
 import { deriveLineage, isSelectionConflict } from './types.js';
 import type { TranscriptSegmentView } from './types.js';
 import { invalidateTranscript, useCreateManualTranscriptVersion, useSelectTranscriptVersion, useTranscriptSegment } from './useTranscript.js';
+import { useTranslation } from 'react-i18next';
 
 export interface InspectorProps {
   readonly projectId: string;
@@ -25,7 +26,8 @@ export interface InspectorProps {
  * stale banner via `onStale` and preserves the draft (never auto-resubmits).
  */
 export function Inspector({ projectId, segment, onStale, staleVersion }: InspectorProps): ReactNode {
-  const { push } = useToast();
+    const { t } = useTranslation();
+const { push } = useToast();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
   const [draftDirty, setDraftDirty] = useState(false);
@@ -56,8 +58,8 @@ export function Inspector({ projectId, segment, onStale, staleVersion }: Inspect
 
   if (segment === undefined || full === undefined) {
     return (
-      <aside data-testid="transcript-inspector" aria-label="Segment inspector">
-        <p data-testid="transcript-inspector-empty">Select a segment to inspect versions.</p>
+      <aside data-testid="transcript-inspector" aria-label={t('transcript:inspector.segment-inspector')}>
+        <p data-testid="transcript-inspector-empty">{t('transcript:inspector.select-a-segment-to-inspect-versions')}</p>
       </aside>
     );
   }
@@ -80,7 +82,7 @@ export function Inspector({ projectId, segment, onStale, staleVersion }: Inspect
         await invalidateTranscript(queryClient, projectId, current.id);
         return;
       }
-      push('error', appError.message ?? 'Version selection failed.');
+      push('error', appError.message ?? t('transcript:inspector.version-selection-failed'));
     }
   }
 
@@ -108,27 +110,27 @@ export function Inspector({ projectId, segment, onStale, staleVersion }: Inspect
       }
       setDraft(previousDraft);
       setDraftDirty(true);
-      push('error', appError.message ?? 'Manual version failed; draft kept.');
+      push('error', appError.message ?? t('transcript:inspector.manual-version-failed-draft-kept'));
     }
   }
 
   return (
-    <aside data-testid="transcript-inspector" aria-label="Segment inspector">
-      <h3 data-testid="transcript-inspector-title">Segment {current.id}</h3>
-      <section aria-label="Original text">
-        <h4>Original</h4>
+    <aside data-testid="transcript-inspector" aria-label={t('transcript:inspector.segment-inspector2')}>
+      <h3 data-testid="transcript-inspector-title">{t('transcript:inspector.segment')} {current.id}</h3>
+      <section aria-label={t('transcript:inspector.original-text')}>
+        <h4>{t('transcript:inspector.original')}</h4>
         <p data-testid="transcript-original-text">{lineage?.originalText === '' ? '(empty)' : (lineage?.originalText ?? '')}</p>
-        <span data-testid="transcript-badge-original-inspector">original</span>
+        <span data-testid="transcript-badge-original-inspector">{t('transcript:inspector.original2')}</span>
       </section>
-      <section aria-label="Selected version">
-        <h4>Selected</h4>
+      <section aria-label={t('transcript:inspector.selected-version')}>
+        <h4>{t('transcript:inspector.selected')}</h4>
         <p data-testid="transcript-selected-text">{lineage?.selectedText === '' ? '(empty)' : (lineage?.selectedText ?? '')}</p>
         <span data-testid="transcript-badge-selected-inspector">{lineage?.selectedBadge ?? 'selected'}</span>
-        {lineage?.hasManual === true ? <span data-testid="transcript-badge-manual-inspector">manual</span> : null}
+        {lineage?.hasManual === true ? <span data-testid="transcript-badge-manual-inspector">{t('transcript:inspector.manual')}</span> : null}
       </section>
-      <section aria-label="Manual edit">
-        <h4>Manual draft</h4>
-        <label htmlFor="transcript-manual-draft">Manual text</label>
+      <section aria-label={t('transcript:inspector.manual-edit')}>
+        <h4>{t('transcript:inspector.manual-draft')}</h4>
+        <label htmlFor="transcript-manual-draft">{t('transcript:inspector.manual-text')}</label>
         <textarea
           id="transcript-manual-draft"
           data-testid="transcript-manual-draft"
@@ -139,7 +141,7 @@ export function Inspector({ projectId, segment, onStale, staleVersion }: Inspect
             setDraftDirty(true);
           }}
         />
-        {draftDirty ? <p data-testid="transcript-draft-dirty">Unsaved draft</p> : null}
+        {draftDirty ? <p data-testid="transcript-draft-dirty">{t('transcript:inspector.unsaved-draft')}</p> : null}
         <button
           type="button"
           data-testid="transcript-manual-save"
@@ -149,12 +151,12 @@ export function Inspector({ projectId, segment, onStale, staleVersion }: Inspect
             void handleManualSave();
           }}
         >
-          Save manual version
+          {t('transcript:inspector.save-manual-version')}
         </button>
-        {manualMutation.isPending ? <p data-testid="transcript-manual-saving">Saving…</p> : null}
+        {manualMutation.isPending ? <p data-testid="transcript-manual-saving">{t('transcript:inspector.saving')}</p> : null}
       </section>
-      <section aria-label="Version history">
-        <h4>Versions</h4>
+      <section aria-label={t('transcript:inspector.version-history')}>
+        <h4>{t('transcript:inspector.versions')}</h4>
         <button
           type="button"
           data-testid="transcript-advanced-toggle"
@@ -177,15 +179,15 @@ export function Inspector({ projectId, segment, onStale, staleVersion }: Inspect
               {advancedOpen ? (
                 <dl data-testid={`transcript-version-meta-${version.id}`}>
                   <div>
-                    <dt>Provider</dt>
+                    <dt>{t('transcript:inspector.provider')}</dt>
                     <dd>{version.provider}</dd>
                   </div>
                   <div>
-                    <dt>Model</dt>
+                    <dt>{t('transcript:inspector.model')}</dt>
                     <dd>{version.model}</dd>
                   </div>
                   <div>
-                    <dt>Version</dt>
+                    <dt>{t('transcript:inspector.version')}</dt>
                     <dd>{`v${String(version.versionNumber)}`}</dd>
                   </div>
                 </dl>
@@ -200,13 +202,13 @@ export function Inspector({ projectId, segment, onStale, staleVersion }: Inspect
                     void handleSelect(version.id);
                   }}
                 >
-                  Select this version
+                  {t('transcript:inspector.select-this-version')}
                 </button>
               )}
             </li>
           ))}
         </ul>
-        {detailQuery.isFetching ? <p data-testid="transcript-detail-refreshing">Refreshing versions…</p> : null}
+        {detailQuery.isFetching ? <p data-testid="transcript-detail-refreshing">{t('transcript:inspector.refreshing-versions')}</p> : null}
       </section>
     </aside>
   );

@@ -6,6 +6,7 @@ import { normalizeError } from '../../api/errors/index.js';
 import type { AppError } from '../../api/errors/index.js';
 import { queryKeys } from '../../api/queryKeys/index.js';
 import { useIsAuthenticated } from '../auth/useSession.js';
+import i18n from '../../i18n/i18n.js';
 
 /**
  * Dashboard data surface (Task 020) over the Task 017 transport.
@@ -211,7 +212,7 @@ export function getWarningViews(summary: Partial<DashboardSummary> | undefined):
     const projectId = toNonEmptyString(record['projectId']);
     return {
       code: toNonEmptyString(record['code']) ?? `WARNING_${index}`,
-      message: toNonEmptyString(record['message']) ?? 'A warning needs attention.',
+      message: toNonEmptyString(record['message']) ?? i18n.t('dashboard:warnings.unnamedFallback'),
       projectId,
     };
   });

@@ -19,6 +19,7 @@ import {
 } from './types.js';
 import type { QualityFilters } from './types.js';
 import { useQuality } from './useQuality.js';
+import { useTranslation } from 'react-i18next';
 
 export interface QualityWorkspaceProps {
   readonly projectId: string;
@@ -37,7 +38,8 @@ export interface QualityWorkspaceProps {
  * live updates via the Task 026 registry, never zeros.
  */
 export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNode {
-  const [searchParams, setSearchParams] = useSearchParams();
+    const { t } = useTranslation();
+const [searchParams, setSearchParams] = useSearchParams();
   const urlFilters = useMemo(() => qualityFiltersFromSearchParams(searchParams), [searchParams]);
   const [draft, setDraft] = useState<QualityFilters>(urlFilters);
   const [renderLimit, setRenderLimit] = useState(QUALITY_RENDER_LIMIT);
@@ -92,7 +94,7 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
   if (projectId === '') {
     body = (
       <div data-testid="quality-needs-project">
-        <EmptyState title="Select a project" description="Enter a project id to load its quality checks." />
+        <EmptyState title={t('quality:qualityWorkspace.select-a-project')} description={t('quality:qualityWorkspace.enter-a-project-id-to-load')} />
       </div>
     );
   } else if (qualityQuery.isPending && qualityQuery.data === undefined) {
@@ -105,8 +107,8 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
     body = (
       <div data-testid="quality-error">
         <ErrorState
-          title="Quality checks unavailable"
-          message={qualityQuery.error?.message ?? 'Quality checks could not be loaded. No data was changed.'}
+          title={t('quality:qualityWorkspace.quality-checks-unavailable')}
+          message={qualityQuery.error?.message ?? t('quality:qualityWorkspace.quality-checks-could-not-be-loaded')}
           correlationId={qualityQuery.error?.correlationId}
           onRetry={() => {
             void qualityQuery.refetch();
@@ -118,15 +120,15 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
     body = (
       <div data-testid="quality-pending">
         <Skeleton lines={6} />
-        <p className="dp-muted">Quality checks are still running — live updates apply automatically.</p>
+        <p className="dp-muted">{t('quality:qualityWorkspace.quality-checks-are-still-running-live')}</p>
       </div>
     );
   } else if (issues.length === 0) {
     body = (
       <div data-testid="quality-empty-passed">
         <EmptyState
-          title="Quality passed"
-          description="No quality issues for this project. All segments are clean."
+          title={t('quality:qualityWorkspace.quality-passed')}
+          description={t('quality:qualityWorkspace.no-quality-issues-for-this-project')}
         />
       </div>
     );
@@ -134,8 +136,8 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
     body = (
       <div data-testid="quality-empty-filtered">
         <EmptyState
-          title="No issues match these filters"
-          description="Filters exclude every quality issue. Clear them to see the full list."
+          title={t('quality:qualityWorkspace.no-issues-match-these-filters')}
+          description={t('quality:qualityWorkspace.filters-exclude-every-quality-issue-clear')}
           action={
             <button
               type="button"
@@ -143,7 +145,7 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
               className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
               onClick={clearFilters}
             >
-              Clear filters
+              {t('quality:qualityWorkspace.clear-filters')}
             </button>
           }
         />
@@ -185,13 +187,12 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
   }
 
   return (
-    <section data-testid="quality-workspace" aria-label="Quality control" data-project={projectId}>
+    <section data-testid="quality-workspace" aria-label={t('quality:qualityWorkspace.quality-control')} data-project={projectId}>
       {blockedTotal > 0 ? (
         <div data-testid="quality-blocked-banner">
-          <Alert tone="error" title="Blocking quality issues need attention">
+          <Alert tone="error" title={t('quality:qualityWorkspace.blocking-quality-issues-need-attention')}>
             <p data-testid="quality-blocked-count">
-              <span aria-hidden="true">■</span> blocked · pattern hatched-block — {String(blockedTotal)} blocking
-              issue(s) pinned above all other content.
+              <span aria-hidden="true">■</span> {t('quality:qualityWorkspace.blocked-pattern-hatched-block')} {String(blockedTotal)} {t('quality:qualityWorkspace.blocking-issue-s-pinned-above-all')}
             </p>
           </Alert>
         </div>
@@ -213,12 +214,12 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
       >
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
           <label>
-            Severity
+            {t('quality:qualityWorkspace.severity')}
             <input
               data-testid="quality-filter-severity"
               value={draft.severity}
               autoComplete="off"
-              placeholder="e.g. Blocking"
+              placeholder={t('quality:qualityWorkspace.e-g-blocking')}
               onChange={(event) => {
                 const next = event.target.value;
                 setDraft((prev) => ({ ...prev, severity: next }));
@@ -226,12 +227,12 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
             />
           </label>
           <label>
-            Status
+            {t('quality:qualityWorkspace.status')}
             <input
               data-testid="quality-filter-status"
               value={draft.status}
               autoComplete="off"
-              placeholder="e.g. Blocked"
+              placeholder={t('quality:qualityWorkspace.e-g-blocked')}
               onChange={(event) => {
                 const next = event.target.value;
                 setDraft((prev) => ({ ...prev, status: next }));
@@ -239,12 +240,12 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
             />
           </label>
           <label>
-            Scope
+            {t('quality:qualityWorkspace.scope')}
             <input
               data-testid="quality-filter-scope"
               value={draft.scope}
               autoComplete="off"
-              placeholder="e.g. segment"
+              placeholder={t('quality:qualityWorkspace.e-g-segment')}
               onChange={(event) => {
                 const next = event.target.value;
                 setDraft((prev) => ({ ...prev, scope: next }));
@@ -252,7 +253,7 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
             />
           </label>
           <label>
-            Group by
+            {t('quality:qualityWorkspace.group-by')}
             <select
               data-testid="quality-group"
               value={draft.group}
@@ -262,8 +263,8 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
                 writeFilters({ ...draft, group: next });
               }}
             >
-              <option value="segment">By segment</option>
-              <option value="code">By code</option>
+              <option value="segment">{t('quality:qualityWorkspace.by-segment')}</option>
+              <option value="code">{t('quality:qualityWorkspace.by-code')}</option>
             </select>
           </label>
           <button
@@ -271,7 +272,7 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
             data-testid="quality-apply-filters"
             className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
           >
-            Apply filters
+            {t('quality:qualityWorkspace.apply-filters')}
           </button>
           <button
             type="button"
@@ -279,15 +280,15 @@ export function QualityWorkspace({ projectId }: QualityWorkspaceProps): ReactNod
             className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
             onClick={clearFilters}
           >
-            Clear filters
+            {t('quality:qualityWorkspace.clear-filters2')}
           </button>
         </div>
       </form>
 
       {qualityQuery.isError && qualityQuery.data !== undefined ? (
         <div data-testid="quality-stale">
-          <Alert tone="warning" title="Quality refresh failed" details={qualityQuery.error?.correlationId}>
-            <p>Showing the last loaded checks. New flags may be missing.</p>
+          <Alert tone="warning" title={t('quality:qualityWorkspace.quality-refresh-failed')} details={qualityQuery.error?.correlationId}>
+            <p>{t('quality:qualityWorkspace.showing-the-last-loaded-checks-new')}</p>
           </Alert>
         </div>
       ) : null}

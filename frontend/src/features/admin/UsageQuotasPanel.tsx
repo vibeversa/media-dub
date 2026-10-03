@@ -8,6 +8,7 @@ import { useAppStore } from '../../stores/index.js';
 import { deriveQuotaState, iconForQuotaState, isQuotaBlocking, toneForQuotaState } from '../cost/types.js';
 import { isAdminForbiddenError, usageRatio } from './types.js';
 import { useAdminQuotas, useAdminUsage } from './useAdminQueries.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Usage-vs-quota panel (Task 036).
@@ -19,14 +20,15 @@ import { useAdminQuotas, useAdminUsage } from './useAdminQueries.js';
  * Counts and bytes only; reservation ids never enter these shapes.
  */
 export function UsageQuotasPanel(): ReactNode {
-  const locale = useAppStore((s) => s.locale);
+    const { t } = useTranslation();
+const locale = useAppStore((s) => s.locale);
   const usageQuery = useAdminUsage();
   const quotasQuery = useAdminQuotas();
 
   const loading = (usageQuery.isPending && usageQuery.data === undefined) || (quotasQuery.isPending && quotasQuery.data === undefined);
   if (loading) {
     return (
-      <section data-testid="admin-usage" aria-label="Usage and quotas">
+      <section data-testid="admin-usage" aria-label={t('admin:usageQuotasPanel.usage-and-quotas')}>
         <div data-testid="admin-usage-loading">
           <Skeleton lines={5} />
         </div>
@@ -37,11 +39,11 @@ export function UsageQuotasPanel(): ReactNode {
   const forbidden = isAdminForbiddenError(usageQuery.error) || isAdminForbiddenError(quotasQuery.error);
   if (forbidden && usageQuery.data === undefined && quotasQuery.data === undefined) {
     return (
-      <section data-testid="admin-usage" aria-label="Usage and quotas">
+      <section data-testid="admin-usage" aria-label={t('admin:usageQuotasPanel.usage-and-quotas2')}>
         <div data-testid="admin-usage-forbidden">
           <EmptyState
-            title="Usage unavailable"
-            description="You do not have permission to view usage. Contact your tenant admin for access."
+            title={t('admin:usageQuotasPanel.usage-unavailable')}
+            description={t('admin:usageQuotasPanel.you-do-not-have-permission-to')}
           />
         </div>
       </section>
@@ -52,11 +54,11 @@ export function UsageQuotasPanel(): ReactNode {
   if (failed) {
     const error = (usageQuery.isError ? usageQuery.error : undefined) ?? (quotasQuery.isError ? quotasQuery.error : undefined);
     return (
-      <section data-testid="admin-usage" aria-label="Usage and quotas">
+      <section data-testid="admin-usage" aria-label={t('admin:usageQuotasPanel.usage-and-quotas3')}>
         <div data-testid="admin-usage-error">
           <ErrorState
-            title="Usage unavailable"
-            message={error?.message ?? 'Usage could not be loaded. No data was changed.'}
+            title={t('admin:usageQuotasPanel.usage-unavailable2')}
+            message={error?.message ?? t('admin:usageQuotasPanel.usage-could-not-be-loaded-no')}
             correlationId={error?.correlationId}
             onRetry={() => {
               void usageQuery.refetch();
@@ -72,9 +74,9 @@ export function UsageQuotasPanel(): ReactNode {
   const quotas = quotasQuery.data;
   if (usage === undefined && quotas === undefined) {
     return (
-      <section data-testid="admin-usage" aria-label="Usage and quotas">
+      <section data-testid="admin-usage" aria-label={t('admin:usageQuotasPanel.usage-and-quotas4')}>
         <div data-testid="admin-usage-empty">
-          <EmptyState title="No usage data" description="Usage aggregates are not reported yet." />
+          <EmptyState title={t('admin:usageQuotasPanel.no-usage-data')} description={t('admin:usageQuotasPanel.usage-aggregates-are-not-reported-yet')} />
         </div>
       </section>
     );
@@ -92,24 +94,24 @@ export function UsageQuotasPanel(): ReactNode {
   const storagePercent = Math.min(100, Math.round(storageRatio * 100));
 
   return (
-    <section data-testid="admin-usage" aria-label="Usage and quotas" data-quota={quotaState} data-blocked={isQuotaBlocking(quotaState) ? 'true' : 'false'}>
-      <h3>Usage vs quotas</h3>
+    <section data-testid="admin-usage" aria-label={t('admin:usageQuotasPanel.usage-and-quotas5')} data-quota={quotaState} data-blocked={isQuotaBlocking(quotaState) ? 'true' : 'false'}>
+      <h3>{t('admin:usageQuotasPanel.usage-vs-quotas')}</h3>
       <div data-testid={`admin-usage-quota-${quotaState}`} data-tone={tone}>
-        <Alert tone={tone} title={`Quota ${quotaState}`}>
+        <Alert tone={tone} title={t('admin:usageQuotasPanel.quota', { quotaState: quotaState })}>
           <p>
             <span data-testid="admin-usage-quota-icon" aria-hidden="true">
               {icon}
             </span>{' '}
             <span data-testid="admin-usage-quota-state">{quotaState}</span>
             {usage?.projectsTodayRemaining !== undefined ? (
-              <span data-testid="admin-usage-quota-remaining"> · {String(usage.projectsTodayRemaining)} projects remaining today</span>
+              <span data-testid="admin-usage-quota-remaining"> · {String(usage.projectsTodayRemaining)} {t('admin:usageQuotasPanel.projects-remaining-today')}</span>
             ) : null}
           </p>
         </Alert>
       </div>
       <dl data-testid="admin-usage-bars">
         <div>
-          <dt>Storage</dt>
+          <dt>{t('admin:usageQuotasPanel.storage')}</dt>
           <dd data-testid="admin-usage-storage">
             {usage?.storageUsedBytes !== undefined && usage?.storageQuotaBytes !== undefined
               ? `${formatNumber(usage.storageUsedBytes, { locale })} / ${formatNumber(usage.storageQuotaBytes, { locale })} (${String(storagePercent)}%)`
@@ -117,44 +119,44 @@ export function UsageQuotasPanel(): ReactNode {
           </dd>
         </div>
         <div>
-          <dt>Month cost</dt>
+          <dt>{t('admin:usageQuotasPanel.month-cost')}</dt>
           <dd data-testid="admin-usage-cost">
             {usage?.monthCostUsd !== undefined ? formatNumber(usage.monthCostUsd, { locale, style: 'currency', currency: 'USD' }) : 'Unavailable'}
           </dd>
         </div>
         <div>
-          <dt>Active runs</dt>
+          <dt>{t('admin:usageQuotasPanel.active-runs')}</dt>
           <dd data-testid="admin-usage-runs">{usage !== undefined ? String(usage.activeRuns) : 'Unavailable'}</dd>
         </div>
         <div>
-          <dt>Pending reviews</dt>
+          <dt>{t('admin:usageQuotasPanel.pending-reviews')}</dt>
           <dd data-testid="admin-usage-reviews">{usage !== undefined ? String(usage.pendingReviews) : 'Unavailable'}</dd>
         </div>
         <div>
-          <dt>Total projects</dt>
+          <dt>{t('admin:usageQuotasPanel.total-projects')}</dt>
           <dd data-testid="admin-usage-projects">{usage !== undefined ? String(usage.totalProjects) : 'Unavailable'}</dd>
         </div>
       </dl>
       {quotas !== undefined ? (
         <dl data-testid="admin-quotas-limits">
           <div>
-            <dt>Max active projects</dt>
+            <dt>{t('admin:usageQuotasPanel.max-active-projects')}</dt>
             <dd data-testid="admin-quotas-active">{quotas.maxActiveProjects !== undefined ? String(quotas.maxActiveProjects) : '—'}</dd>
           </div>
           <div>
-            <dt>Max projects per day</dt>
+            <dt>{t('admin:usageQuotasPanel.max-projects-per-day')}</dt>
             <dd data-testid="admin-quotas-daily">{quotas.maxProjectsPerDay !== undefined ? String(quotas.maxProjectsPerDay) : '—'}</dd>
           </div>
           <div>
-            <dt>Max cost per project</dt>
+            <dt>{t('admin:usageQuotasPanel.max-cost-per-project')}</dt>
             <dd data-testid="admin-quotas-cost">{quotas.maxCostPerProject !== undefined ? String(quotas.maxCostPerProject) : '—'}</dd>
           </div>
           <div>
-            <dt>Max storage bytes</dt>
+            <dt>{t('admin:usageQuotasPanel.max-storage-bytes')}</dt>
             <dd data-testid="admin-quotas-storage">{quotas.maxStorageBytes !== undefined ? String(quotas.maxStorageBytes) : '—'}</dd>
           </div>
           <div>
-            <dt>Max concurrent stages</dt>
+            <dt>{t('admin:usageQuotasPanel.max-concurrent-stages')}</dt>
             <dd data-testid="admin-quotas-stages">{quotas.maxConcurrentStagesPerTenant !== undefined ? String(quotas.maxConcurrentStagesPerTenant) : '—'}</dd>
           </div>
         </dl>

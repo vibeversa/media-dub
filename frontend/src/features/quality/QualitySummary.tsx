@@ -4,6 +4,7 @@ import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { queryKeys } from '../../api/queryKeys/index.js';
 import { iconForQualityStatus, labelForQualityStatus, patternForQualityStatus } from './types.js';
 import type { QualityBackendStatus, QualitySummaryView } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface QualitySummaryProps {
   readonly projectId: string;
@@ -46,22 +47,23 @@ function countFor(summary: QualitySummaryView, status: QualityBackendStatus): nu
  * by the workspace.
  */
 export function QualitySummary({ projectId, summary, isPending, isQcPending }: QualitySummaryProps): ReactNode {
-  if (isPending || isQcPending || summary === undefined) {
+    const { t } = useTranslation();
+if (isPending || isQcPending || summary === undefined) {
     return (
-      <section data-testid="quality-summary" aria-label="Quality summary">
+      <section data-testid="quality-summary" aria-label={t('quality:qualitySummary.quality-summary')}>
         <div data-testid="quality-summary-loading">
           <Skeleton lines={3} />
         </div>
         <p data-testid="quality-pending" className="dp-muted">
-          Quality checks are still running — live updates apply automatically.
+          {t('quality:qualitySummary.quality-checks-are-still-running-live')}
         </p>
       </section>
     );
   }
 
   return (
-    <section data-testid="quality-summary" aria-label="Quality summary">
-      <h3>Quality summary</h3>
+    <section data-testid="quality-summary" aria-label={t('quality:qualitySummary.quality-summary2')}>
+      <h3>{t('quality:qualitySummary.quality-summary3')}</h3>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         {STATE_ORDER.map((status) => {
           const count = countFor(summary, status);
@@ -70,7 +72,7 @@ export function QualitySummary({ projectId, summary, isPending, isQcPending }: Q
           const pattern = patternForQualityStatus(status);
           return (
             <li key={status} data-testid={`quality-summary-${label}`} data-count={String(count)} data-pattern={pattern}>
-              <span data-testid={`quality-badge-${label}`} data-pattern={pattern} title={`Pattern: ${pattern}`}>
+              <span data-testid={`quality-badge-${label}`} data-pattern={pattern} title={t('quality:qualitySummary.pattern', { pattern: pattern })}>
                 <span data-testid={`quality-badge-icon-${label}`} aria-hidden="true">
                   {icon}
                 </span>{' '}
@@ -82,7 +84,7 @@ export function QualitySummary({ projectId, summary, isPending, isQcPending }: Q
                 data-testid={`quality-summary-link-${label}`}
                 to={`/projects/${projectId}/quality?status=${encodeURIComponent(status)}`}
               >
-                View {label} issues
+                {t('quality:qualitySummary.view')} {label} {t('quality:qualitySummary.issues')}
               </Link>
             </li>
           );

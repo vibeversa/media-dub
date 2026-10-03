@@ -10,6 +10,7 @@ import type { QueryKey, SseKeyIds } from '../api/queryKeys/index.js';
 import { useIsAuthenticated } from '../features/auth/useSession.js';
 import { tryGetEnv } from '../lib/env.js';
 import { trackUnknownStatus } from '../telemetry/telemetry.js';
+import i18n from '../i18n/i18n.js';
 
 /**
  * Live progress via SSE with polling fallback (Task 026).
@@ -57,7 +58,14 @@ export const POLL_ACTIVE_VISIBLE_MS = 3000;
 
 export const POLL_HIDDEN_MS = 20_000;
 
-export const APPROXIMATE_PERCENT_NOTE = 'Progress is approximate';
+/**
+ * Approximate-progress note (GAP-022). A function, not a module constant: it
+ * resolves through the shared i18next instance, so a locale switch after import
+ * still reads the right language.
+ */
+export function approximatePercentNote(): string {
+  return i18n.t('processing:progress.approximateNote');
+}
 
 export const TERMINAL_PROGRESS_STATUSES: readonly string[] = ['Completed', 'Failed', 'Cancelled'];
 

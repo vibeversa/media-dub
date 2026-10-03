@@ -13,6 +13,7 @@ import { PreviewPlayer } from './PreviewPlayer.js';
 import { defaultVoiceFor, isAssignmentConflict, isConsentError, isVoicesNotFound, isVoiceAssignable } from './types.js';
 import type { SpeakerView, VoiceOptionView } from './types.js';
 import { invalidateSpeakers, useAssignSpeakerVoice, useAvailableVoices } from './useVoices.js';
+import { useTranslation } from 'react-i18next';
 
 export interface VoiceSelectorProps {
   readonly projectId: string;
@@ -33,7 +34,8 @@ export interface VoiceSelectorProps {
  * behind the same confirm.
  */
 export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorProps): ReactNode {
-  const { push } = useToast();
+    const { t } = useTranslation();
+const { push } = useToast();
   const queryClient = useQueryClient();
   const voicesQuery = useAvailableVoices(projectId, speaker.id);
   const assignMutation = useAssignSpeakerVoice(projectId);
@@ -90,13 +92,13 @@ export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorP
       const isConsent = isConsentError(appError);
       const isConflict = isAssignmentConflict(appError);
       if (isConsent || isConflict) {
-        setAssignMessage(appError.message ?? 'Voice assignment was rejected. The list was refreshed.');
+        setAssignMessage(appError.message ?? t('voices:voiceSelector.voice-assignment-was-rejected-the-list'));
         setAssignCorrelationId(appError.correlationId);
         setPendingVoice(undefined);
         await invalidateSpeakers(queryClient, projectId, speaker.id);
         return;
       }
-      setAssignMessage(appError.message ?? 'Voice assignment failed. No data was changed.');
+      setAssignMessage(appError.message ?? t('voices:voiceSelector.voice-assignment-failed-no-data-was'));
       setAssignCorrelationId(appError.correlationId);
     }
   }
@@ -118,7 +120,7 @@ export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorP
 
   if (voicesQuery.isPending) {
     return (
-      <section data-testid="voices-selector" aria-label="Voice selector">
+      <section data-testid="voices-selector" aria-label={t('voices:voiceSelector.voice-selector')}>
         <div data-testid="voices-voices-loading">
           <Skeleton lines={4} />
         </div>
@@ -130,25 +132,25 @@ export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorP
     const error = voicesQuery.error;
     if (isVoicesNotFound(error)) {
       return (
-        <section data-testid="voices-selector" aria-label="Voice selector">
+        <section data-testid="voices-selector" aria-label={t('voices:voiceSelector.voice-selector2')}>
           <div data-testid="voices-no-voices">
             <EmptyState
-              title="No compatible voices"
-              description="Voice compatibility is unavailable for this project. Run diarization and processing to populate compatible voices."
+              title={t('voices:voiceSelector.no-compatible-voices')}
+              description={t('voices:voiceSelector.voice-compatibility-is-unavailable-for-this')}
             />
             <Link data-testid="voices-no-voices-pipeline-link" to={`/projects/${projectId}`}>
-              Go to processing
+              {t('voices:voiceSelector.go-to-processing')}
             </Link>
           </div>
         </section>
       );
     }
     return (
-      <section data-testid="voices-selector" aria-label="Voice selector">
+      <section data-testid="voices-selector" aria-label={t('voices:voiceSelector.voice-selector3')}>
         <div data-testid="voices-voices-error">
           <ErrorState
-            title="Voices unavailable"
-            message={error?.message ?? 'Compatible voices could not be loaded. No data was changed.'}
+            title={t('voices:voiceSelector.voices-unavailable')}
+            message={error?.message ?? t('voices:voiceSelector.compatible-voices-could-not-be-loaded')}
             correlationId={error?.correlationId}
             onRetry={() => {
               void voicesQuery.refetch();
@@ -164,14 +166,14 @@ export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorP
 
   if (voices.length === 0) {
     return (
-      <section data-testid="voices-selector" aria-label="Voice selector">
+      <section data-testid="voices-selector" aria-label={t('voices:voiceSelector.voice-selector4')}>
         <div data-testid="voices-no-voices">
           <EmptyState
-            title="No compatible voices"
-            description="No compatible voices were reported for this speaker. Adjust project language or voice inventory, then refresh."
+            title={t('voices:voiceSelector.no-compatible-voices2')}
+            description={t('voices:voiceSelector.no-compatible-voices-were-reported-for')}
           />
           <Link data-testid="voices-no-voices-pipeline-link" to={`/projects/${projectId}`}>
-            Go to processing
+            {t('voices:voiceSelector.go-to-processing2')}
           </Link>
         </div>
       </section>
@@ -182,12 +184,12 @@ export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorP
   const resetDefault = defaultVoiceFor(voices);
 
   return (
-    <section data-testid="voices-selector" aria-label="Voice selector">
+    <section data-testid="voices-selector" aria-label={t('voices:voiceSelector.voice-selector5')}>
       {assignMessage !== null ? (
         <div data-testid="voices-assign-banner">
           <Alert
             tone="warning"
-            title="Voice assignment rejected"
+            title={t('voices:voiceSelector.voice-assignment-rejected')}
             details={assignCorrelationId !== undefined && assignCorrelationId !== '' ? `Ref: ${assignCorrelationId}` : undefined}
           >
             <p data-testid="voices-assign-message">{assignMessage}</p>
@@ -199,23 +201,23 @@ export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorP
                 void handleAssignRefresh();
               }}
             >
-              Refresh voices
+              {t('voices:voiceSelector.refresh-voices')}
             </button>
           </Alert>
         </div>
       ) : null}
       <div data-testid="voices-current">
-        <span className="dp-muted">Current voice: </span>
+        <span className="dp-muted">{t('voices:voiceSelector.current-voice')} </span>
         {speaker.assignedVoice !== undefined ? (
-          <span data-testid="voices-current-voice" title={`Assigned voice ${speaker.assignedVoice.voiceId}.`}>
+          <span data-testid="voices-current-voice" title={t('voices:voiceSelector.assigned-voice', { v0: speaker.assignedVoice.voiceId })}>
             {speaker.assignedVoice.voiceId}
           </span>
         ) : (
-          <span data-testid="voices-current-voice" title="No voice assigned yet.">
+          <span data-testid="voices-current-voice" title={t('voices:voiceSelector.no-voice-assigned-yet')}>
             —
           </span>
         )}
-        <span data-testid="voices-current-segments" title="Segments affected by a voice change." className="dp-muted">
+        <span data-testid="voices-current-segments" title={t('voices:voiceSelector.segments-affected-by-a-voice-change')} className="dp-muted">
           {` · ${String(speaker.segmentCount)} segments`}
         </span>
       </div>
@@ -234,10 +236,10 @@ export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorP
             >
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
                 <span data-testid={`voices-option-label-${voice.voiceId}`}>{voice.label}</span>
-                <span data-testid={`voices-option-provider-${voice.voiceId}`} title={`Provider ${voice.provider}.`}>
+                <span data-testid={`voices-option-provider-${voice.voiceId}`} title={t('voices:voiceSelector.provider', { v0: voice.provider })}>
                   {voice.provider}
                 </span>
-                <span data-testid={`voices-option-type-${voice.voiceId}`} title={`Type ${voice.voiceType}.`}>
+                <span data-testid={`voices-option-type-${voice.voiceId}`} title={t('voices:voiceSelector.type', { v0: voice.voiceType })}>
                   {voice.voiceType}
                 </span>
                 <span
@@ -255,7 +257,7 @@ export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorP
                 <p data-testid={`voices-option-policy-${voice.voiceId}`}>{voice.policyMessage}</p>
               ) : null}
               {isCurrent ? (
-                <span data-testid={`voices-option-current-${voice.voiceId}`}>Current voice</span>
+                <span data-testid={`voices-option-current-${voice.voiceId}`}>{t('voices:voiceSelector.current-voice')}</span>
               ) : (
                 <button
                   type="button"
@@ -294,7 +296,7 @@ export function VoiceSelector({ projectId, speaker, onAssigned }: VoiceSelectorP
           }
           onClick={handleReset}
         >
-          Reset to default voice
+          {t('voices:voiceSelector.reset-to-default-voice')}
         </button>
       </div>
       {pendingVoice !== undefined ? (

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { SegmentRow } from './SegmentRow.js';
 import { filterTranscriptSegments, findActiveSegmentId } from './types.js';
 import type { TranscriptFilter, TranscriptSegmentView } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface VirtualizedSegmentListProps {
   readonly segments: readonly TranscriptSegmentView[];
@@ -39,7 +40,8 @@ export function VirtualizedSegmentList({
   onSeek,
   onManualScroll,
 }: VirtualizedSegmentListProps): ReactNode {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+    const { t } = useTranslation();
+const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const filtered = useMemo(() => filterTranscriptSegments(segments, filter), [segments, filter]);
   const activeId = useMemo(() => findActiveSegmentId(filtered, positionMs), [filtered, positionMs]);
@@ -95,7 +97,7 @@ export function VirtualizedSegmentList({
       ref={scrollRef}
       data-testid="transcript-list-scroll"
       role="listbox"
-      aria-label="Transcript segments"
+      aria-label={t('transcript:virtualizedSegmentList.transcript-segments')}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onScroll={(event) => {

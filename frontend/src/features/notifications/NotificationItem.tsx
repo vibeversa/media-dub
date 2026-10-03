@@ -5,6 +5,7 @@ import type { NotificationView } from './types.js';
 import { isGoneLink, notificationLinkFor } from './notificationLinks.js';
 import { useMarkNotificationRead } from './useMarkRead.js';
 import { useToast } from '../../components/Toast/useToast.js';
+import { useTranslation } from 'react-i18next';
 
 export interface NotificationItemProps {
   readonly item: NotificationView;
@@ -24,7 +25,8 @@ export interface NotificationItemProps {
  * keep the row as read.
  */
 export function NotificationItem({ item, deletedIds = [] }: NotificationItemProps): ReactNode {
-  const { push } = useToast();
+    const { t } = useTranslation();
+const { push } = useToast();
   const markRead = useMarkNotificationRead();
   const deleted = deletedIds.includes(item.id);
   const link = notificationLinkFor({
@@ -72,11 +74,11 @@ export function NotificationItem({ item, deletedIds = [] }: NotificationItemProp
         <p data-testid={`notification-state-${item.id}`} className="dp-muted">
           {item.isRead ? 'Read' : 'Unread'}
         </p>
-        <div data-testid={`notifications-gone-${item.id}`} role="note" aria-label="Deleted notification target">
-          <p data-testid={`notifications-gone-title-${item.id}`}>This item is no longer available.</p>
-          <p className="dp-muted">The linked project, review, or export was deleted. The notification is kept as read.</p>
+        <div data-testid={`notifications-gone-${item.id}`} role="note" aria-label={t('notifications:notificationItem.deleted-notification-target')}>
+          <p data-testid={`notifications-gone-title-${item.id}`}>{t('notifications:notificationItem.this-item-is-no-longer-available')}</p>
+          <p className="dp-muted">{t('notifications:notificationItem.the-linked-project-review-or-export')}</p>
           <Link data-testid={`notifications-gone-dashboard-${item.id}`} to={link.href}>
-            Back to {link.href.startsWith('/projects/') ? 'project' : 'dashboard'}
+            {t('notifications:notificationItem.back-to')} {link.href.startsWith('/projects/') ? 'project' : 'dashboard'}
           </Link>
         </div>
       </article>
@@ -97,7 +99,7 @@ export function NotificationItem({ item, deletedIds = [] }: NotificationItemProp
         {item.isRead ? 'Read' : 'Unread'}
       </p>
       <Link data-testid={`notification-link-${item.id}`} to={link.href} onClick={handleOpen}>
-        Open {link.kind}
+        {t('notifications:notificationItem.open')} {link.kind}
       </Link>
       {!item.isRead ? (
         <button
@@ -107,7 +109,7 @@ export function NotificationItem({ item, deletedIds = [] }: NotificationItemProp
           disabled={markRead.isPending}
           onClick={handleMarkRead}
         >
-          Mark read
+          {t('notifications:notificationItem.mark-read')}
         </button>
       ) : null}
     </article>

@@ -8,6 +8,7 @@ import { canAccessAdmin } from './adminGuard.js';
 import { invalidateAdminQueries } from './useAdminQueries.js';
 import type { AdminActionReceipt } from './useAdminQueries.js';
 import { isAdminForbiddenError, isValidAuditReason, sanitizeReasonText } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface DestructiveActionProps {
   /** Stable action id, e.g. `dlq.redrive`. Shown in the dialog + receipt. */
@@ -39,7 +40,8 @@ export interface DestructiveActionProps {
  * `ForbiddenState` renders without leaking the required role name.
  */
 export function DestructiveAction({ action, label, confirmToken, onConfirm, testId, description }: DestructiveActionProps): ReactNode {
-  const queryClient = useQueryClient();
+    const { t } = useTranslation();
+const queryClient = useQueryClient();
   const { push } = useToast();
   const permissions = useAppStore((s) => s.permissions);
   const [open, setOpen] = useState(false);
@@ -114,24 +116,24 @@ export function DestructiveAction({ action, label, confirmToken, onConfirm, test
       </button>
       {receipt !== null ? (
         <div data-testid={`${testId}-receipt`}>
-          <Alert tone="success" title={`${label} completed`}>
+          <Alert tone="success" title={t('admin:destructiveAction.completed', { label: label })}>
             <p data-testid={`${testId}-receipt-text`}>
-              Action {receipt.action} completed at {receipt.timestamp}.
+              {t('admin:destructiveAction.action')} {receipt.action} {t('admin:destructiveAction.completed-at')} {receipt.timestamp}.
             </p>
             <p className="dp-muted" data-testid={`${testId}-receipt-id`}>
-              Receipt: {receipt.actionId}
+              {t('admin:destructiveAction.receipt')} {receipt.actionId}
             </p>
           </Alert>
         </div>
       ) : null}
       {open ? (
-        <div role="dialog" aria-modal="true" aria-label={`${label} confirmation`} data-testid={`${testId}-dialog`}>
+        <div role="dialog" aria-modal="true" aria-label={t('admin:destructiveAction.confirmation', { label: label })} data-testid={`${testId}-dialog`}>
           <h4>{label}</h4>
           {description !== undefined && description !== '' ? <p className="dp-muted">{description}</p> : null}
           <p className="dp-muted" data-testid={`${testId}-confirm-hint`}>
-            Type <code>{confirmToken}</code> to confirm. This action is audited and cannot be undone.
+            {t('admin:destructiveAction.type')} <code>{confirmToken}</code> {t('admin:destructiveAction.to-confirm-this-action-is-audited')}
           </p>
-          <label htmlFor={`${testId}-confirm-input`}>Type to confirm</label>
+          <label htmlFor={`${testId}-confirm-input`}>{t('admin:destructiveAction.type-to-confirm')}</label>
           <input
             id={`${testId}-confirm-input`}
             data-testid={`${testId}-confirm-input`}
@@ -142,7 +144,7 @@ export function DestructiveAction({ action, label, confirmToken, onConfirm, test
               setConfirmText(event.target.value);
             }}
           />
-          <label htmlFor={`${testId}-reason-input`}>Audit reason (minimum 10 characters)</label>
+          <label htmlFor={`${testId}-reason-input`}>{t('admin:destructiveAction.audit-reason-minimum-10-characters')}</label>
           <textarea
             id={`${testId}-reason-input`}
             data-testid={`${testId}-reason-input`}
@@ -154,21 +156,21 @@ export function DestructiveAction({ action, label, confirmToken, onConfirm, test
           />
           {!reasonValid && reason !== '' ? (
             <p data-testid={`${testId}-reason-error`} role="alert">
-              Enter at least 10 characters explaining why this action is needed.
+              {t('admin:destructiveAction.enter-at-least-10-characters-explaining')}
             </p>
           ) : null}
           {forbidden ? (
             <div data-testid={`${testId}-forbidden`}>
-              <Alert tone="error" title="Action not permitted">
+              <Alert tone="error" title={t('admin:destructiveAction.action-not-permitted')}>
                 <p data-testid={`${testId}-forbidden-text`}>
-                  You do not have permission for this action. Contact your tenant admin for access.
+                  {t('admin:destructiveAction.you-do-not-have-permission-for')}
                 </p>
               </Alert>
             </div>
           ) : null}
           {failure !== null ? (
             <div data-testid={`${testId}-error`}>
-              <Alert tone="error" title={`${label} failed`}>
+              <Alert tone="error" title={t('admin:destructiveAction.failed', { label: label })}>
                 <p>{failure}</p>
               </Alert>
             </div>
@@ -192,7 +194,7 @@ export function DestructiveAction({ action, label, confirmToken, onConfirm, test
               disabled={pending}
               onClick={reset}
             >
-              Cancel
+              {t('admin:destructiveAction.cancel')}
             </button>
           </div>
         </div>

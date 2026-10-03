@@ -9,6 +9,7 @@ import { formatDate } from '../../i18n/format.js';
 import { useAppStore } from '../../stores/index.js';
 import { isAdminForbiddenError } from './types.js';
 import { useAdminAudit, useAdminRetention } from './useAdminQueries.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Retention policies + audit-event viewer (Task 036).
@@ -22,7 +23,8 @@ import { useAdminAudit, useAdminRetention } from './useAdminQueries.js';
  * the explicit "older events expired per retention policy" marker.
  */
 export function RetentionAuditPanel(): ReactNode {
-  const locale = useAppStore((s) => s.locale);
+    const { t } = useTranslation();
+const locale = useAppStore((s) => s.locale);
   const tenantTimezone = useAppStore((s) => s.tenantTimezone);
   const permissions = useAppStore((s) => s.permissions);
   const canViewAdvanced = hasAdminPermission(permissions);
@@ -57,8 +59,8 @@ export function RetentionAuditPanel(): ReactNode {
   const auditUnprovisioned = auditQuery.data?.notProvisioned === true;
 
   return (
-    <section data-testid="admin-retention-audit" aria-label="Retention and audit">
-      <h3>Retention policies</h3>
+    <section data-testid="admin-retention-audit" aria-label={t('admin:retentionAuditPanel.retention-and-audit')}>
+      <h3>{t('admin:retentionAuditPanel.retention-policies')}</h3>
       <div data-testid="admin-retention">
         {retentionLoading ? (
           <div data-testid="admin-retention-loading">
@@ -67,15 +69,15 @@ export function RetentionAuditPanel(): ReactNode {
         ) : retentionForbidden ? (
           <div data-testid="admin-retention-forbidden">
             <EmptyState
-              title="Retention unavailable"
-              description="You do not have permission to view retention policies. Contact your tenant admin for access."
+              title={t('admin:retentionAuditPanel.retention-unavailable')}
+              description={t('admin:retentionAuditPanel.you-do-not-have-permission-to')}
             />
           </div>
         ) : retentionFailed ? (
           <div data-testid="admin-retention-error">
             <ErrorState
-              title="Retention unavailable"
-              message={retentionQuery.error?.message ?? 'Retention policies could not be loaded.'}
+              title={t('admin:retentionAuditPanel.retention-unavailable2')}
+              message={retentionQuery.error?.message ?? t('admin:retentionAuditPanel.retention-policies-could-not-be-loaded')}
               correlationId={retentionQuery.error?.correlationId}
               onRetry={() => {
                 void retentionQuery.refetch();
@@ -85,7 +87,7 @@ export function RetentionAuditPanel(): ReactNode {
         ) : policies.length === 0 ? (
           <div data-testid="admin-retention-empty">
             <EmptyState
-              title="No retention policies"
+              title={t('admin:retentionAuditPanel.no-retention-policies')}
               description={retentionUnprovisioned ? 'Retention reads are not provisioned on this backend yet.' : 'No retention policies are configured.'}
             />
           </div>
@@ -103,7 +105,7 @@ export function RetentionAuditPanel(): ReactNode {
         )}
       </div>
 
-      <h3>Audit events</h3>
+      <h3>{t('admin:retentionAuditPanel.audit-events')}</h3>
       <div data-testid="admin-audit">
         {auditLoading ? (
           <div data-testid="admin-audit-loading">
@@ -112,15 +114,15 @@ export function RetentionAuditPanel(): ReactNode {
         ) : auditForbidden ? (
           <div data-testid="admin-audit-forbidden">
             <EmptyState
-              title="Audit unavailable"
-              description="You do not have permission to view audit events. Contact your tenant admin for access."
+              title={t('admin:retentionAuditPanel.audit-unavailable')}
+              description={t('admin:retentionAuditPanel.you-do-not-have-permission-to2')}
             />
           </div>
         ) : auditFailed ? (
           <div data-testid="admin-audit-error">
             <ErrorState
-              title="Audit unavailable"
-              message={auditQuery.error?.message ?? 'Audit events could not be loaded. No data was changed.'}
+              title={t('admin:retentionAuditPanel.audit-unavailable2')}
+              message={auditQuery.error?.message ?? t('admin:retentionAuditPanel.audit-events-could-not-be-loaded')}
               correlationId={auditQuery.error?.correlationId}
               onRetry={() => {
                 void auditQuery.refetch();
@@ -129,8 +131,8 @@ export function RetentionAuditPanel(): ReactNode {
           </div>
         ) : gapExpired ? (
           <div data-testid="admin-audit-gap">
-            <Alert tone="info" title="Older events expired">
-              <p data-testid="admin-audit-gap-text">Older events expired per retention policy. Earlier pages are no longer available.</p>
+            <Alert tone="info" title={t('admin:retentionAuditPanel.older-events-expired')}>
+              <p data-testid="admin-audit-gap-text">{t('admin:retentionAuditPanel.older-events-expired-per-retention-policy')}</p>
               <button
                 type="button"
                 data-testid="admin-audit-gap-first"
@@ -139,14 +141,14 @@ export function RetentionAuditPanel(): ReactNode {
                   setPage(1);
                 }}
               >
-                Back to first page
+                {t('admin:retentionAuditPanel.back-to-first-page')}
               </button>
             </Alert>
           </div>
         ) : events.length === 0 ? (
           <div data-testid="admin-audit-empty">
             <EmptyState
-              title="No audit events"
+              title={t('admin:retentionAuditPanel.no-audit-events')}
               description={auditUnprovisioned ? 'Audit reads are not provisioned on this backend yet.' : 'Events appear as admin operations run.'}
             />
           </div>
@@ -155,11 +157,11 @@ export function RetentionAuditPanel(): ReactNode {
             <table data-testid="admin-audit-table">
               <thead>
                 <tr>
-                  <th scope="col">Timestamp</th>
-                  <th scope="col">Actor</th>
-                  <th scope="col">Action</th>
-                  <th scope="col">Summary</th>
-                  <th scope="col">Details</th>
+                  <th scope="col">{t('admin:retentionAuditPanel.timestamp')}</th>
+                  <th scope="col">{t('admin:retentionAuditPanel.actor')}</th>
+                  <th scope="col">{t('admin:retentionAuditPanel.action')}</th>
+                  <th scope="col">{t('admin:retentionAuditPanel.summary')}</th>
+                  <th scope="col">{t('admin:retentionAuditPanel.details')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -201,7 +203,7 @@ export function RetentionAuditPanel(): ReactNode {
                             </>
                           ) : (
                             <span data-testid={`admin-audit-advanced-forbidden-${event.id}`} className="dp-muted">
-                              Advanced details hidden
+                              {t('admin:retentionAuditPanel.advanced-details-hidden')}
                             </span>
                           )
                         ) : (
@@ -225,10 +227,10 @@ export function RetentionAuditPanel(): ReactNode {
                   setPage((current) => Math.max(1, current - 1));
                 }}
               >
-                Previous
+                {t('admin:retentionAuditPanel.previous')}
               </button>
               <p data-testid="admin-audit-page" className="dp-muted">
-                Page {String(page)}
+                {t('admin:retentionAuditPanel.page')} {String(page)}
               </p>
               <button
                 type="button"
@@ -239,7 +241,7 @@ export function RetentionAuditPanel(): ReactNode {
                   setPage((current) => current + 1);
                 }}
               >
-                Next
+                {t('admin:retentionAuditPanel.next')}
               </button>
             </div>
           </div>

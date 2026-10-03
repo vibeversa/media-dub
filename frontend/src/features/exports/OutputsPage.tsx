@@ -20,6 +20,7 @@ import {
 } from './types.js';
 import type { OutputItemView, OutputView } from './types.js';
 import { invalidateOutputs, useExports, useOutputs } from './useOutputs.js';
+import { useTranslation } from 'react-i18next';
 
 export interface OutputsPageProps {
   readonly projectId: string;
@@ -50,7 +51,8 @@ function itemTestId(item: OutputItemView, index: number): string {
  * paths never render; errors show the backend `message` only.
  */
 export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
-  const { push } = useToast();
+    const { t } = useTranslation();
+const { push } = useToast();
   const queryClient = useQueryClient();
   const outputsQuery = useOutputs(projectId);
   const exportsQuery = useExports(projectId);
@@ -82,7 +84,7 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
   if (projectId === '') {
     outputBody = (
       <div data-testid="outputs-needs-project">
-        <EmptyState title="Select a project" description="Enter a project id to load its outputs." />
+        <EmptyState title={t('exports:outputsPage.select-a-project')} description={t('exports:outputsPage.enter-a-project-id-to-load')} />
       </div>
     );
   } else if (outputsQuery.isPending && output === undefined) {
@@ -95,8 +97,8 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
     outputBody = (
       <div data-testid="outputs-error">
         <ErrorState
-          title="Outputs unavailable"
-          message={outputsQuery.error?.message ?? 'Outputs could not be loaded. No data was changed.'}
+          title={t('exports:outputsPage.outputs-unavailable')}
+          message={outputsQuery.error?.message ?? t('exports:outputsPage.outputs-could-not-be-loaded-no')}
           correlationId={outputsQuery.error?.correlationId}
           onRetry={() => {
             void outputsQuery.refetch();
@@ -111,8 +113,8 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
     const label = labelForOutputState(output.state);
     outputBody = (
       <div data-testid="outputs-detail">
-        <section data-testid="outputs-summary" aria-label="Output summary" data-state={output.state} data-pattern={pattern}>
-          <h2>Output summary</h2>
+        <section data-testid="outputs-summary" aria-label={t('exports:outputsPage.output-summary')} data-state={output.state} data-pattern={pattern}>
+          <h2>{t('exports:outputsPage.output-summary2')}</h2>
           <p data-testid="outputs-state">
             <span data-testid="outputs-state-icon" aria-hidden="true">
               {icon}
@@ -139,7 +141,7 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
             <div data-testid="outputs-partial">
               <p data-testid="outputs-partial-explanation">{partialExplanationFor(output)}</p>
               <Link data-testid="outputs-partial-quality-link" to={`/projects/${projectId}/quality`}>
-                See Quality
+                {t('exports:outputsPage.see-quality')}
               </Link>
             </div>
           ) : null}
@@ -153,8 +155,8 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
             </ul>
           ) : null}
         </section>
-        <section data-testid="outputs-items" aria-label="Output items">
-          <h2>Output items</h2>
+        <section data-testid="outputs-items" aria-label={t('exports:outputsPage.output-items')}>
+          <h2>{t('exports:outputsPage.output-items2')}</h2>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {output.items.map((item, index) => {
               const id = itemTestId(item, index);
@@ -185,7 +187,7 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
                     <div data-testid={`output-partial-${id}`}>
                       <p data-testid={`output-partial-explanation-${id}`}>{partialExplanationForItem(item, output.completeness)}</p>
                       <Link data-testid={`output-quality-link-${id}`} to={`/projects/${projectId}/quality`}>
-                        See Quality
+                        {t('exports:outputsPage.see-quality')}
                       </Link>
                     </div>
                   ) : null}
@@ -195,16 +197,16 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
                     </p>
                   ) : null}
                   {item.state === 'Failed' ? (
-                    <p data-testid={`output-failed-${id}`}>Failed — refresh for the current state.</p>
+                    <p data-testid={`output-failed-${id}`}>{t('exports:outputsPage.failed-refresh-for-the-current-state')}</p>
                   ) : null}
                   {item.state === 'Generating' ? (
                     <p data-testid={`output-generating-${id}`} className="dp-muted">
-                      Generating — live updates apply automatically.
+                      {t('exports:outputsPage.generating-live-updates-apply-automatically')}
                     </p>
                   ) : null}
                   {item.state === 'Ready' && item.downloadUrl !== undefined ? (
                     <a data-testid={`output-download-${id}`} download href={item.downloadUrl}>
-                      Download {item.label}
+                      {t('exports:outputsPage.download')} {item.label}
                     </a>
                   ) : null}
                 </li>
@@ -235,8 +237,8 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
     exportsBody = (
       <div data-testid="exports-error">
         <ErrorState
-          title="Exports unavailable"
-          message={exportsQuery.error?.message ?? 'Exports could not be loaded. No data was changed.'}
+          title={t('exports:outputsPage.exports-unavailable')}
+          message={exportsQuery.error?.message ?? t('exports:outputsPage.exports-could-not-be-loaded-no')}
           correlationId={exportsQuery.error?.correlationId}
           onRetry={() => {
             void exportsQuery.refetch();
@@ -247,7 +249,7 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
   } else if (exportJobs.length === 0) {
     exportsBody = (
       <div data-testid="exports-empty">
-        <EmptyState title="No exports yet" description="Request an export to generate a downloadable file." />
+        <EmptyState title={t('exports:outputsPage.no-exports-yet')} description={t('exports:outputsPage.request-an-export-to-generate-a')} />
       </div>
     );
   } else {
@@ -265,19 +267,19 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
   }
 
   return (
-    <section data-testid="outputs-workspace" aria-label="Outputs and exports" data-project={projectId}>
+    <section data-testid="outputs-workspace" aria-label={t('exports:outputsPage.outputs-and-exports')} data-project={projectId}>
       {output !== undefined && output.state === 'Failed' ? (
         <div data-testid="outputs-failed-banner">
-          <Alert tone="error" title="Output generation failed">
-            <p data-testid="outputs-failed-message">{output.errorCode ?? 'The output failed. No file was produced.'}</p>
+          <Alert tone="error" title={t('exports:outputsPage.output-generation-failed')}>
+            <p data-testid="outputs-failed-message">{output.errorCode ?? t('exports:outputsPage.the-output-failed-no-file-was')}</p>
           </Alert>
         </div>
       ) : null}
       {outputBody}
       {outputsQuery.isError && output !== undefined ? (
         <div data-testid="outputs-stale">
-          <Alert tone="warning" title="Output refresh failed" details={outputsQuery.error?.correlationId}>
-            <p>Showing the last loaded outputs. New states may be missing.</p>
+          <Alert tone="warning" title={t('exports:outputsPage.output-refresh-failed')} details={outputsQuery.error?.correlationId}>
+            <p>{t('exports:outputsPage.showing-the-last-loaded-outputs-new')}</p>
             <button
               type="button"
               data-testid="outputs-refresh"
@@ -286,19 +288,19 @@ export function OutputsPage({ projectId }: OutputsPageProps): ReactNode {
                 void invalidateOutputs(queryClient, projectId);
               }}
             >
-              Refresh outputs
+              {t('exports:outputsPage.refresh-outputs')}
             </button>
           </Alert>
         </div>
       ) : null}
-      <section data-testid="exports-section" aria-label="Export jobs">
-        <h2>Exports</h2>
+      <section data-testid="exports-section" aria-label={t('exports:outputsPage.export-jobs')}>
+        <h2>{t('exports:outputsPage.exports')}</h2>
         <ExportCard projectId={projectId} output={output} />
         {exportsBody}
         {exportsQuery.isError && exportsQuery.data !== undefined ? (
           <div data-testid="exports-stale">
-            <Alert tone="warning" title="Export refresh failed" details={exportsQuery.error?.correlationId}>
-              <p>Showing the last loaded exports.</p>
+            <Alert tone="warning" title={t('exports:outputsPage.export-refresh-failed')} details={exportsQuery.error?.correlationId}>
+              <p>{t('exports:outputsPage.showing-the-last-loaded-exports')}</p>
             </Alert>
           </div>
         ) : null}

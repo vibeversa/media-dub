@@ -6,6 +6,7 @@ import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { useTimelinePlayerStore } from './playerStore.js';
 import { TIMELINE_DEBOUNCE_MS, clampPeak, isPeaksMissing, selectPeaksForWidth } from './types.js';
 import { useWaveformPeaks } from './useTimelineMedia.js';
+import { useTranslation } from 'react-i18next';
 
 export interface WaveformProps {
   readonly projectId: string;
@@ -75,7 +76,8 @@ function drawWaveform(
  * progress link while the player stays functional.
  */
 export function Waveform({ projectId, onSeek }: WaveformProps): ReactNode {
-  const peaksQuery = useWaveformPeaks(projectId);
+    const { t } = useTranslation();
+const peaksQuery = useWaveformPeaks(projectId);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(320);
@@ -158,7 +160,7 @@ export function Waveform({ projectId, onSeek }: WaveformProps): ReactNode {
 
   if (peaksQuery.isPending) {
     return (
-      <section data-testid="timeline-waveform" aria-label="Waveform">
+      <section data-testid="timeline-waveform" aria-label={t('timeline:waveform.waveform')}>
         <div data-testid="timeline-waveform-skeleton">
           <Skeleton lines={3} />
         </div>
@@ -168,14 +170,14 @@ export function Waveform({ projectId, onSeek }: WaveformProps): ReactNode {
 
   if (peaksQuery.isError) {
     return (
-      <section data-testid="timeline-waveform" aria-label="Waveform">
+      <section data-testid="timeline-waveform" aria-label={t('timeline:waveform.waveform2')}>
         <div data-testid="timeline-waveform-error">
           <Alert
             tone="warning"
-            title="Waveform unavailable"
+            title={t('timeline:waveform.waveform-unavailable')}
             details={peaksQuery.error?.correlationId !== undefined ? `Ref: ${peaksQuery.error.correlationId}` : undefined}
           >
-            <p>Waveform peaks could not be loaded. Playback remains available.</p>
+            <p>{t('timeline:waveform.waveform-peaks-could-not-be-loaded')}</p>
             <button
               type="button"
               data-testid="timeline-waveform-retry"
@@ -184,7 +186,7 @@ export function Waveform({ projectId, onSeek }: WaveformProps): ReactNode {
                 void peaksQuery.refetch();
               }}
             >
-              Retry waveform
+              {t('timeline:waveform.retry-waveform')}
             </button>
           </Alert>
         </div>
@@ -194,15 +196,15 @@ export function Waveform({ projectId, onSeek }: WaveformProps): ReactNode {
 
   if (peaks === undefined || missing || series.length === 0) {
     return (
-      <section data-testid="timeline-waveform" aria-label="Waveform">
+      <section data-testid="timeline-waveform" aria-label={t('timeline:waveform.waveform3')}>
         <div data-testid="timeline-waveform-skeleton">
           <Skeleton lines={3} />
         </div>
         <p data-testid="timeline-waveform-missing" className="dp-muted">
-          Waveform is still being prepared — playback remains available.
+          {t('timeline:waveform.waveform-is-still-being-prepared-playback')}
         </p>
         <Link data-testid="timeline-waveform-progress-link" to={`/projects/${projectId}`}>
-          View processing progress
+          {t('timeline:waveform.view-processing-progress')}
         </Link>
       </section>
     );
@@ -211,7 +213,7 @@ export function Waveform({ projectId, onSeek }: WaveformProps): ReactNode {
   const scrubMax = Math.max(1, durationMs > 0 ? durationMs : (peaks.durationMs ?? 1));
 
   return (
-    <section data-testid="timeline-waveform" aria-label="Waveform">
+    <section data-testid="timeline-waveform" aria-label={t('timeline:waveform.waveform4')}>
       <div ref={wrapRef} data-testid="timeline-waveform-wrap">
         {/* Task 045, RTL: the canvas is pinned to `dir="ltr"` ON PURPOSE.
             `drawWaveform` paints with physical canvas coordinates and
@@ -232,7 +234,7 @@ export function Waveform({ projectId, onSeek }: WaveformProps): ReactNode {
           data-position={String(positionMs)}
           dir="ltr"
           role="img"
-          aria-label={`Waveform with ${String(series.length)} peaks`}
+          aria-label={t('timeline:waveform.waveform-with-peaks', { v0: String(series.length) })}
           tabIndex={0}
           onClick={(event) => {
             seekFromClientX(event.clientX);
@@ -249,7 +251,7 @@ export function Waveform({ projectId, onSeek }: WaveformProps): ReactNode {
           style={{ width: '100%', height: '96px', display: 'block' }}
         />
       </div>
-      <label htmlFor="timeline-waveform-scrub">Waveform position</label>
+      <label htmlFor="timeline-waveform-scrub">{t('timeline:waveform.waveform-position')}</label>
       <input
         id="timeline-waveform-scrub"
         data-testid="timeline-waveform-scrub"

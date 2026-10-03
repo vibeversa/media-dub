@@ -14,6 +14,7 @@ import { useTranscriptPlaybackStore } from './playerStore.js';
 import { findActiveSegmentId } from './types.js';
 import type { TranscriptFilter } from './types.js';
 import { invalidateTranscript, useTranscript } from './useTranscript.js';
+import { useTranslation } from 'react-i18next';
 
 export interface TranscriptEditorProps {
   readonly projectId: string;
@@ -37,7 +38,8 @@ const SEARCH_DEBOUNCE_MS = 200;
  * immutable snapshots — edits create manual versions only.
  */
 export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProps): ReactNode {
-  const { push } = useToast();
+    const { t } = useTranslation();
+const { push } = useToast();
   const queryClient = useQueryClient();
   const transcriptQuery = useTranscript(projectId);
   const positionMs = useTranscriptPlaybackStore((s) => s.positionMs);
@@ -120,7 +122,7 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
 
   if (transcriptQuery.isPending && segments.length === 0) {
     return (
-      <section data-testid="transcript-editor" aria-label="Transcript editor">
+      <section data-testid="transcript-editor" aria-label={t('transcript:transcriptEditor.transcript-editor')}>
         <div data-testid="transcript-loading">
           <Skeleton lines={8} />
         </div>
@@ -130,11 +132,11 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
 
   if (transcriptQuery.isError) {
     return (
-      <section data-testid="transcript-editor" aria-label="Transcript editor">
+      <section data-testid="transcript-editor" aria-label={t('transcript:transcriptEditor.transcript-editor2')}>
         <div data-testid="transcript-error">
           <ErrorState
-            title="Transcript unavailable"
-            message={transcriptQuery.error?.message ?? 'The transcript could not be loaded. No data was changed.'}
+            title={t('transcript:transcriptEditor.transcript-unavailable')}
+            message={transcriptQuery.error?.message ?? t('transcript:transcriptEditor.the-transcript-could-not-be-loaded')}
             correlationId={transcriptQuery.error?.correlationId}
             onRetry={() => {
               void transcriptQuery.refetch();
@@ -147,14 +149,14 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
 
   if (segments.length === 0) {
     return (
-      <section data-testid="transcript-editor" aria-label="Transcript editor">
+      <section data-testid="transcript-editor" aria-label={t('transcript:transcriptEditor.transcript-editor3')}>
         <div data-testid="transcript-empty">
           <EmptyState
-            title="No transcript yet"
-            description="Start processing to generate the transcript. Editing appears here once segments exist."
+            title={t('transcript:transcriptEditor.no-transcript-yet')}
+            description={t('transcript:transcriptEditor.start-processing-to-generate-the-transcript')}
           />
           <Link data-testid="transcript-empty-processing-link" to={`/projects/${projectId}`}>
-            Go to processing
+            {t('transcript:transcriptEditor.go-to-processing')}
           </Link>
         </div>
       </section>
@@ -165,10 +167,10 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
   const speakerOptions = [...new Set(segments.map((s) => s.speakerLabel))].sort();
 
   return (
-    <section data-testid="transcript-editor" aria-label="Transcript editor">
+    <section data-testid="transcript-editor" aria-label={t('transcript:transcriptEditor.transcript-editor4')}>
       {staleMessage !== null ? (
         <div data-testid="transcript-stale-banner">
-          <Alert tone="warning" title="Segment changed elsewhere">
+          <Alert tone="warning" title={t('transcript:transcriptEditor.segment-changed-elsewhere')}>
             <p>{staleMessage}</p>
             <button
               type="button"
@@ -178,24 +180,24 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
                 void handleStaleRefresh();
               }}
             >
-              Refresh transcript
+              {t('transcript:transcriptEditor.refresh-transcript')}
             </button>
           </Alert>
         </div>
       ) : null}
       <div data-testid="transcript-filters">
-        <label htmlFor="transcript-search">Search transcript</label>
+        <label htmlFor="transcript-search">{t('transcript:transcriptEditor.search-transcript')}</label>
         <input
           id="transcript-search"
           data-testid="transcript-search"
           type="search"
           value={searchInput}
-          placeholder="Search text or speaker…"
+          placeholder={t('transcript:transcriptEditor.search-text-or-speaker')}
           onChange={(event) => {
             setSearchInput(event.target.value);
           }}
         />
-        <label htmlFor="transcript-speaker-filter">Speaker</label>
+        <label htmlFor="transcript-speaker-filter">{t('transcript:transcriptEditor.speaker')}</label>
         <select
           id="transcript-speaker-filter"
           data-testid="transcript-speaker-filter"
@@ -204,7 +206,7 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
             setSpeakerFilter(event.target.value);
           }}
         >
-          <option value="">All speakers</option>
+          <option value="">{t('transcript:transcriptEditor.all-speakers')}</option>
           {speakerOptions.map((speaker) => (
             <option key={speaker} value={speaker}>
               {speaker}
@@ -221,7 +223,7 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
               setReviewOnly(event.target.checked);
             }}
           />
-          Needs review only
+          {t('transcript:transcriptEditor.needs-review-only')}
         </label>
         <label htmlFor="transcript-autoscroll-toggle">
           <input
@@ -233,7 +235,7 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
               setAutoScroll(event.target.checked);
             }}
           />
-          Autoscroll
+          {t('transcript:transcriptEditor.autoscroll')}
         </label>
       </div>
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
@@ -250,7 +252,7 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
               {seekTargetMs !== undefined ? (
                 <p data-testid="transcript-player-seek">{`Seek → ${String(seekTargetMs)} ms`}</p>
               ) : null}
-              <label htmlFor="transcript-player-scrub">Playback position</label>
+              <label htmlFor="transcript-player-scrub">{t('transcript:transcriptEditor.playback-position')}</label>
               <input
                 id="transcript-player-scrub"
                 data-testid="transcript-player-scrub"
@@ -263,7 +265,7 @@ export function TranscriptEditor({ projectId, playerSlot }: TranscriptEditorProp
                 }}
               />
               <p className="dp-muted" data-testid="transcript-player-note">
-                Compact player slot — Task 030 MediaPlayer mounts here.
+                {t('transcript:transcriptEditor.compact-player-slot-task-030-mediaplayer')}
               </p>
             </div>
           )}

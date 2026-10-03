@@ -10,6 +10,7 @@ import { formatDate } from '../../i18n/format.js';
 import { useAppStore } from '../../stores/index.js';
 import { DestructiveAction } from './DestructiveAction.js';
 import { dlqRowsFromSummary, formatLeaseAge, isAdminConflictError, isAdminForbiddenError } from './types.js';
+import { useTranslation } from 'react-i18next';
 import {
   discardDlqEntry,
   invalidateAdminQueries,
@@ -56,15 +57,17 @@ function useForbiddenSectionToast(isForbidden: boolean, section: string): void {
 }
 
 function SectionForbidden({ testId, title }: { readonly testId: string; readonly title: string }): ReactNode {
-  return (
+    const { t } = useTranslation();
+return (
     <div data-testid={testId}>
-      <EmptyState title={title} description="You do not have permission to view this section. Contact your tenant admin for access." />
+      <EmptyState title={title} description={t('admin:opsDashboard.you-do-not-have-permission-to')} />
     </div>
   );
 }
 
 export function OpsDashboard(): ReactNode {
-  const queryClient = useQueryClient();
+    const { t } = useTranslation();
+const queryClient = useQueryClient();
   const { push } = useToast();
   const locale = useAppStore((s) => s.locale);
   const tenantTimezone = useAppStore((s) => s.tenantTimezone);
@@ -118,23 +121,23 @@ export function OpsDashboard(): ReactNode {
   }
 
   return (
-    <section data-testid="admin-ops" aria-label="Operations dashboard">
-      <h3>Operations</h3>
+    <section data-testid="admin-ops" aria-label={t('admin:opsDashboard.operations-dashboard')}>
+      <h3>{t('admin:opsDashboard.operations')}</h3>
 
       <div data-testid="admin-ops-queues">
-        <h4>Queues</h4>
+        <h4>{t('admin:opsDashboard.queues')}</h4>
         {queuesQuery.isPending && queuesQuery.data === undefined ? (
           <div data-testid="admin-ops-queues-loading">
             <Skeleton lines={3} />
           </div>
         ) : queuesQuery.isError && queuesQuery.data === undefined ? (
           isAdminForbiddenError(queuesQuery.error) ? (
-            <SectionForbidden testId="admin-ops-queues-forbidden" title="Queues locked" />
+            <SectionForbidden testId="admin-ops-queues-forbidden" title={t('admin:opsDashboard.queues-locked')} />
           ) : (
             <div data-testid="admin-ops-queues-error">
               <ErrorState
-                title="Queues unavailable"
-                message={queuesQuery.error?.message ?? 'Queue depths could not be loaded.'}
+                title={t('admin:opsDashboard.queues-unavailable')}
+                message={queuesQuery.error?.message ?? t('admin:opsDashboard.queue-depths-could-not-be-loaded')}
                 correlationId={queuesQuery.error?.correlationId}
                 onRetry={() => {
                   void queuesQuery.refetch();
@@ -144,7 +147,7 @@ export function OpsDashboard(): ReactNode {
           )
         ) : (queuesQuery.data ?? []).length === 0 ? (
           <div data-testid="admin-ops-queues-empty">
-            <EmptyState title="Queues idle" description="No pending messages across the queue taxonomy." />
+            <EmptyState title={t('admin:opsDashboard.queues-idle')} description={t('admin:opsDashboard.no-pending-messages-across-the-queue')} />
           </div>
         ) : (
           <dl data-testid="admin-ops-queues-list">
@@ -159,19 +162,19 @@ export function OpsDashboard(): ReactNode {
       </div>
 
       <div data-testid="admin-ops-workers">
-        <h4>Workers</h4>
+        <h4>{t('admin:opsDashboard.workers')}</h4>
         {leasesQuery.isPending && leasesQuery.data === undefined ? (
           <div data-testid="admin-ops-workers-loading">
             <Skeleton lines={3} />
           </div>
         ) : leasesQuery.isError && leasesQuery.data === undefined ? (
           isAdminForbiddenError(leasesQuery.error) ? (
-            <SectionForbidden testId="admin-ops-workers-forbidden" title="Workers locked" />
+            <SectionForbidden testId="admin-ops-workers-forbidden" title={t('admin:opsDashboard.workers-locked')} />
           ) : (
             <div data-testid="admin-ops-workers-error">
               <ErrorState
-                title="Workers unavailable"
-                message={leasesQuery.error?.message ?? 'Worker state could not be loaded.'}
+                title={t('admin:opsDashboard.workers-unavailable')}
+                message={leasesQuery.error?.message ?? t('admin:opsDashboard.worker-state-could-not-be-loaded')}
                 correlationId={leasesQuery.error?.correlationId}
                 onRetry={() => {
                   void leasesQuery.refetch();
@@ -181,40 +184,40 @@ export function OpsDashboard(): ReactNode {
           )
         ) : workers.length === 0 ? (
           <div data-testid="admin-ops-workers-empty">
-            <EmptyState title="No active workers" description="No leases are held. Workers are idle." />
+            <EmptyState title={t('admin:opsDashboard.no-active-workers')} description={t('admin:opsDashboard.no-leases-are-held-workers-are')} />
           </div>
         ) : (
           <ul data-testid="admin-ops-workers-list">
             {workers.map((worker) => (
               <li key={worker.owner} data-testid={`admin-ops-worker-${worker.owner}`}>
                 <span data-testid={`admin-ops-worker-owner-${worker.owner}`}>{worker.owner}</span>{' '}
-                <span data-testid={`admin-ops-worker-jobs-${worker.owner}`}>{String(worker.activeJobs)} active</span>
+                <span data-testid={`admin-ops-worker-jobs-${worker.owner}`}>{String(worker.activeJobs)} {t('admin:opsDashboard.active')}</span>
               </li>
             ))}
           </ul>
         )}
         {statusQuery.data !== undefined ? (
           <p className="dp-muted" data-testid="admin-ops-status">
-            Probe: {statusQuery.data.status}
+            {t('admin:opsDashboard.probe')} {statusQuery.data.status}
             {statusQuery.data.time !== '' ? ` at ${formatDate(statusQuery.data.time, { locale, timeZone: tenantTimezone })}` : ''}
           </p>
         ) : null}
       </div>
 
       <div data-testid="admin-ops-errors">
-        <h4>Errors</h4>
+        <h4>{t('admin:opsDashboard.errors')}</h4>
         {dlqQuery.isPending && dlqQuery.data === undefined ? (
           <div data-testid="admin-ops-errors-loading">
             <Skeleton lines={3} />
           </div>
         ) : dlqQuery.isError && dlqQuery.data === undefined ? (
           isAdminForbiddenError(dlqQuery.error) ? (
-            <SectionForbidden testId="admin-ops-errors-forbidden" title="Errors locked" />
+            <SectionForbidden testId="admin-ops-errors-forbidden" title={t('admin:opsDashboard.errors-locked')} />
           ) : (
             <div data-testid="admin-ops-errors-error">
               <ErrorState
-                title="Errors unavailable"
-                message={dlqQuery.error?.message ?? 'Error breakdown could not be loaded.'}
+                title={t('admin:opsDashboard.errors-unavailable')}
+                message={dlqQuery.error?.message ?? t('admin:opsDashboard.error-breakdown-could-not-be-loaded')}
                 correlationId={dlqQuery.error?.correlationId}
                 onRetry={() => {
                   void dlqQuery.refetch();
@@ -224,7 +227,7 @@ export function OpsDashboard(): ReactNode {
           )
         ) : dlqRows.length === 0 ? (
           <div data-testid="admin-ops-errors-empty">
-            <EmptyState title="No errors" description="No dead-letter reasons recorded." />
+            <EmptyState title={t('admin:opsDashboard.no-errors')} description={t('admin:opsDashboard.no-dead-letter-reasons-recorded')} />
           </div>
         ) : (
           <ul data-testid="admin-ops-errors-list">
@@ -239,19 +242,19 @@ export function OpsDashboard(): ReactNode {
       </div>
 
       <div data-testid="admin-ops-dlq">
-        <h4>Dead-letter queue</h4>
+        <h4>{t('admin:opsDashboard.dead-letter-queue')}</h4>
         {dlqQuery.isPending && dlqQuery.data === undefined ? (
           <div data-testid="admin-ops-dlq-loading">
             <Skeleton lines={3} />
           </div>
         ) : dlqQuery.isError && dlqQuery.data === undefined ? (
           isAdminForbiddenError(dlqQuery.error) ? (
-            <SectionForbidden testId="admin-ops-dlq-forbidden" title="DLQ locked" />
+            <SectionForbidden testId="admin-ops-dlq-forbidden" title={t('admin:opsDashboard.dlq-locked')} />
           ) : (
             <div data-testid="admin-ops-dlq-error">
               <ErrorState
-                title="DLQ unavailable"
-                message={dlqQuery.error?.message ?? 'DLQ summary could not be loaded.'}
+                title={t('admin:opsDashboard.dlq-unavailable')}
+                message={dlqQuery.error?.message ?? t('admin:opsDashboard.dlq-summary-could-not-be-loaded')}
                 correlationId={dlqQuery.error?.correlationId}
                 onRetry={() => {
                   void dlqQuery.refetch();
@@ -261,11 +264,11 @@ export function OpsDashboard(): ReactNode {
           )
         ) : dlqQuery.data !== undefined && dlqQuery.data.depth === 0 ? (
           <div data-testid="admin-ops-dlq-empty">
-            <EmptyState title="DLQ healthy" description="Depth is zero. Nothing awaits redrive or discard." />
+            <EmptyState title={t('admin:opsDashboard.dlq-healthy')} description={t('admin:opsDashboard.depth-is-zero-nothing-awaits-redrive')} />
           </div>
         ) : (
           <div data-testid="admin-ops-dlq-list">
-            <p data-testid="admin-ops-dlq-depth">Depth: {String(dlqQuery.data?.depth ?? 0)}</p>
+            <p data-testid="admin-ops-dlq-depth">{t('admin:opsDashboard.depth')} {String(dlqQuery.data?.depth ?? 0)}</p>
             <ul>
               {dlqRows.map((row) => (
                 <li key={row.id} data-testid={`admin-ops-dlq-row-${row.id}`}>
@@ -274,26 +277,26 @@ export function OpsDashboard(): ReactNode {
                   {row.actions.includes('redrive') ? (
                     <DestructiveAction
                       action="dlq.redrive"
-                      label="Redrive entry"
+                      label={t('admin:opsDashboard.redrive-entry')}
                       confirmToken={row.code}
                       testId={`admin-ops-dlq-redrive-${row.id}`}
-                      description="Requeues this dead-letter entry for processing."
+                      description={t('admin:opsDashboard.requeues-this-dead-letter-entry-for')}
                       onConfirm={(reason) => redriveWithConflictRefresh(row.code, reason)}
                     />
                   ) : null}
                   {row.actions.includes('discard') ? (
                     <DestructiveAction
                       action="dlq.discard"
-                      label="Discard entry"
+                      label={t('admin:opsDashboard.discard-entry')}
                       confirmToken={row.code}
                       testId={`admin-ops-dlq-discard-${row.id}`}
-                      description="Permanently discards this dead-letter entry."
+                      description={t('admin:opsDashboard.permanently-discards-this-dead-letter-entry')}
                       onConfirm={(reason) => discardDlqEntry(row.code, reason)}
                     />
                   ) : null}
                   {row.actions.length === 0 ? (
                     <span data-testid={`admin-ops-dlq-readonly-${row.id}`} className="dp-muted">
-                      Read-only
+                      {t('admin:opsDashboard.read-only')}
                     </span>
                   ) : null}
                 </li>
@@ -309,10 +312,10 @@ export function OpsDashboard(): ReactNode {
                   setDlqPage((page) => Math.max(1, page - 1));
                 }}
               >
-                Previous
+                {t('admin:opsDashboard.previous')}
               </button>
               <p data-testid="admin-ops-dlq-page" className="dp-muted">
-                Page {String(dlqPage)}
+                {t('admin:opsDashboard.page')} {String(dlqPage)}
               </p>
               <button
                 type="button"
@@ -323,7 +326,7 @@ export function OpsDashboard(): ReactNode {
                   setDlqPage((page) => page + 1);
                 }}
               >
-                Next
+                {t('admin:opsDashboard.next')}
               </button>
             </div>
           </div>
@@ -331,19 +334,19 @@ export function OpsDashboard(): ReactNode {
       </div>
 
       <div data-testid="admin-ops-leases">
-        <h4>Leases</h4>
+        <h4>{t('admin:opsDashboard.leases')}</h4>
         {leasesQuery.isPending && leasesQuery.data === undefined ? (
           <div data-testid="admin-ops-leases-loading">
             <Skeleton lines={3} />
           </div>
         ) : leasesQuery.isError && leasesQuery.data === undefined ? (
           isAdminForbiddenError(leasesQuery.error) ? (
-            <SectionForbidden testId="admin-ops-leases-forbidden" title="Leases locked" />
+            <SectionForbidden testId="admin-ops-leases-forbidden" title={t('admin:opsDashboard.leases-locked')} />
           ) : (
             <div data-testid="admin-ops-leases-error">
               <ErrorState
-                title="Leases unavailable"
-                message={leasesQuery.error?.message ?? 'Stale leases could not be loaded.'}
+                title={t('admin:opsDashboard.leases-unavailable')}
+                message={leasesQuery.error?.message ?? t('admin:opsDashboard.stale-leases-could-not-be-loaded')}
                 correlationId={leasesQuery.error?.correlationId}
                 onRetry={() => {
                   void leasesQuery.refetch();
@@ -353,7 +356,7 @@ export function OpsDashboard(): ReactNode {
           )
         ) : leases.length === 0 ? (
           <div data-testid="admin-ops-leases-empty">
-            <EmptyState title="No stale leases" description="All leases are fresh. Nothing is orphaned." />
+            <EmptyState title={t('admin:opsDashboard.no-stale-leases')} description={t('admin:opsDashboard.all-leases-are-fresh-nothing-is')} />
           </div>
         ) : (
           <ul data-testid="admin-ops-leases-list">
@@ -362,7 +365,7 @@ export function OpsDashboard(): ReactNode {
                 <span data-testid={`admin-ops-lease-stage-${lease.id}`}>{lease.stageType}</span>{' '}
                 <span data-testid={`admin-ops-lease-status-${lease.id}`}>{lease.status}</span>{' '}
                 <span data-testid={`admin-ops-lease-owner-${lease.id}`}>{lease.owner}</span>{' '}
-                <span data-testid={`admin-ops-lease-age-${lease.id}`}>age {formatLeaseAge(lease.ageMs)}</span>
+                <span data-testid={`admin-ops-lease-age-${lease.id}`}>{t('admin:opsDashboard.age')} {formatLeaseAge(lease.ageMs)}</span>
               </li>
             ))}
           </ul>
@@ -370,19 +373,19 @@ export function OpsDashboard(): ReactNode {
       </div>
 
       <div data-testid="admin-ops-orphans">
-        <h4>Orphans</h4>
+        <h4>{t('admin:opsDashboard.orphans')}</h4>
         {orphansQuery.isPending && orphansQuery.data === undefined ? (
           <div data-testid="admin-ops-orphans-loading">
             <Skeleton lines={3} />
           </div>
         ) : orphansQuery.isError && orphansQuery.data === undefined ? (
           isAdminForbiddenError(orphansQuery.error) ? (
-            <SectionForbidden testId="admin-ops-orphans-forbidden" title="Orphans locked" />
+            <SectionForbidden testId="admin-ops-orphans-forbidden" title={t('admin:opsDashboard.orphans-locked')} />
           ) : (
             <div data-testid="admin-ops-orphans-error">
               <ErrorState
-                title="Orphans unavailable"
-                message={orphansQuery.error?.message ?? 'Orphan artifacts could not be loaded.'}
+                title={t('admin:opsDashboard.orphans-unavailable')}
+                message={orphansQuery.error?.message ?? t('admin:opsDashboard.orphan-artifacts-could-not-be-loaded')}
                 correlationId={orphansQuery.error?.correlationId}
                 onRetry={() => {
                   void orphansQuery.refetch();
@@ -392,7 +395,7 @@ export function OpsDashboard(): ReactNode {
           )
         ) : (orphans?.items ?? []).length === 0 ? (
           <div data-testid="admin-ops-orphans-empty">
-            <EmptyState title="No orphans" description="Every stored object has an owning reference." />
+            <EmptyState title={t('admin:opsDashboard.no-orphans')} description={t('admin:opsDashboard.every-stored-object-has-an-owning')} />
           </div>
         ) : (
           <ul data-testid="admin-ops-orphans-list">
@@ -407,19 +410,19 @@ export function OpsDashboard(): ReactNode {
       </div>
 
       <div data-testid="admin-ops-backlog">
-        <h4>Review backlog</h4>
+        <h4>{t('admin:opsDashboard.review-backlog')}</h4>
         {backlogQuery.isPending && backlogQuery.data === undefined ? (
           <div data-testid="admin-ops-backlog-loading">
             <Skeleton lines={3} />
           </div>
         ) : backlogQuery.isError && backlogQuery.data === undefined ? (
           isAdminForbiddenError(backlogQuery.error) ? (
-            <SectionForbidden testId="admin-ops-backlog-forbidden" title="Backlog locked" />
+            <SectionForbidden testId="admin-ops-backlog-forbidden" title={t('admin:opsDashboard.backlog-locked')} />
           ) : (
             <div data-testid="admin-ops-backlog-error">
               <ErrorState
-                title="Backlog unavailable"
-                message={backlogQuery.error?.message ?? 'Review backlog could not be loaded.'}
+                title={t('admin:opsDashboard.backlog-unavailable')}
+                message={backlogQuery.error?.message ?? t('admin:opsDashboard.review-backlog-could-not-be-loaded')}
                 correlationId={backlogQuery.error?.correlationId}
                 onRetry={() => {
                   void backlogQuery.refetch();
@@ -429,15 +432,15 @@ export function OpsDashboard(): ReactNode {
           )
         ) : (backlog?.totalOpen ?? 0) === 0 ? (
           <div data-testid="admin-ops-backlog-empty">
-            <EmptyState title="Backlog clear" description="No open reviews await attention." />
+            <EmptyState title={t('admin:opsDashboard.backlog-clear')} description={t('admin:opsDashboard.no-open-reviews-await-attention')} />
           </div>
         ) : (
           <div data-testid="admin-ops-backlog-summary">
-            <p data-testid="admin-ops-backlog-total">Open: {String(backlog?.totalOpen ?? 0)}</p>
+            <p data-testid="admin-ops-backlog-total">{t('admin:opsDashboard.open')} {String(backlog?.totalOpen ?? 0)}</p>
             <ul data-testid="admin-ops-backlog-projects">
               {(backlog?.perProject ?? []).map((entry) => (
                 <li key={entry.projectId} data-testid={`admin-ops-backlog-project-${entry.projectId}`}>
-                  {entry.projectId}: {String(entry.openCount)} open
+                  {entry.projectId}: {String(entry.openCount)} {t('admin:opsDashboard.open')}
                 </li>
               ))}
             </ul>
@@ -446,19 +449,19 @@ export function OpsDashboard(): ReactNode {
       </div>
 
       <div data-testid="admin-ops-failures">
-        <h4>Failures</h4>
+        <h4>{t('admin:opsDashboard.failures')}</h4>
         {healthQuery.isPending && healthQuery.data === undefined ? (
           <div data-testid="admin-ops-failures-loading">
             <Skeleton lines={2} />
           </div>
         ) : healthQuery.isError && healthQuery.data === undefined ? (
           isAdminForbiddenError(healthQuery.error) ? (
-            <SectionForbidden testId="admin-ops-failures-forbidden" title="Failures locked" />
+            <SectionForbidden testId="admin-ops-failures-forbidden" title={t('admin:opsDashboard.failures-locked')} />
           ) : (
             <div data-testid="admin-ops-failures-error">
               <ErrorState
-                title="Failures unavailable"
-                message={healthQuery.error?.message ?? 'Failure signals could not be loaded.'}
+                title={t('admin:opsDashboard.failures-unavailable')}
+                message={healthQuery.error?.message ?? t('admin:opsDashboard.failure-signals-could-not-be-loaded')}
                 correlationId={healthQuery.error?.correlationId}
                 onRetry={() => {
                   void healthQuery.refetch();
@@ -468,12 +471,12 @@ export function OpsDashboard(): ReactNode {
           )
         ) : failedProviders.length === 0 && (dlqQuery.data?.depth ?? 0) === 0 && (backlog?.totalOpen ?? 0) === 0 ? (
           <div data-testid="admin-ops-failures-empty">
-            <EmptyState title="No failures" description="Providers healthy, DLQ empty, backlog clear." />
+            <EmptyState title={t('admin:opsDashboard.no-failures')} description={t('admin:opsDashboard.providers-healthy-dlq-empty-backlog-clear')} />
           </div>
         ) : (
           <div data-testid="admin-ops-failures-list">
             {failedProviders.length > 0 ? (
-              <Alert tone="error" title="Provider failures">
+              <Alert tone="error" title={t('admin:opsDashboard.provider-failures')}>
                 <ul>
                   {failedProviders.map((provider) => (
                     <li key={provider.provider} data-testid={`admin-ops-failure-${provider.provider}`}>
@@ -484,10 +487,10 @@ export function OpsDashboard(): ReactNode {
               </Alert>
             ) : null}
             {(dlqQuery.data?.depth ?? 0) > 0 ? (
-              <p data-testid="admin-ops-failures-dlq">DLQ depth: {String(dlqQuery.data?.depth ?? 0)}</p>
+              <p data-testid="admin-ops-failures-dlq">{t('admin:opsDashboard.dlq-depth')} {String(dlqQuery.data?.depth ?? 0)}</p>
             ) : null}
             {(backlog?.totalOpen ?? 0) > 0 ? (
-              <p data-testid="admin-ops-failures-backlog">Open reviews: {String(backlog?.totalOpen ?? 0)}</p>
+              <p data-testid="admin-ops-failures-backlog">{t('admin:opsDashboard.open-reviews')} {String(backlog?.totalOpen ?? 0)}</p>
             ) : null}
           </div>
         )}

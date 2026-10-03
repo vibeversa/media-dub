@@ -5,6 +5,7 @@ import { ReviewCard } from './ReviewCard.js';
 import { ReviewQueue } from './ReviewQueue.js';
 import { EMPTY_REVIEW_FILTERS, reviewFiltersFromSearchParams, reviewFiltersToSearchParams } from './types.js';
 import type { ReviewFilters } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 export interface ReviewStudioProps {
   /** Fixed project scope (project tab). When absent, the `project` URL param owns the scope. */
@@ -20,7 +21,8 @@ export interface ReviewStudioProps {
  * opens its card in place — no navigation away.
  */
 export function ReviewStudio({ projectId: fixedProjectId }: ReviewStudioProps): ReactNode {
-  const [searchParams, setSearchParams] = useSearchParams();
+    const { t } = useTranslation();
+const [searchParams, setSearchParams] = useSearchParams();
   const urlFilters = useMemo(() => reviewFiltersFromSearchParams(searchParams), [searchParams]);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   // Local draft for the project field. See the note at the field: writing
@@ -59,7 +61,7 @@ export function ReviewStudio({ projectId: fixedProjectId }: ReviewStudioProps): 
   }
 
   return (
-    <section data-testid="review-studio" aria-label="Manual review studio" data-project={projectId}>
+    <section data-testid="review-studio" aria-label={t('review:reviewStudio.manual-review-studio')} data-project={projectId}>
       {/*
         Task 041C: the project filter used to write through to the URL on every
         keystroke. That made it unusable from the keyboard: each character
@@ -76,13 +78,13 @@ export function ReviewStudio({ projectId: fixedProjectId }: ReviewStudioProps): 
       {fixedProjectId === undefined ? (
         <div style={{ marginBlockEnd: 'var(--space-3)' }}>
           <label htmlFor="review-project">
-            Project
+            {t('review:reviewStudio.project')}
             <input
               id="review-project"
               data-testid="review-filter-project"
               value={projectDraft}
               autoComplete="off"
-              placeholder="prj_…"
+              placeholder={t('review:reviewStudio.prj')}
               onChange={(event) => {
                 setProjectDraft(event.target.value);
               }}
@@ -114,7 +116,7 @@ export function ReviewStudio({ projectId: fixedProjectId }: ReviewStudioProps): 
         <div style={{ flexGrow: 1, minWidth: 0 }} data-testid="review-studio-detail">
           {selectedId === undefined ? (
             <p data-testid="review-studio-empty" className="dp-muted">
-              Select a review to see its full context.
+              {t('review:reviewStudio.select-a-review-to-see-its')}
             </p>
           ) : (
             <ReviewCard

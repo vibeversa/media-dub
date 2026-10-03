@@ -4,6 +4,7 @@ import { ErrorState } from '../../components/ErrorState/ErrorState.js';
 import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { PreferencesForm } from './PreferencesForm.js';
 import { usePreferencesQuery } from './usePreferences.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * User preferences screen (Task 035B).
@@ -18,11 +19,12 @@ import { usePreferencesQuery } from './usePreferences.js';
  * backend projects them (no direct activity writes here).
  */
 export function SettingsPage(): ReactNode {
-  const prefsQuery = usePreferencesQuery();
+    const { t } = useTranslation();
+const prefsQuery = usePreferencesQuery();
 
   if (prefsQuery.isPending && prefsQuery.data === undefined) {
     return (
-      <section data-testid="settings-page" aria-label="Settings">
+      <section data-testid="settings-page" aria-label={t('settings:settingsPage.settings')}>
         <div data-testid="settings-loading">
           <Skeleton lines={6} />
         </div>
@@ -35,14 +37,14 @@ export function SettingsPage(): ReactNode {
     const code = prefsQuery.error?.code ?? '';
     const isForbidden = status === 403 || code === 'FORBIDDEN' || code === 'USER_DISABLED';
     return (
-      <section data-testid="settings-page" aria-label="Settings">
+      <section data-testid="settings-page" aria-label={t('settings:settingsPage.settings2')}>
         <div data-testid="settings-error">
           <ErrorState
             title={isForbidden ? 'Preferences unavailable' : 'Settings unavailable'}
             message={
               isForbidden
                 ? 'You do not have permission to view these preferences. Preferences are scoped to your account; contact your tenant admin.'
-                : (prefsQuery.error?.message ?? 'Preferences could not be loaded. No data was changed.')
+                : (prefsQuery.error?.message ?? t('settings:settingsPage.preferences-could-not-be-loaded-no'))
             }
             correlationId={prefsQuery.error?.correlationId}
             onRetry={() => {
@@ -57,9 +59,9 @@ export function SettingsPage(): ReactNode {
   const serverMap = prefsQuery.data ?? {};
 
   return (
-    <section data-testid="settings-page" aria-label="Settings">
-      <h2>Settings</h2>
-      <p className="dp-muted">Preferences for your account and workspace.</p>
+    <section data-testid="settings-page" aria-label={t('settings:settingsPage.settings3')}>
+      <h2>{t('settings:settingsPage.settings4')}</h2>
+      <p className="dp-muted">{t('settings:settingsPage.preferences-for-your-account-and-workspace')}</p>
       <PreferencesForm
         serverMap={serverMap}
         refetch={async () => {
@@ -69,7 +71,7 @@ export function SettingsPage(): ReactNode {
       />
       {Object.keys(serverMap).length === 0 ? (
         <div data-testid="settings-empty">
-          <EmptyState title="No saved preferences" description="Defaults are shown. Edit any field to persist it." />
+          <EmptyState title={t('settings:settingsPage.no-saved-preferences')} description={t('settings:settingsPage.defaults-are-shown-edit-any-field')} />
         </div>
       ) : null}
     </section>

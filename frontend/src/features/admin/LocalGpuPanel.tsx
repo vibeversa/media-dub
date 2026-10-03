@@ -10,6 +10,7 @@ import { LocalGpuNotAvailableState, LocalGpuPrivacyNote, LocalGpuUnavailableStat
 import { isAdminForbiddenError, isAdminUnknownRouteError } from './types.js';
 import { useLocalGpuHealth } from './useLocalGpuQueries.js';
 import { useAppStore } from '../../stores/index.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Operator-only local-GPU health (Task 044, §19.3, R4).
@@ -58,7 +59,8 @@ export interface LocalGpuPanelProps {
 }
 
 export function LocalGpuPanel({ enabled }: LocalGpuPanelProps = {}): ReactNode {
-  const permissions = useAppStore((s) => s.permissions);
+    const { t } = useTranslation();
+const permissions = useAppStore((s) => s.permissions);
   const sessionStatus = useAppStore((s) => s.sessionStatus);
   const localInference = useFeatureFlag('localInference');
   const [dismissed, setDismissed] = useState(false);
@@ -75,12 +77,12 @@ export function LocalGpuPanel({ enabled }: LocalGpuPanelProps = {}): ReactNode {
 
   if (!allowed) {
     return (
-      <section data-testid="admin-local-gpu" aria-label="Local GPU health">
-        <h3>Local GPU health</h3>
+      <section data-testid="admin-local-gpu" aria-label={t('admin:localGpuPanel.local-gpu-health')}>
+        <h3>{t('admin:localGpuPanel.local-gpu-health2')}</h3>
         <div data-testid="admin-local-gpu-forbidden">
           <EmptyState
-            title="Local GPU health unavailable"
-            description="You do not have permission to view device details. Contact your tenant admin for access."
+            title={t('admin:localGpuPanel.local-gpu-health-unavailable')}
+            description={t('admin:localGpuPanel.you-do-not-have-permission-to')}
           />
         </div>
       </section>
@@ -88,8 +90,8 @@ export function LocalGpuPanel({ enabled }: LocalGpuPanelProps = {}): ReactNode {
   }
 
   return (
-    <section data-testid="admin-local-gpu" aria-label="Local GPU health">
-      <h3>Local GPU health</h3>
+    <section data-testid="admin-local-gpu" aria-label={t('admin:localGpuPanel.local-gpu-health3')}>
+      <h3>{t('admin:localGpuPanel.local-gpu-health4')}</h3>
       <LocalGpuBody dismissed={dismissed} onDismiss={() => setDismissed(true)} onUndismiss={() => setDismissed(false)} />
     </section>
   );
@@ -102,7 +104,8 @@ interface LocalGpuBodyProps {
 }
 
 function LocalGpuBody({ dismissed, onDismiss, onUndismiss }: LocalGpuBodyProps): ReactNode {
-  const query = useLocalGpuHealth(true);
+    const { t } = useTranslation();
+const query = useLocalGpuHealth(true);
 
   if (query.isPending && query.data === undefined) {
     return (
@@ -119,8 +122,8 @@ function LocalGpuBody({ dismissed, onDismiss, onUndismiss }: LocalGpuBodyProps):
       return (
         <div data-testid="admin-local-gpu-forbidden">
           <EmptyState
-            title="Local GPU health unavailable"
-            description="You do not have permission to view device details. Contact your tenant admin for access."
+            title={t('admin:localGpuPanel.local-gpu-health-unavailable2')}
+            description={t('admin:localGpuPanel.you-do-not-have-permission-to2')}
           />
         </div>
       );
@@ -136,7 +139,7 @@ function LocalGpuBody({ dismissed, onDismiss, onUndismiss }: LocalGpuBodyProps):
     }
     return (
       <LocalGpuUnavailableState
-        message={error?.message ?? 'Device health could not be read. No data was changed.'}
+        message={error?.message ?? t('admin:localGpuPanel.device-health-could-not-be-read')}
         correlationId={error?.correlationId}
         onRetry={() => {
           onUndismiss();
@@ -163,19 +166,19 @@ function LocalGpuBody({ dismissed, onDismiss, onUndismiss }: LocalGpuBodyProps):
           </span>
         </p>
         <dl>
-          <dt>Provider</dt>
+          <dt>{t('admin:localGpuPanel.provider')}</dt>
           <dd data-testid="admin-local-gpu-provider">{view.provider === '' ? '—' : view.provider}</dd>
-          <dt>Model</dt>
+          <dt>{t('admin:localGpuPanel.model')}</dt>
           <dd data-testid="admin-local-gpu-model">{view.model === '' ? '—' : view.model}</dd>
-          <dt>Model version</dt>
+          <dt>{t('admin:localGpuPanel.model-version')}</dt>
           <dd data-testid="admin-local-gpu-model-version">{view.modelVersion === '' ? '—' : view.modelVersion}</dd>
-          <dt>Device</dt>
+          <dt>{t('admin:localGpuPanel.device')}</dt>
           <dd data-testid="admin-local-gpu-device">{view.device === '' ? '—' : view.device}</dd>
-          <dt>Devices</dt>
+          <dt>{t('admin:localGpuPanel.devices')}</dt>
           <dd data-testid="admin-local-gpu-device-count">{view.deviceCount === undefined ? '—' : String(view.deviceCount)}</dd>
-          <dt>Latency p95</dt>
+          <dt>{t('admin:localGpuPanel.latency-p95')}</dt>
           <dd data-testid="admin-local-gpu-latency">{view.latencyMsP95 === undefined ? '—' : `${String(view.latencyMsP95)} ms`}</dd>
-          <dt>Last success</dt>
+          <dt>{t('admin:localGpuPanel.last-success')}</dt>
           <dd data-testid="admin-local-gpu-last-success">{view.lastSuccessAt === '' ? '—' : view.lastSuccessAt}</dd>
         </dl>
       </div>

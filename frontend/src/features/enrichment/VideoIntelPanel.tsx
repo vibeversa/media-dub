@@ -13,6 +13,7 @@ import {
 import { isEnrichmentForbiddenError, isNotProvisionedError, useVideoIntel } from './useEnrichmentQueries.js';
 import { resolveSegmentLink } from './types.js';
 import type { VideoIntelArtifactView, VideoIntelKind } from './types.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Video-intelligence artifacts (Task 044, §19.1, R2).
@@ -65,7 +66,8 @@ export interface VideoIntelPanelProps {
 }
 
 export function VideoIntelPanel({ projectId, enabled, knownSegmentIds }: VideoIntelPanelProps): ReactNode {
-  const [dismissed, setDismissed] = useState(false);
+    const { t } = useTranslation();
+const [dismissed, setDismissed] = useState(false);
   const query = useVideoIntel(projectId, enabled);
 
   // While the flag is resolving the panel is not mounted at all, so this
@@ -73,8 +75,8 @@ export function VideoIntelPanel({ projectId, enabled, knownSegmentIds }: VideoIn
   // yet produced data.
   if (query.isPending && query.data === undefined) {
     return (
-      <section data-testid="enrichment-video-intel" aria-label="Video intelligence">
-        <h3 data-testid="enrichment-video-intel-title">Video intelligence</h3>
+      <section data-testid="enrichment-video-intel" aria-label={t('enrichment:videoIntelPanel.video-intelligence')}>
+        <h3 data-testid="enrichment-video-intel-title">{t('enrichment:videoIntelPanel.video-intelligence2')}</h3>
         <div data-testid="enrichment-video-intel-loading">
           <Skeleton lines={3} />
         </div>
@@ -87,12 +89,12 @@ export function VideoIntelPanel({ projectId, enabled, knownSegmentIds }: VideoIn
     if (isEnrichmentForbiddenError(error)) {
       // No detail whatsoever: a 403 must not leak whether the artifacts exist.
       return (
-        <section data-testid="enrichment-video-intel" aria-label="Video intelligence">
-          <h3 data-testid="enrichment-video-intel-title">Video intelligence</h3>
+        <section data-testid="enrichment-video-intel" aria-label={t('enrichment:videoIntelPanel.video-intelligence3')}>
+          <h3 data-testid="enrichment-video-intel-title">{t('enrichment:videoIntelPanel.video-intelligence4')}</h3>
           <div data-testid="enrichment-video-intel-forbidden">
             <EmptyState
-              title="Video intelligence unavailable"
-              description="You do not have permission to view these results. Contact your tenant admin for access."
+              title={t('enrichment:videoIntelPanel.video-intelligence-unavailable')}
+              description={t('enrichment:videoIntelPanel.you-do-not-have-permission-to')}
             />
           </div>
         </section>
@@ -100,12 +102,12 @@ export function VideoIntelPanel({ projectId, enabled, knownSegmentIds }: VideoIn
     }
     if (isNotProvisionedError(error)) {
       return (
-        <section data-testid="enrichment-video-intel" aria-label="Video intelligence">
-          <h3 data-testid="enrichment-video-intel-title">Video intelligence</h3>
+        <section data-testid="enrichment-video-intel" aria-label={t('enrichment:videoIntelPanel.video-intelligence5')}>
+          <h3 data-testid="enrichment-video-intel-title">{t('enrichment:videoIntelPanel.video-intelligence6')}</h3>
           <div data-testid="enrichment-video-intel-not-available">
             <NotAvailableState
-              title="Video intelligence not available"
-              description="Scene-cut and overlay detection is an operator feature in setup for this deployment."
+              title={t('enrichment:videoIntelPanel.video-intelligence-not-available')}
+              description={t('enrichment:videoIntelPanel.scene-cut-and-overlay-detection-is')}
             />
           </div>
         </section>
@@ -115,12 +117,12 @@ export function VideoIntelPanel({ projectId, enabled, knownSegmentIds }: VideoIn
       return null;
     }
     return (
-      <section data-testid="enrichment-video-intel" aria-label="Video intelligence">
-        <h3 data-testid="enrichment-video-intel-title">Video intelligence</h3>
+      <section data-testid="enrichment-video-intel" aria-label={t('enrichment:videoIntelPanel.video-intelligence7')}>
+        <h3 data-testid="enrichment-video-intel-title">{t('enrichment:videoIntelPanel.video-intelligence8')}</h3>
         <div data-testid="enrichment-video-intel-unavailable">
           <UnavailableState
-            title="Video intelligence unavailable"
-            message={error?.message ?? 'Video intelligence could not be loaded. No data was changed.'}
+            title={t('enrichment:videoIntelPanel.video-intelligence-unavailable2')}
+            message={error?.message ?? t('enrichment:videoIntelPanel.video-intelligence-could-not-be-loaded')}
             correlationId={error?.correlationId}
             onRetry={() => {
               setDismissed(false);
@@ -136,7 +138,7 @@ export function VideoIntelPanel({ projectId, enabled, knownSegmentIds }: VideoIn
               setDismissed(true);
             }}
           >
-            Dismiss
+            {t('enrichment:videoIntelPanel.dismiss')}
           </button>
         </div>
       </section>
@@ -145,10 +147,10 @@ export function VideoIntelPanel({ projectId, enabled, knownSegmentIds }: VideoIn
 
   const view = query.data;
   return (
-    <section data-testid="enrichment-video-intel" aria-label="Video intelligence">
-      <h3 data-testid="enrichment-video-intel-title">Video intelligence</h3>
+    <section data-testid="enrichment-video-intel" aria-label={t('enrichment:videoIntelPanel.video-intelligence9')}>
+      <h3 data-testid="enrichment-video-intel-title">{t('enrichment:videoIntelPanel.video-intelligence10')}</h3>
       <p data-testid="enrichment-video-intel-separate-note" className="dp-muted">
-        Optional enrichment. These are separate analysis artifacts — they link to segments but never replace, reorder or edit the transcript or timeline.
+        {t('enrichment:videoIntelPanel.optional-enrichment-these-are-separate-analysis')}
       </p>
       {view.model === '' ? null : (
         <p data-testid="enrichment-video-intel-model" className="dp-muted">
@@ -158,8 +160,8 @@ export function VideoIntelPanel({ projectId, enabled, knownSegmentIds }: VideoIn
       {view.empty ? (
         <div data-testid="enrichment-video-intel-empty">
           <EmptyState
-            title="No video intelligence yet"
-            description="Nothing has been analysed for this project. Upload media to produce scene-cut and overlay artifacts."
+            title={t('enrichment:videoIntelPanel.no-video-intelligence-yet')}
+            description={t('enrichment:videoIntelPanel.nothing-has-been-analysed-for-this')}
           />
         </div>
       ) : (
@@ -191,7 +193,8 @@ interface ArtifactRowProps {
  * badge tone still reads "linked" / "no longer exists".
  */
 function ArtifactRow({ projectId, artifact, knownSegmentIds }: ArtifactRowProps): ReactNode {
-  const link = resolveSegmentLink(artifact.segmentId, knownSegmentIds);
+    const { t } = useTranslation();
+const link = resolveSegmentLink(artifact.segmentId, knownSegmentIds);
   const label = artifact.label === '' ? artifact.id : artifact.label;
   return (
     <li data-testid={`enrichment-video-intel-artifact-${artifact.id}`} data-kind={artifact.kind} data-link={link}>
@@ -214,7 +217,7 @@ function ArtifactRow({ projectId, artifact, knownSegmentIds }: ArtifactRowProps)
           data-testid={`enrichment-video-intel-link-${artifact.id}`}
           to={`/projects/${encodeURIComponent(projectId)}/transcript?segment=${encodeURIComponent(artifact.segmentId)}`}
         >
-          Open segment
+          {t('enrichment:videoIntelPanel.open-segment')}
         </Link>
       ) : null}
       {link === 'gone' ? (

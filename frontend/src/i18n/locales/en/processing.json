@@ -74,5 +74,8 @@
   },
   "toasts": {
     "started": "Run started."
+  },
+  "progress": {
+    "approximateNote": "Progress is approximate"
   }
 }

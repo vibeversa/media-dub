@@ -199,5 +199,8 @@
       "fixFields": "Check the highlighted fields and try again.",
       "formError": "The project could not be created."
     }
+  },
+  "projectsPage": {
+    "cancel": "Cancel"
   }
 }

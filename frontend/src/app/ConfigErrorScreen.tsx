@@ -1,13 +1,15 @@
 import type { ReactNode } from 'react';
 import type { EnvError } from '../lib/env.js';
+import { useTranslation } from 'react-i18next';
 
 /** Startup guard screen: invalid/missing VITE_* config never renders a blank page. */
 export function ConfigErrorScreen({ error }: { readonly error: EnvError }): ReactNode {
-  return (
+    const { t } = useTranslation();
+return (
     <div role="alert" data-testid="config-error" className="mx-auto max-w-md py-12 text-center">
-      <h1 className="text-lg font-semibold">Configuration error</h1>
+      <h1 className="text-lg font-semibold">{t('common:configErrorScreen.configuration-error')}</h1>
       <p className="mt-2 text-sm dp-muted">
-        The app is missing required configuration and cannot start. Contact your administrator.
+        {t('common:configErrorScreen.the-app-is-missing-required-configuration')}
       </p>
       {/* Task 045, R3: `text-start`, not `text-left`. This is the one physical
           text alignment in `frontend/src` and the start screen renders under

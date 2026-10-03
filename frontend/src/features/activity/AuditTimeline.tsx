@@ -14,6 +14,7 @@ import { ActivityFilters } from './ActivityFilters.js';
 import { useActivityFiltersFromUrl } from './useActivityFilters.js';
 import { ACTIVITY_PAGE_SIZE, activityActionKey, filterActivityEvents } from './types.js';
 import { useActivity } from './useActivity.js';
+import { useTranslation } from 'react-i18next';
 
 export interface AuditTimelineProps {
   readonly projectId: string;
@@ -40,7 +41,8 @@ export interface AuditTimelineProps {
  * toast.
  */
 export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
-  const queryClient = useQueryClient();
+    const { t } = useTranslation();
+const queryClient = useQueryClient();
   const locale = useAppStore((s) => s.locale);
   const tenantTimezone = useAppStore((s) => s.tenantTimezone);
   const permissions = useAppStore((s) => s.permissions);
@@ -84,7 +86,7 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
   if (projectId === '') {
     body = (
       <div data-testid="activity-needs-project">
-        <EmptyState title="Select a project" description="Enter a project id to load its activity." />
+        <EmptyState title={t('activity:auditTimeline.select-a-project')} description={t('activity:auditTimeline.enter-a-project-id-to-load')} />
       </div>
     );
   } else if (listQuery.isPending && pageData === undefined) {
@@ -97,8 +99,8 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
     body = (
       <div data-testid="activity-error">
         <ErrorState
-          title="Activity unavailable"
-          message={listQuery.error?.message ?? 'Activity could not be loaded. No data was changed.'}
+          title={t('activity:auditTimeline.activity-unavailable')}
+          message={listQuery.error?.message ?? t('activity:auditTimeline.activity-could-not-be-loaded-no')}
           correlationId={listQuery.error?.correlationId}
           onRetry={() => {
             void listQuery.refetch();
@@ -109,13 +111,13 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
   } else if (rawItems.length === 0) {
     body = (
       <div data-testid="activity-empty">
-        <EmptyState title="No activity yet" description="Events appear as work progresses." />
+        <EmptyState title={t('activity:auditTimeline.no-activity-yet')} description={t('activity:auditTimeline.events-appear-as-work-progresses')} />
       </div>
     );
   } else if (items.length === 0) {
     body = (
       <div data-testid="activity-filtered-empty">
-        <EmptyState title="No matching events" description="Adjust the filters or reset to the defaults." />
+        <EmptyState title={t('activity:auditTimeline.no-matching-events')} description={t('activity:auditTimeline.adjust-the-filters-or-reset-to')} />
       </div>
     );
   } else {
@@ -124,11 +126,11 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
         <table data-testid="activity-table">
           <thead>
             <tr>
-              <th scope="col">Timestamp</th>
-              <th scope="col">Actor</th>
-              <th scope="col">Action</th>
-              <th scope="col">Summary</th>
-              <th scope="col">Details</th>
+              <th scope="col">{t('activity:auditTimeline.timestamp')}</th>
+              <th scope="col">{t('activity:auditTimeline.actor')}</th>
+              <th scope="col">{t('activity:auditTimeline.action')}</th>
+              <th scope="col">{t('activity:auditTimeline.summary')}</th>
+              <th scope="col">{t('activity:auditTimeline.details')}</th>
             </tr>
           </thead>
           <tbody>
@@ -170,7 +172,7 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
                         </>
                       ) : (
                         <span data-testid={`activity-advanced-forbidden-${item.id}`} className="dp-muted">
-                          Advanced details hidden
+                          {t('activity:auditTimeline.advanced-details-hidden')}
                         </span>
                       )
                     ) : (
@@ -189,12 +191,12 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
   }
 
   return (
-    <section data-testid="activity-timeline" aria-label="Activity timeline" data-project={projectId}>
+    <section data-testid="activity-timeline" aria-label={t('activity:auditTimeline.activity-timeline')} data-project={projectId}>
       <ActivityFilters filters={filters} onChange={setFilters} onReset={resetFilters} />
       {showPartial ? (
         <div data-testid="activity-partial">
-          <Alert tone="warning" title="Activity may be incomplete">
-            <p>New events are still projecting. Showing the last loaded events.</p>
+          <Alert tone="warning" title={t('activity:auditTimeline.activity-may-be-incomplete')}>
+            <p>{t('activity:auditTimeline.new-events-are-still-projecting-showing')}</p>
             <button
               type="button"
               data-testid="activity-partial-refresh"
@@ -203,15 +205,15 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
                 void queryClient.invalidateQueries({ queryKey: queryKeys.activity.all(projectId) });
               }}
             >
-              Refresh activity
+              {t('activity:auditTimeline.refresh-activity')}
             </button>
           </Alert>
         </div>
       ) : null}
       {listQuery.isError && pageData !== undefined ? (
         <div data-testid="activity-stale">
-          <Alert tone="warning" title="Activity refresh failed" details={listQuery.error?.correlationId}>
-            <p>Showing the last loaded events. New activity may be missing.</p>
+          <Alert tone="warning" title={t('activity:auditTimeline.activity-refresh-failed')} details={listQuery.error?.correlationId}>
+            <p>{t('activity:auditTimeline.showing-the-last-loaded-events-new')}</p>
             <button
               type="button"
               data-testid="activity-refresh"
@@ -220,7 +222,7 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
                 void queryClient.invalidateQueries({ queryKey: queryKeys.activity.all(projectId) });
               }}
             >
-              Refresh activity
+              {t('activity:auditTimeline.refresh-activity2')}
             </button>
           </Alert>
         </div>
@@ -237,7 +239,7 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
               setPage(Math.max(1, page - 1));
             }}
           >
-            Previous
+            {t('activity:auditTimeline.previous')}
           </button>
           <p data-testid="activity-page-info" className="dp-muted">
             {`Page ${String(pageData.page)} of ${String(totalPages)}`}
@@ -251,7 +253,7 @@ export function AuditTimeline({ projectId }: AuditTimelineProps): ReactNode {
               setPage(page + 1);
             }}
           >
-            Next
+            {t('activity:auditTimeline.next')}
           </button>
         </div>
       ) : null}

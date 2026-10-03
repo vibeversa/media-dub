@@ -3,6 +3,7 @@ import { Alert } from '../../components/Alert/Alert.js';
 import { EmptyState } from '../../components/EmptyState/EmptyState.js';
 import { ErrorState } from '../../components/ErrorState/ErrorState.js';
 import { Badge } from '../../components/Badge/Badge.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Enrichment state components (Task 044).
@@ -52,7 +53,8 @@ export function UnavailableState({
   onRetry,
   retryPending,
 }: UnavailableStateProps): ReactNode {
-  return (
+    const { t } = useTranslation();
+return (
     <div data-testid="enrichment-unavailable">
       <ErrorState
         title={title}
@@ -61,11 +63,11 @@ export function UnavailableState({
         onRetry={onRetry}
       />
       <p data-testid="enrichment-unavailable-nonblocking" className="dp-muted">
-        Transcript, translation, voice, review and export continue to work normally.
+        {t('enrichment:enrichmentStates.transcript-translation-voice-review-and-export')}
       </p>
       {retryPending ? (
         <p data-testid="enrichment-unavailable-retrying" className="dp-muted">
-          Retrying…
+          {t('enrichment:enrichmentStates.retrying')}
         </p>
       ) : null}
     </div>
@@ -79,11 +81,12 @@ export interface NotAvailableStateProps {
 
 /** Flag on, backend not provisioned in this deployment. Not an error. */
 export function NotAvailableState({ title, description }: NotAvailableStateProps): ReactNode {
-  return (
+    const { t } = useTranslation();
+return (
     <div data-testid="enrichment-not-available">
       <EmptyState title={title} description={description} />
       <p data-testid="enrichment-not-available-copy" className="dp-muted">
-        This is an operator feature in setup. Everything else on the page works without it.
+        {t('enrichment:enrichmentStates.this-is-an-operator-feature-in')}
       </p>
     </div>
   );
@@ -96,11 +99,12 @@ export interface UnknownStateProps {
 
 /** The subject could not be reached. Says so; never implies health. */
 export function UnknownState({ title, detail }: UnknownStateProps): ReactNode {
-  return (
+    const { t } = useTranslation();
+return (
     <div data-testid="enrichment-unknown">
       <EmptyState title={title} description={detail} />
       <p data-testid="enrichment-unknown-badge">
-        <Badge tone="neutral">unknown</Badge>
+        <Badge tone="neutral">{t('enrichment:enrichmentStates.unknown')}</Badge>
       </p>
     </div>
   );
@@ -117,13 +121,14 @@ export function GoneState({ detail }: { readonly detail: string }): ReactNode {
 
 /** Operator privacy routing note (§19.3). Copy is frozen with the policy review. */
 export function EnrichmentPrivacyNote({ boundary }: { readonly boundary: string }): ReactNode {
-  return (
-    <Alert tone="info" title="Where this processing runs">
+    const { t } = useTranslation();
+return (
+    <Alert tone="info" title={t('enrichment:enrichmentStates.where-this-processing-runs')}>
       <p data-testid="enrichment-privacy-note">
         {`Local processing path declared: ${boundary}. Media and transcript data processed here stays inside the operator's own boundary and is never sent to a third-party provider. Any change that would move data outside that boundary is a policy change and requires explicit operator opt-in before it takes effect.`}
       </p>
       <p data-testid="enrichment-privacy-route" className="dp-muted">
-        Privacy policy and data-residency terms are published with your organisation's admin documentation.
+        {t('enrichment:enrichmentStates.privacy-policy-and-data-residency-terms')}
       </p>
     </Alert>
   );

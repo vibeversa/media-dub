@@ -5,6 +5,7 @@ import { ErrorState } from '../../components/ErrorState/ErrorState.js';
 import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { isAdminForbiddenError } from './types.js';
 import { useAdminTenants } from './useAdminQueries.js';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Tenant list/detail (Task 036).
@@ -16,12 +17,13 @@ import { useAdminTenants } from './useAdminQueries.js';
  * id/name/slug survive parsing.
  */
 export function TenantsPanel(): ReactNode {
-  const tenantsQuery = useAdminTenants();
+    const { t } = useTranslation();
+const tenantsQuery = useAdminTenants();
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
   if (tenantsQuery.isPending && tenantsQuery.data === undefined) {
     return (
-      <section data-testid="admin-tenants" aria-label="Tenants">
+      <section data-testid="admin-tenants" aria-label={t('admin:tenantsPanel.tenants')}>
         <div data-testid="admin-tenants-loading">
           <Skeleton lines={4} />
         </div>
@@ -32,22 +34,22 @@ export function TenantsPanel(): ReactNode {
   if (tenantsQuery.isError && tenantsQuery.data === undefined) {
     if (isAdminForbiddenError(tenantsQuery.error)) {
       return (
-        <section data-testid="admin-tenants" aria-label="Tenants">
+        <section data-testid="admin-tenants" aria-label={t('admin:tenantsPanel.tenants2')}>
           <div data-testid="admin-tenants-forbidden">
             <EmptyState
-              title="Tenants unavailable"
-              description="You do not have permission to view tenants. Contact your tenant admin for access."
+              title={t('admin:tenantsPanel.tenants-unavailable')}
+              description={t('admin:tenantsPanel.you-do-not-have-permission-to')}
             />
           </div>
         </section>
       );
     }
     return (
-      <section data-testid="admin-tenants" aria-label="Tenants">
+      <section data-testid="admin-tenants" aria-label={t('admin:tenantsPanel.tenants3')}>
         <div data-testid="admin-tenants-error">
           <ErrorState
-            title="Tenants unavailable"
-            message={tenantsQuery.error?.message ?? 'Tenants could not be loaded. No data was changed.'}
+            title={t('admin:tenantsPanel.tenants-unavailable2')}
+            message={tenantsQuery.error?.message ?? t('admin:tenantsPanel.tenants-could-not-be-loaded-no')}
             correlationId={tenantsQuery.error?.correlationId}
             onRetry={() => {
               void tenantsQuery.refetch();
@@ -62,10 +64,10 @@ export function TenantsPanel(): ReactNode {
   const notProvisioned = tenantsQuery.data?.notProvisioned === true;
   if (items.length === 0) {
     return (
-      <section data-testid="admin-tenants" aria-label="Tenants">
+      <section data-testid="admin-tenants" aria-label={t('admin:tenantsPanel.tenants4')}>
         <div data-testid="admin-tenants-empty">
           <EmptyState
-            title="No tenants"
+            title={t('admin:tenantsPanel.no-tenants')}
             description={notProvisioned ? 'Tenant reads are not provisioned on this backend yet.' : 'No tenants are visible in this scope.'}
           />
         </div>
@@ -75,8 +77,8 @@ export function TenantsPanel(): ReactNode {
 
   const selected = items.find((tenant) => tenant.id === selectedId) ?? items[0];
   return (
-    <section data-testid="admin-tenants" aria-label="Tenants">
-      <h3>Tenant list</h3>
+    <section data-testid="admin-tenants" aria-label={t('admin:tenantsPanel.tenants5')}>
+      <h3>{t('admin:tenantsPanel.tenant-list')}</h3>
       <ul data-testid="admin-tenants-list">
         {items.map((tenant) => (
           <li key={tenant.id} data-testid={`admin-tenant-row-${tenant.id}`}>
@@ -97,15 +99,15 @@ export function TenantsPanel(): ReactNode {
       {selected !== undefined ? (
         <dl data-testid="admin-tenant-detail">
           <div>
-            <dt>Tenant id</dt>
+            <dt>{t('admin:tenantsPanel.tenant-id')}</dt>
             <dd data-testid="admin-tenant-detail-id">{selected.id}</dd>
           </div>
           <div>
-            <dt>Name</dt>
+            <dt>{t('admin:tenantsPanel.name')}</dt>
             <dd data-testid="admin-tenant-detail-name">{selected.name}</dd>
           </div>
           <div>
-            <dt>Slug</dt>
+            <dt>{t('admin:tenantsPanel.slug')}</dt>
             <dd data-testid="admin-tenant-detail-slug">{selected.slug === '' ? '—' : selected.slug}</dd>
           </div>
         </dl>

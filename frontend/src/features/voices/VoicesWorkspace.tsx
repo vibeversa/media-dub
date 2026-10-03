@@ -4,6 +4,7 @@ import { queryKeys } from '../../api/queryKeys/index.js';
 import { SpeakerList } from './SpeakerList.js';
 import { VoiceSelector } from './VoiceSelector.js';
 import { useSpeakers } from './useVoices.js';
+import { useTranslation } from 'react-i18next';
 
 export interface VoicesWorkspaceProps {
   readonly projectId: string;
@@ -20,7 +21,8 @@ export interface VoicesWorkspaceProps {
  * path as banners (no ad-hoc toasts for errors).
  */
 export function VoicesWorkspace({ projectId }: VoicesWorkspaceProps): ReactNode {
-  const speakersQuery = useSpeakers(projectId);
+    const { t } = useTranslation();
+const speakersQuery = useSpeakers(projectId);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
   const speakers = useMemo(() => speakersQuery.data ?? [], [speakersQuery.data]);
@@ -44,14 +46,14 @@ export function VoicesWorkspace({ projectId }: VoicesWorkspaceProps): ReactNode 
   const selected = selectedId !== undefined ? speakers.find((speaker) => speaker.id === selectedId) : undefined;
 
   return (
-    <section data-testid="voices-workspace" aria-label="Voice assignment workspace">
+    <section data-testid="voices-workspace" aria-label={t('voices:voicesWorkspace.voice-assignment-workspace')}>
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
         <div style={{ flex: '0 0 320px' }}>
           <SpeakerList projectId={projectId} selectedSpeakerId={selectedId} onSelect={setSelectedId} />
         </div>
         <div data-testid="voices-detail" style={{ flexGrow: 1, minWidth: 0 }}>
           {selected === undefined ? (
-            <p data-testid="voices-detail-empty">Select a speaker to review compatible voices.</p>
+            <p data-testid="voices-detail-empty">{t('voices:voicesWorkspace.select-a-speaker-to-review-compatible')}</p>
           ) : (
             <VoiceSelector
               projectId={projectId}

@@ -8,6 +8,7 @@ import { queryKeys } from '../../api/queryKeys/index.js';
 import { EMPTY_REVIEW_FILTERS, REVIEW_QUEUE_RENDER_LIMIT, hasActiveReviewFilters } from './types.js';
 import type { ReviewFilters, ReviewQueueItemView } from './types.js';
 import { useReviewQueue } from './useReviewQueue.js';
+import { useTranslation } from 'react-i18next';
 
 export interface ReviewQueueProps {
   readonly projectId: string;
@@ -35,7 +36,8 @@ export function ReviewQueue({
   selectedReviewId,
   onSelect,
 }: ReviewQueueProps): ReactNode {
-  const queueQuery = useReviewQueue(projectId, filters);
+    const { t } = useTranslation();
+const queueQuery = useReviewQueue(projectId, filters);
   const [renderLimit, setRenderLimit] = useState(REVIEW_QUEUE_RENDER_LIMIT);
   const [draft, setDraft] = useState<ReviewFilters>(filters);
 
@@ -63,8 +65,8 @@ export function ReviewQueue({
     body = (
       <div data-testid="review-queue-needs-project">
         <EmptyState
-          title="Select a project"
-          description="Enter a project id to load its review queue."
+          title={t('review:reviewQueue.select-a-project')}
+          description={t('review:reviewQueue.enter-a-project-id-to-load')}
         />
       </div>
     );
@@ -78,8 +80,8 @@ export function ReviewQueue({
     body = (
       <div data-testid="review-queue-error">
         <ErrorState
-          title="Review queue unavailable"
-          message={queueQuery.error?.message ?? 'The queue could not be loaded. No data was changed.'}
+          title={t('review:reviewQueue.review-queue-unavailable')}
+          message={queueQuery.error?.message ?? t('review:reviewQueue.the-queue-could-not-be-loaded')}
           correlationId={queueQuery.error?.correlationId}
           onRetry={() => {
             void queueQuery.refetch();
@@ -91,8 +93,8 @@ export function ReviewQueue({
     body = (
       <div data-testid="review-queue-empty-filtered">
         <EmptyState
-          title="No reviews match these filters"
-          description="Filters exclude everything in this queue. Clear them to see all open items."
+          title={t('review:reviewQueue.no-reviews-match-these-filters')}
+          description={t('review:reviewQueue.filters-exclude-everything-in-this-queue')}
           action={
             <button
               type="button"
@@ -100,7 +102,7 @@ export function ReviewQueue({
               className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
               onClick={clearFilters}
             >
-              Clear filters
+              {t('review:reviewQueue.clear-filters')}
             </button>
           }
         />
@@ -110,8 +112,8 @@ export function ReviewQueue({
     body = (
       <div data-testid="review-queue-empty">
         <EmptyState
-          title="No reviews pending"
-          description="This project has no open review items. New flags appear here after processing."
+          title={t('review:reviewQueue.no-reviews-pending')}
+          description={t('review:reviewQueue.this-project-has-no-open-review')}
         />
       </div>
     );
@@ -147,7 +149,7 @@ export function ReviewQueue({
   }
 
   return (
-    <section data-testid="review-queue" aria-label="Review queue">
+    <section data-testid="review-queue" aria-label={t('review:reviewQueue.review-queue')}>
       <form
         data-testid="review-filters"
         onSubmit={(event) => {
@@ -157,7 +159,7 @@ export function ReviewQueue({
       >
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
           <label>
-            Severity
+            {t('review:reviewQueue.severity')}
             <input
               data-testid="review-filter-severity"
               value={draft.severity}
@@ -170,7 +172,7 @@ export function ReviewQueue({
             />
           </label>
           <label>
-            Status
+            {t('review:reviewQueue.status')}
             <input
               data-testid="review-filter-status"
               value={draft.status}
@@ -183,7 +185,7 @@ export function ReviewQueue({
             />
           </label>
           <label>
-            Type
+            {t('review:reviewQueue.type')}
             <input
               data-testid="review-filter-type"
               value={draft.type}
@@ -196,7 +198,7 @@ export function ReviewQueue({
             />
           </label>
           <label>
-            Speaker
+            {t('review:reviewQueue.speaker')}
             <input
               data-testid="review-filter-speaker"
               value={draft.speaker}
@@ -209,7 +211,7 @@ export function ReviewQueue({
             />
           </label>
           <label>
-            Language
+            {t('review:reviewQueue.language')}
             <input
               data-testid="review-filter-language"
               value={draft.language}
@@ -222,12 +224,12 @@ export function ReviewQueue({
             />
           </label>
           <label>
-            Age
+            {t('review:reviewQueue.age')}
             <input
               data-testid="review-filter-age"
               value={draft.age}
               autoComplete="off"
-              placeholder="e.g. older-than-7d"
+              placeholder={t('review:reviewQueue.e-g-older-than-7d')}
               onChange={(event) => {
                 const next = event.target.value;
                 setDraft((prev) => ({ ...prev, age: next }));
@@ -240,7 +242,7 @@ export function ReviewQueue({
             data-testid="review-apply-filters"
             className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
           >
-            Apply filters
+            {t('review:reviewQueue.apply-filters')}
           </button>
           <button
             type="button"
@@ -248,14 +250,14 @@ export function ReviewQueue({
             className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
             onClick={clearFilters}
           >
-            Clear filters
+            {t('review:reviewQueue.clear-filters2')}
           </button>
         </div>
       </form>
       {queueQuery.isError && queueQuery.data !== undefined ? (
         <div data-testid="review-queue-stale">
-          <Alert tone="warning" title="Queue refresh failed" details={queueQuery.error?.correlationId}>
-            <p>Showing the last loaded queue. New flags may be missing.</p>
+          <Alert tone="warning" title={t('review:reviewQueue.queue-refresh-failed')} details={queueQuery.error?.correlationId}>
+            <p>{t('review:reviewQueue.showing-the-last-loaded-queue-new')}</p>
           </Alert>
         </div>
       ) : null}

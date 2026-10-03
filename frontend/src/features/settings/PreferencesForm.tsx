@@ -275,7 +275,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
       }
       if (isPreferenceForbiddenError(shape)) {
         const message =
-          'You do not have permission to edit these preferences. Preferences are scoped to your account; contact your tenant admin.';
+          t('settings:preferencesForm.you-do-not-have-permission-to');
         setForbidden(message);
         push('error', message);
         return false;
@@ -377,7 +377,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
     <div data-testid="preferences-form">
       {isDirty ? (
         <div data-testid="settings-dirty-bar">
-          <Alert tone="warning" title="Unsaved changes">
+          <Alert tone="warning" title={t('settings:preferencesForm.unsaved-changes')}>
             <p data-testid="settings-dirty-text">
               {dirtyKeys.length === 1
                 ? `1 preference has unsaved changes (${dirtyKeys.join(', ')}).`
@@ -393,7 +393,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                   void persistDraft();
                 }}
               >
-                Save changes
+                {t('settings:preferencesForm.save-changes')}
               </button>
               <button
                 type="button"
@@ -402,7 +402,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                 disabled={savePending}
                 onClick={handleDiscard}
               >
-                Discard
+                {t('settings:preferencesForm.discard')}
               </button>
             </div>
           </Alert>
@@ -411,9 +411,9 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
 
       {online === false || offlineQueued ? (
         <div data-testid="settings-offline">
-          <Alert tone="warning" title="Offline — draft queued">
+          <Alert tone="warning" title={t('settings:preferencesForm.offline-draft-queued')}>
             <p data-testid="settings-queued-text">
-              You appear to be offline. Your draft was kept and queued — reconnect, then retry. Nothing was discarded.
+              {t('settings:preferencesForm.you-appear-to-be-offline-your')}
             </p>
             <button
               type="button"
@@ -424,7 +424,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                 void persistDraft();
               }}
             >
-              Retry save
+              {t('settings:preferencesForm.retry-save')}
             </button>
           </Alert>
         </div>
@@ -432,7 +432,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
 
       {conflict !== null ? (
         <div data-testid="settings-conflict">
-          <Alert tone="warning" title="Preferences changed elsewhere">
+          <Alert tone="warning" title={t('settings:preferencesForm.preferences-changed-elsewhere')}>
             <p data-testid="settings-conflict-text">{conflict}</p>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
@@ -444,7 +444,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                   void persistDraft();
                 }}
               >
-                Retry with my values
+                {t('settings:preferencesForm.retry-with-my-values')}
               </button>
               <button
                 type="button"
@@ -454,7 +454,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                   void refetch();
                 }}
               >
-                Refresh
+                {t('settings:preferencesForm.refresh')}
               </button>
               <button
                 type="button"
@@ -462,7 +462,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                 className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
                 onClick={handleConflictUseServer}
               >
-                Use server values
+                {t('settings:preferencesForm.use-server-values')}
               </button>
             </div>
           </Alert>
@@ -471,7 +471,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
 
       {forbidden !== null ? (
         <div data-testid="settings-forbidden">
-          <Alert tone="error" title="Not permitted">
+          <Alert tone="error" title={t('settings:preferencesForm.not-permitted')}>
             <p data-testid="settings-forbidden-text">{forbidden}</p>
           </Alert>
         </div>
@@ -479,7 +479,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
 
       {saveError !== null && conflict === null && !offlineQueued ? (
         <div data-testid="settings-save-error">
-          <Alert tone="error" title="Preferences could not be saved">
+          <Alert tone="error" title={t('settings:preferencesForm.preferences-could-not-be-saved')}>
             <p data-testid="settings-save-error-text">{saveError}</p>
             <button
               type="button"
@@ -490,7 +490,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                 void persistDraft();
               }}
             >
-              Retry
+              {t('settings:preferencesForm.retry')}
             </button>
           </Alert>
         </div>
@@ -498,13 +498,13 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
 
       {isFetching && isDirty ? (
         <p data-testid="settings-refreshing" className="dp-muted">
-          Refreshing latest values in the background; your draft is preserved.
+          {t('settings:preferencesForm.refreshing-latest-values-in-the-background')}
         </p>
       ) : null}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
         <label>
-          <span>Language</span>
+          <span>{t('settings:preferencesForm.language')}</span>
           <select
             data-testid="settings-field-locale"
             value={draft.locale}
@@ -524,19 +524,19 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
         </label>
         {fieldErrors['locale'] !== undefined ? (
           <div data-testid="settings-field-error-locale">
-            <Alert tone="error" title="Language could not be saved">
+            <Alert tone="error" title={t('settings:preferencesForm.language-could-not-be-saved')}>
               <p data-testid="settings-field-error-message-locale">{fieldErrors['locale']}</p>
             </Alert>
           </div>
         ) : null}
         {savedNote['locale'] !== undefined && fieldErrors['locale'] === undefined ? (
           <p data-testid="settings-locale-note" className="dp-muted">
-            Language saved. Applied without reload.
+            {t('settings:preferencesForm.language-saved-applied-without-reload')}
           </p>
         ) : null}
 
         <label>
-          <span>Timezone (IANA)</span>
+          <span>{t('settings:preferencesForm.timezone-iana')}</span>
           <select
             data-testid="settings-field-timezone"
             value={TIMEZONE_OPTIONS.includes(draft.timezone) ? draft.timezone : 'UTC'}
@@ -556,8 +556,8 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
         </label>
         {showTzWarning ? (
           <div data-testid="settings-timezone-warning">
-            <Alert tone="warning" title="Unknown timezone, using UTC">
-              <p>Fell back to UTC. Select a valid IANA timezone such as America/New_York.</p>
+            <Alert tone="warning" title={t('settings:preferencesForm.unknown-timezone-using-utc')}>
+              <p>{t('settings:preferencesForm.fell-back-to-utc-select-a')}</p>
               <button
                 type="button"
                 data-testid="settings-timezone-use-utc"
@@ -567,26 +567,26 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                   setDraft((previous) => ({ ...previous, timezone: 'UTC' }));
                 }}
               >
-                Use UTC
+                {t('settings:preferencesForm.use-utc')}
               </button>
             </Alert>
           </div>
         ) : null}
         {fieldErrors['timezone'] !== undefined ? (
           <div data-testid="settings-field-error-timezone">
-            <Alert tone="error" title="Timezone could not be saved">
+            <Alert tone="error" title={t('settings:preferencesForm.timezone-could-not-be-saved')}>
               <p data-testid="settings-field-error-message-timezone">{fieldErrors['timezone']}</p>
             </Alert>
           </div>
         ) : null}
         {savedNote['timezone'] !== undefined && fieldErrors['timezone'] === undefined ? (
           <p data-testid="settings-timezone-note" className="dp-muted">
-            Timezone saved. Applied without reload.
+            {t('settings:preferencesForm.timezone-saved-applied-without-reload')}
           </p>
         ) : null}
 
         <fieldset>
-          <legend>Theme (applies on save, no reload)</legend>
+          <legend>{t('settings:preferencesForm.theme-applies-on-save-no-reload')}</legend>
           {THEME_OPTIONS.map((option) => (
             <label key={option}>
               <input
@@ -605,26 +605,26 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
             </label>
           ))}
           <p className="dp-muted" data-testid="settings-theme-system-note">
-            System follows your OS setting and resolves to light or dark without a reload.
+            {t('settings:preferencesForm.system-follows-your-os-setting-and')}
           </p>
         </fieldset>
         {fieldErrors['theme'] !== undefined ? (
           <div data-testid="settings-field-error-theme">
-            <Alert tone="error" title="Theme could not be saved">
+            <Alert tone="error" title={t('settings:preferencesForm.theme-could-not-be-saved')}>
               <p data-testid="settings-field-error-message-theme">{fieldErrors['theme']}</p>
             </Alert>
           </div>
         ) : null}
         {savedNote['theme'] !== undefined && fieldErrors['theme'] === undefined ? (
           <p data-testid="settings-theme-note" className="dp-muted">
-            Theme saved. Applied without reload.
+            {t('settings:preferencesForm.theme-saved-applied-without-reload')}
           </p>
         ) : null}
 
         <fieldset>
-          <legend>Default project filters</legend>
+          <legend>{t('settings:preferencesForm.default-project-filters')}</legend>
           <label>
-            <span>Status</span>
+            <span>{t('settings:preferencesForm.status')}</span>
             <select
               data-testid="settings-field-filters-status"
               value={draft.filterStatus}
@@ -635,15 +635,15 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                 setSavedNote((previous) => ({ ...previous, defaultProjectFilters: undefined }));
               }}
             >
-              <option value="">All</option>
-              <option value="Draft">Draft</option>
-              <option value="Processing">Processing</option>
-              <option value="Completed">Completed</option>
-              <option value="Failed">Failed</option>
+              <option value="">{t('settings:preferencesForm.all')}</option>
+              <option value="Draft">{t('settings:preferencesForm.draft')}</option>
+              <option value="Processing">{t('settings:preferencesForm.processing')}</option>
+              <option value="Completed">{t('settings:preferencesForm.completed')}</option>
+              <option value="Failed">{t('settings:preferencesForm.failed')}</option>
             </select>
           </label>
           <label>
-            <span>Archived</span>
+            <span>{t('settings:preferencesForm.archived')}</span>
             <select
               data-testid="settings-field-filters-archived"
               value={draft.filterArchived}
@@ -654,27 +654,27 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                 setSavedNote((previous) => ({ ...previous, defaultProjectFilters: undefined }));
               }}
             >
-              <option value="">All</option>
-              <option value="active">Active only</option>
-              <option value="archived">Archived only</option>
+              <option value="">{t('settings:preferencesForm.all2')}</option>
+              <option value="active">{t('settings:preferencesForm.active-only')}</option>
+              <option value="archived">{t('settings:preferencesForm.archived-only')}</option>
             </select>
           </label>
         </fieldset>
         {fieldErrors['defaultProjectFilters'] !== undefined ? (
           <div data-testid="settings-field-error-filters">
-            <Alert tone="error" title="Filters could not be saved">
+            <Alert tone="error" title={t('settings:preferencesForm.filters-could-not-be-saved')}>
               <p data-testid="settings-field-error-message-filters">{fieldErrors['defaultProjectFilters']}</p>
             </Alert>
           </div>
         ) : null}
         {savedNote['defaultProjectFilters'] !== undefined && fieldErrors['defaultProjectFilters'] === undefined ? (
           <p data-testid="settings-filters-note" className="dp-muted">
-            Default filters saved.
+            {t('settings:preferencesForm.default-filters-saved')}
           </p>
         ) : null}
 
         <label>
-          <span>Timeline zoom (1–4)</span>
+          <span>{t('settings:preferencesForm.timeline-zoom-1-4')}</span>
           <input
             type="range"
             min={1}
@@ -693,22 +693,21 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
         </label>
         {fieldErrors['timelineZoom'] !== undefined ? (
           <div data-testid="settings-field-error-zoom">
-            <Alert tone="error" title="Zoom could not be saved">
+            <Alert tone="error" title={t('settings:preferencesForm.zoom-could-not-be-saved')}>
               <p data-testid="settings-field-error-message-zoom">{fieldErrors['timelineZoom']}</p>
             </Alert>
           </div>
         ) : null}
         {savedNote['timelineZoom'] !== undefined && fieldErrors['timelineZoom'] === undefined ? (
           <p data-testid="settings-zoom-note" className="dp-muted">
-            Timeline zoom saved.
+            {t('settings:preferencesForm.timeline-zoom-saved')}
           </p>
         ) : null}
 
         <fieldset>
-          <legend>Delivery channels</legend>
+          <legend>{t('settings:preferencesForm.delivery-channels')}</legend>
           <p className="dp-muted" data-testid="settings-channels-note">
-            In-app delivery is available now. Email and webhook are future-only and disabled here; the toggles below
-            control in-app delivery. Toggles disable future delivery only. History is never deleted.
+            {t('settings:preferencesForm.in-app-delivery-is-available-now')}
           </p>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {NOTIFICATION_CHANNELS.map((channel) => {
@@ -735,8 +734,8 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
         </fieldset>
 
         <fieldset>
-          <legend>Notification preferences</legend>
-          <p className="dp-muted">Toggles disable future delivery only. History is never deleted.</p>
+          <legend>{t('settings:preferencesForm.notification-preferences')}</legend>
+          <p className="dp-muted">{t('settings:preferencesForm.toggles-disable-future-delivery-only-history')}</p>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {NOTIFICATION_TYPES.map((type) => (
               <li key={type}>
@@ -761,7 +760,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
         </fieldset>
         {fieldErrors['notificationPreferences'] !== undefined ? (
           <div data-testid="settings-field-error-notifs">
-            <Alert tone="error" title="Notification preferences could not be saved">
+            <Alert tone="error" title={t('settings:preferencesForm.notification-preferences-could-not-be-saved')}>
               <p data-testid="settings-field-error-message-notifs">{fieldErrors['notificationPreferences']}</p>
             </Alert>
           </div>
@@ -769,7 +768,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
         {savedNote['notificationPreferences'] !== undefined &&
         fieldErrors['notificationPreferences'] === undefined ? (
           <p data-testid="settings-notifs-note" className="dp-muted">
-            Notification preferences saved.
+            {t('settings:preferencesForm.notification-preferences-saved')}
           </p>
         ) : null}
       </div>
@@ -781,7 +780,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
           className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
           onClick={handleBack}
         >
-          Back to dashboard
+          {t('settings:preferencesForm.back-to-dashboard')}
         </button>
       </div>
 
@@ -792,9 +791,9 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
         content so the existing 035B suites keep addressing it.
       */}
       {pendingLeave !== undefined ? (
-        <Modal open title="Unsaved preferences" onClose={handleGuardCancel}>
+        <Modal open title={t('settings:preferencesForm.unsaved-preferences')} onClose={handleGuardCancel}>
           <div data-testid="settings-dirty-dialog">
-            <Alert tone="warning" title="Unsaved preferences">
+            <Alert tone="warning" title={t('settings:preferencesForm.unsaved-preferences2')}>
             <p data-testid="settings-dirty-dialog-text">
               {pendingLabel !== undefined
                 ? `You have unsaved preferences (navigating to ${pendingLabel}). Save them, discard them, or stay.`
@@ -810,7 +809,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                   void handleGuardSave();
                 }}
               >
-                Save changes
+                {t('settings:preferencesForm.save-changes2')}
               </button>
               <button
                 type="button"
@@ -818,7 +817,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                 className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
                 onClick={handleGuardDiscard}
               >
-                Discard changes
+                {t('settings:preferencesForm.discard-changes')}
               </button>
               <button
                 type="button"
@@ -826,7 +825,7 @@ export function PreferencesForm({ serverMap, refetch, isFetching = false }: Pref
                 className="dp-btn dp-btn-secondary dp-btn-md dp-focus-ring"
                 onClick={handleGuardCancel}
               >
-                Stay
+                {t('settings:preferencesForm.stay')}
               </button>
             </div>
           </Alert>

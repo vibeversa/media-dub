@@ -18,5 +18,43 @@
     "backToDashboard": "Back to dashboard"
   },
   "items_one": "{{count}} item",
-  "items_other": "{{count}} items"
+  "items_other": "{{count}} items",
+  "configErrorScreen": {
+    "the-app-is-missing-required-configuration": "The app is missing required configuration and cannot start. Contact your administrator.",
+    "configuration-error": "Configuration error"
+  },
+  "routeFallback": {
+    "loading": "Loading…"
+  },
+  "adminPage": {
+    "usage-quotas-queues-and-provider-health": "Usage, quotas, queues, and provider health.",
+    "admin": "Admin"
+  },
+  "notFoundPage": {
+    "go-home": "Go home",
+    "the-page-you-asked-for-does": "The page you asked for does not exist.",
+    "page-not-found": "Page not found"
+  },
+  "notificationsPage": {
+    "activity-and-alerts-for-your-account": "Activity and alerts for your account.",
+    "notifications": "Notifications"
+  },
+  "projectDetailsPage": {
+    "project-id": "Project ID:",
+    "project": "Project"
+  },
+  "reviewPage": {
+    "items-awaiting-human-review": "Items awaiting human review.",
+    "review": "Review"
+  },
+  "settingsPage": {
+    "preferences-for-your-account-and-workspace": "Preferences for your account and workspace.",
+    "settings": "Settings"
+  },
+  "chunkError": {
+    "title": "This page failed to load",
+    "description": "The app was likely updated while you had it open. Reload to fetch the latest version.",
+    "version": "Version",
+    "reload": "Reload"
+  }
 }

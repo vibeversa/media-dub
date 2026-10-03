@@ -21,6 +21,7 @@ import {
 import type { DispositionAction } from './types.js';
 import { useDisposition } from './useDisposition.js';
 import { useReviewContext } from './useReviewQueue.js';
+import { useTranslation } from 'react-i18next';
 
 export interface ReviewCardProps {
   readonly projectId: string;
@@ -41,7 +42,8 @@ export interface ReviewCardProps {
  * discoverable in history. Reasons render as plain text only.
  */
 export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps): ReactNode {
-  const contextQuery = useReviewContext(reviewId);
+    const { t } = useTranslation();
+const contextQuery = useReviewContext(reviewId);
   const disposition = useDisposition({ projectId, reviewId });
   const [reason, setReason] = useState('');
   const [editText, setEditText] = useState('');
@@ -72,7 +74,7 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
 
   if (contextQuery.isPending) {
     return (
-      <section data-testid={`review-card-${reviewId}`} aria-label="Review detail">
+      <section data-testid={`review-card-${reviewId}`} aria-label={t('review:reviewCard.review-detail')}>
         <div data-testid="review-card-loading">
           <Skeleton lines={8} />
         </div>
@@ -82,11 +84,11 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
 
   if (contextQuery.isError || context === undefined) {
     return (
-      <section data-testid={`review-card-${reviewId}`} aria-label="Review detail">
+      <section data-testid={`review-card-${reviewId}`} aria-label={t('review:reviewCard.review-detail2')}>
         <div data-testid="review-card-error">
           <ErrorState
-            title="Review unavailable"
-            message={contextQuery.error?.message ?? 'This review could not be loaded. No data was changed.'}
+            title={t('review:reviewCard.review-unavailable')}
+            message={contextQuery.error?.message ?? t('review:reviewCard.this-review-could-not-be-loaded')}
             correlationId={contextQuery.error?.correlationId}
             onRetry={() => {
               void contextQuery.refetch();
@@ -103,13 +105,13 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
   function runDisposition(action: DispositionAction): void {
     const reasonCheck = validateReason(reason, action);
     if (!reasonCheck.valid) {
-      setFieldError(reasonCheck.error ?? 'Check the reason and try again.');
+      setFieldError(reasonCheck.error ?? t('review:reviewCard.check-the-reason-and-try-again'));
       return;
     }
     if (action === 'resolve-with-edit') {
       const editCheck = validateEditText(editText);
       if (!editCheck.valid) {
-        setFieldError(editCheck.error ?? 'Check the edit and try again.');
+        setFieldError(editCheck.error ?? t('review:reviewCard.check-the-edit-and-try-again'));
         return;
       }
     }
@@ -159,19 +161,19 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
   ];
 
   return (
-    <section data-testid={`review-card-${reviewId}`} aria-label="Review detail" data-status={context.status} data-version={context.version}>
+    <section data-testid={`review-card-${reviewId}`} aria-label={t('review:reviewCard.review-detail3')} data-status={context.status} data-version={context.version}>
       <header>
         <h3 data-testid={`review-card-title-${reviewId}`}>
-          {context.type} · {context.severity} · {context.status} · v{String(context.version)}
+          {context.type} · {context.severity} · {context.status} {t('review:reviewCard.v')}{String(context.version)}
         </h3>
         <p data-testid={`review-card-project-${reviewId}`} className="dp-muted">
-          {context.projectName !== '' ? context.projectName : context.projectId} · run {context.runStatus}
+          {context.projectName !== '' ? context.projectName : context.projectId} {t('review:reviewCard.run')} {context.runStatus}
         </p>
       </header>
 
       {staleBanner !== null ? (
         <div data-testid={`review-stale-${reviewId}`}>
-          <Alert tone="warning" title="Review changed elsewhere" details={contextQuery.dataUpdatedAt ? undefined : undefined}>
+          <Alert tone="warning" title={t('review:reviewCard.review-changed-elsewhere')} details={contextQuery.dataUpdatedAt ? undefined : undefined}>
             <p>{staleBanner}</p>
             <button
               type="button"
@@ -181,7 +183,7 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
                 void contextQuery.refetch();
               }}
             >
-              Refresh review
+              {t('review:reviewCard.refresh-review')}
             </button>
           </Alert>
         </div>
@@ -189,12 +191,12 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
 
       {resolvedBy !== null ? (
         <p data-testid={`review-resolved-by-${reviewId}`} className="dp-muted">
-          Resolved by {resolvedBy}
+          {t('review:reviewCard.resolved-by')} {resolvedBy}
         </p>
       ) : null}
 
       <div data-testid={`review-media-${reviewId}`}>
-        <h4>Media excerpt</h4>
+        <h4>{t('review:reviewCard.media-excerpt')}</h4>
         <MediaPlayer
           projectId={projectId}
           compact
@@ -213,26 +215,26 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
               useTimelinePlayerStore.getState().requestSeek(context.segmentStartMs ?? 0);
             }}
           >
-            Jump to issue timestamp
+            {t('review:reviewCard.jump-to-issue-timestamp')}
           </button>
         ) : null}
       </div>
 
       <div data-testid={`review-transcript-${reviewId}`}>
-        <h4>Transcript segment</h4>
+        <h4>{t('review:reviewCard.transcript-segment')}</h4>
         {context.segmentId !== undefined ? (
           <p className="dp-muted">
-            Segment {context.segmentId}
+            {t('review:reviewCard.segment')} {context.segmentId}
             {context.segmentStartMs !== undefined && context.segmentEndMs !== undefined
               ? ` · ${String(context.segmentStartMs)}–${String(context.segmentEndMs)} ms`
               : ''}
             {context.segmentSpeakerId !== undefined ? ` · speaker ${context.segmentSpeakerId}` : ''}
           </p>
         ) : (
-          <p className="dp-muted">Project-level review (no segment scope).</p>
+          <p className="dp-muted">{t('review:reviewCard.project-level-review-no-segment-scope')}</p>
         )}
         {context.transcript.length === 0 ? (
-          <p className="dp-muted">No transcript versions.</p>
+          <p className="dp-muted">{t('review:reviewCard.no-transcript-versions')}</p>
         ) : (
           <ul>
             {context.transcript.map((row) => (
@@ -249,9 +251,9 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
       </div>
 
       <div data-testid={`review-translation-${reviewId}`}>
-        <h4>Translation + candidates</h4>
+        <h4>{t('review:reviewCard.translation-candidates')}</h4>
         {context.translation.length === 0 ? (
-          <p className="dp-muted">No translation candidates.</p>
+          <p className="dp-muted">{t('review:reviewCard.no-translation-candidates')}</p>
         ) : (
           <ul>
             {context.translation.map((row) => (
@@ -266,32 +268,32 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
           </ul>
         )}
         <p data-testid={`review-selection-version-${reviewId}`} className="dp-muted">
-          Selection v{String(context.selectionVersion)}
+          {t('review:reviewCard.selection-v')}{String(context.selectionVersion)}
         </p>
       </div>
 
       <div data-testid={`review-voice-${reviewId}`}>
-        <h4>Voice assignment</h4>
+        <h4>{t('review:reviewCard.voice-assignment')}</h4>
         <p className="dp-muted">
-          Speaker {context.voiceSpeakerId ?? '—'} · voice {context.voiceId ?? context.voiceProfileId ?? '—'} · consent {context.voiceConsentState}
+          {t('review:reviewCard.speaker')} {context.voiceSpeakerId ?? '—'} {t('review:reviewCard.voice')} {context.voiceId ?? context.voiceProfileId ?? '—'} {t('review:reviewCard.consent')} {context.voiceConsentState}
         </p>
       </div>
 
       <div data-testid={`review-audio-${reviewId}`}>
-        <h4>Audio excerpt</h4>
+        <h4>{t('review:reviewCard.audio-excerpt')}</h4>
         <p className="dp-muted">
           {context.audioArtifactId !== undefined ? `Preview artifact ${context.audioArtifactId}` : 'No preview artifact (IDs only; URLs mint at serve time).'}
         </p>
       </div>
 
       <div data-testid={`review-sync-${reviewId}`}>
-        <h4>Sync / QC summary</h4>
+        <h4>{t('review:reviewCard.sync-qc-summary')}</h4>
         <p className="dp-muted">
-          Offset {context.syncOffsetMs !== undefined ? `${String(context.syncOffsetMs)} ms` : '—'}
+          {t('review:reviewCard.offset')} {context.syncOffsetMs !== undefined ? `${String(context.syncOffsetMs)} ms` : '—'}
           {context.syncDrift ? ' · drift' : ' · in sync'}
         </p>
         {context.qcIssues.length === 0 ? (
-          <p className="dp-muted">No QC flags.</p>
+          <p className="dp-muted">{t('review:reviewCard.no-qc-flags')}</p>
         ) : (
           <ul>
             {context.qcIssues.map((issue) => (
@@ -312,16 +314,16 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
       </div>
 
       <div data-testid={`review-versions-${reviewId}`}>
-        <h4>Providers / versions</h4>
+        <h4>{t('review:reviewCard.providers-versions')}</h4>
         <p className="dp-muted">
-          Transcript {String(context.transcript.length)} version(s) · translation {String(context.translation.length)} version(s)
+          {t('review:reviewCard.transcript')} {String(context.transcript.length)} {t('review:reviewCard.version-s-translation')} {String(context.translation.length)} {t('review:reviewCard.version-s')}
           {context.truncated ? ' · truncated' : ''}
         </p>
       </div>
 
       <div data-testid={`review-actions-${reviewId}`}>
-        <h4>Dispositions</h4>
-        <label htmlFor={`review-reason-${reviewId}`}>Reason (required for reject/requeue, note otherwise)</label>
+        <h4>{t('review:reviewCard.dispositions')}</h4>
+        <label htmlFor={`review-reason-${reviewId}`}>{t('review:reviewCard.reason-required-for-reject-requeue-note')}</label>
         <textarea
           id={`review-reason-${reviewId}`}
           data-testid={`review-reason-${reviewId}`}
@@ -334,7 +336,7 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
             }
           }}
         />
-        <label htmlFor={`review-edit-${reviewId}`}>Corrected text (resolve-with-edit only)</label>
+        <label htmlFor={`review-edit-${reviewId}`}>{t('review:reviewCard.corrected-text-resolve-with-edit-only')}</label>
         <textarea
           id={`review-edit-${reviewId}`}
           data-testid={`review-edit-${reviewId}`}
@@ -376,20 +378,20 @@ export function ReviewCard({ projectId, reviewId, onSettled }: ReviewCardProps):
       </div>
 
       <div data-testid={`review-history-${reviewId}`}>
-        <h4>Audit trail</h4>
+        <h4>{t('review:reviewCard.audit-trail')}</h4>
         {pending ? (
           <p data-testid={`review-history-pending-${reviewId}`} role="status">
-            Saving disposition…
+            {t('review:reviewCard.saving-disposition')}
           </p>
         ) : null}
         {historyNewest.length === 0 ? (
-          <p className="dp-muted">No audit entries yet.</p>
+          <p className="dp-muted">{t('review:reviewCard.no-audit-entries-yet')}</p>
         ) : (
           <ol reversed>
             {historyNewest.map((entry) => (
               <li key={entry.id} data-testid={`review-history-entry-${entry.id}`}>
                 <p>
-                  {entry.action} by {entry.actor}
+                  {entry.action} {t('review:reviewCard.by')} {entry.actor}
                 </p>
                 {entry.reason !== '' ? <p>{entry.reason}</p> : null}
                 {entry.createdAt !== '' ? <p className="dp-muted">{entry.createdAt}</p> : null}

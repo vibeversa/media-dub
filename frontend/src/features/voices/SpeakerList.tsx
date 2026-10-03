@@ -5,6 +5,7 @@ import { ErrorState } from '../../components/ErrorState/ErrorState.js';
 import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { formatAppearance } from './types.js';
 import { useSpeakers } from './useVoices.js';
+import { useTranslation } from 'react-i18next';
 
 export interface SpeakerListProps {
   readonly projectId: string;
@@ -24,11 +25,12 @@ export interface SpeakerListProps {
  * dash with an explanatory tooltip, never blank. All text is plain text.
  */
 export function SpeakerList({ projectId, selectedSpeakerId, onSelect }: SpeakerListProps): ReactNode {
-  const speakersQuery = useSpeakers(projectId);
+    const { t } = useTranslation();
+const speakersQuery = useSpeakers(projectId);
 
   if (speakersQuery.isPending) {
     return (
-      <section data-testid="voices-speaker-list" aria-label="Speaker list">
+      <section data-testid="voices-speaker-list" aria-label={t('voices:speakerList.speaker-list')}>
         <div data-testid="voices-loading">
           <Skeleton lines={6} />
         </div>
@@ -41,25 +43,25 @@ export function SpeakerList({ projectId, selectedSpeakerId, onSelect }: SpeakerL
     const isMissing = error?.code === 'NOT_FOUND' || error?.status === 404;
     if (isMissing) {
       return (
-        <section data-testid="voices-speaker-list" aria-label="Speaker list">
+        <section data-testid="voices-speaker-list" aria-label={t('voices:speakerList.speaker-list2')}>
           <div data-testid="voices-empty">
             <EmptyState
-              title="No speakers yet"
-              description="Speaker diarization has not produced speakers for this project. Start processing to populate the cast."
+              title={t('voices:speakerList.no-speakers-yet')}
+              description={t('voices:speakerList.speaker-diarization-has-not-produced-speakers')}
             />
             <Link data-testid="voices-empty-pipeline-link" to={`/projects/${projectId}`}>
-              Go to processing
+              {t('voices:speakerList.go-to-processing')}
             </Link>
           </div>
         </section>
       );
     }
     return (
-      <section data-testid="voices-speaker-list" aria-label="Speaker list">
+      <section data-testid="voices-speaker-list" aria-label={t('voices:speakerList.speaker-list3')}>
         <div data-testid="voices-error">
           <ErrorState
-            title="Speakers unavailable"
-            message={error?.message ?? 'The speaker list could not be loaded. No data was changed.'}
+            title={t('voices:speakerList.speakers-unavailable')}
+            message={error?.message ?? t('voices:speakerList.the-speaker-list-could-not-be')}
             correlationId={error?.correlationId}
             onRetry={() => {
               void speakersQuery.refetch();
@@ -74,14 +76,14 @@ export function SpeakerList({ projectId, selectedSpeakerId, onSelect }: SpeakerL
 
   if (speakers.length === 0) {
     return (
-      <section data-testid="voices-speaker-list" aria-label="Speaker list">
+      <section data-testid="voices-speaker-list" aria-label={t('voices:speakerList.speaker-list4')}>
         <div data-testid="voices-empty">
           <EmptyState
-            title="No speakers yet"
-            description="Speaker diarization has not produced speakers for this project. Start processing to populate the cast."
+            title={t('voices:speakerList.no-speakers-yet2')}
+            description={t('voices:speakerList.speaker-diarization-has-not-produced-speakers2')}
           />
           <Link data-testid="voices-empty-pipeline-link" to={`/projects/${projectId}`}>
-            Go to processing
+            {t('voices:speakerList.go-to-processing2')}
           </Link>
         </div>
       </section>
@@ -89,7 +91,7 @@ export function SpeakerList({ projectId, selectedSpeakerId, onSelect }: SpeakerL
   }
 
   return (
-    <section data-testid="voices-speaker-list" aria-label="Speaker list">
+    <section data-testid="voices-speaker-list" aria-label={t('voices:speakerList.speaker-list5')}>
       {/*
         Task 041C: this was a `role="listbox"` of `role="option"` rows, and it
         was wrong three ways.
@@ -149,11 +151,11 @@ export function SpeakerList({ projectId, selectedSpeakerId, onSelect }: SpeakerL
                   // speaker currently shown in the selector", not an option
                   // inside a listbox. See the note above the scroll container.
                   aria-current={isSelected ? 'true' : undefined}
-                  aria-label={`Select speaker ${speaker.displayName}`}
+                  aria-label={t('voices:speakerList.select-speaker', { v0: speaker.displayName })}
                 >
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
                     <span data-testid={`voices-name-${speaker.id}`}>{speaker.displayName}</span>
-                    <span data-testid={`voices-key-${speaker.id}`} className="dp-muted" title="Diarization speaker key.">
+                    <span data-testid={`voices-key-${speaker.id}`} className="dp-muted" title={t('voices:speakerList.diarization-speaker-key')}>
                       {speaker.speakerKey}
                     </span>
                   </div>
@@ -184,25 +186,25 @@ export function SpeakerList({ projectId, selectedSpeakerId, onSelect }: SpeakerL
                       <>
                         <span
                           data-testid={`voices-voice-${speaker.id}`}
-                          title={`Assigned voice ${speaker.assignedVoice.voiceId}.`}
+                          title={t('voices:speakerList.assigned-voice', { v0: speaker.assignedVoice.voiceId })}
                         >
                           {speaker.assignedVoice.voiceId}
                         </span>
                         <span
                           data-testid={`voices-provider-${speaker.id}`}
-                          title={`Voice provider ${speaker.assignedVoice.provider}.`}
+                          title={t('voices:speakerList.voice-provider', { v0: speaker.assignedVoice.provider })}
                         >
                           {speaker.assignedVoice.provider}
                         </span>
                         <span
                           data-testid={`voices-type-${speaker.id}`}
-                          title={`Voice type ${speaker.assignedVoice.voiceType}.`}
+                          title={t('voices:speakerList.voice-type', { v0: speaker.assignedVoice.voiceType })}
                         >
                           {speaker.assignedVoice.voiceType}
                         </span>
                       </>
                     ) : (
-                      <span data-testid={`voices-voice-${speaker.id}`} title="No voice assigned yet.">
+                      <span data-testid={`voices-voice-${speaker.id}`} title={t('voices:speakerList.no-voice-assigned-yet')}>
                         —
                       </span>
                     )}
