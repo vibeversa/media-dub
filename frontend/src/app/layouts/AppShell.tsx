@@ -86,10 +86,15 @@ function UserMenu({ onSignOut }: { readonly onSignOut?: () => void }): ReactNode
   );
 }
 
+/**
+ * Nav list (GAP-023): wraps onto stacked rows below the tablet breakpoint
+ * (`gap-2` with a column flex on small screens, `md:` restores the single row)
+ * so a phone never renders a horizontally clipped top nav.
+ */
 function NavItems({ items, testIdPrefix }: { readonly items: readonly TopNavItem[]; readonly testIdPrefix: string }): ReactNode {
   const { t } = useTranslation();
   return (
-    <ul className="flex flex-wrap items-center gap-4">
+    <ul className="flex flex-col items-start gap-2 md:flex-row md:flex-wrap md:items-center md:gap-4">
       {items.map((item) => (
         <li key={item.id}>
           <NavLink to={item.to} data-testid={`${testIdPrefix}-${item.id}`}>
@@ -154,7 +159,7 @@ export function AppShell({ unreadCount, onSignOut }: AppShellProps): ReactNode {
           <Link to="/" data-testid="brand" className="font-semibold">
             {t('nav:brand')}
           </Link>
-          <nav aria-label={t('nav:primary')} className="flex-1">
+          <nav aria-label={t('nav:primary')} className="min-w-0 flex-1">
             <NavItems items={items} testIdPrefix="nav" />
           </nav>
           {unreadCount !== undefined ? (
@@ -172,12 +177,21 @@ export function AppShell({ unreadCount, onSignOut }: AppShellProps): ReactNode {
           already failed. It renders nothing unless the CDN is provably serving a
           different release. */}
       <VersionMismatchBanner />
-      <div className="dp-container flex gap-6 py-6">
+      <div className="dp-container flex flex-col gap-4 py-6 md:flex-row md:gap-6">
         <aside className="hidden w-48 shrink-0 md:block">
           <nav aria-label={t('nav:secondary')}>
             <NavItems items={items} testIdPrefix="sidenav" />
           </nav>
         </aside>
+        {/* GAP-023: the sidebar is desktop-only; below the tablet breakpoint the
+            same links stack above the content so navigation is never unreachable. */}
+        <nav
+          aria-label={t('nav:secondary')}
+          data-testid="mobile-nav"
+          className="w-full md:hidden"
+        >
+          <NavItems items={items} testIdPrefix="mobilenav" />
+        </nav>
         <main id="main" className="min-w-0 flex-1">
           <ChunkErrorBoundary>
             <Suspense fallback={<RouteFallback />}>

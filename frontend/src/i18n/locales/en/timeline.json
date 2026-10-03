@@ -21,5 +21,15 @@
     "missing": "Waveform is still being prepared — playback remains available.",
     "unavailableTitle": "Waveform unavailable",
     "progressLink": "View processing progress"
+  },
+  "list": {
+    "issues": "Has open issues",
+    "openReview": "Open review",
+    "review": {
+      "open": "In review",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "pending": "Not reviewed"
+    }
   }
 }

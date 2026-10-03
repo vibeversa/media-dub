@@ -5,10 +5,13 @@ import { Alert } from '../../components/Alert/Alert.js';
 import { ErrorState } from '../../components/ErrorState/ErrorState.js';
 import { Skeleton } from '../../components/Skeleton/Skeleton.js';
 import { queryKeys } from '../../api/queryKeys/index.js';
+import { useMediaQuery } from '../../app/useMediaQuery.js';
 import { useTranscript } from '../transcript/useTranscript.js';
 import { MediaPlayer } from './MediaPlayer.js';
 import { Timeline } from './Timeline.js';
 import { Waveform } from './Waveform.js';
+import { TIMELINE_LIST_MEDIA_QUERY } from './timelineResponsive.js';
+import { TimelineListMode } from './TimelineListMode.js';
 import type { TimelineIssue } from './types.js';
 
 export interface TimelineWorkspaceProps {
@@ -25,6 +28,10 @@ export interface TimelineWorkspaceProps {
  */
 export function TimelineWorkspace({ projectId }: TimelineWorkspaceProps): ReactNode {
   const transcriptQuery = useTranscript(projectId);
+
+  // GAP-023: below the tablet breakpoint the canvas waveform plus the
+  // five-lane timeline degrade to a stacked list of the same segments.
+  const compact = useMediaQuery(TIMELINE_LIST_MEDIA_QUERY);
 
   const segments = useMemo(() => transcriptQuery.data ?? [], [transcriptQuery.data]);
 
@@ -91,12 +98,22 @@ export function TimelineWorkspace({ projectId }: TimelineWorkspaceProps): ReactN
       <div data-testid="timeline-workspace-player">
         <MediaPlayer projectId={projectId} segments={segments} />
       </div>
-      <div data-testid="timeline-workspace-waveform">
-        <Waveform projectId={projectId} />
-      </div>
-      <div data-testid="timeline-workspace-timeline">
-        <Timeline projectId={projectId} segments={segments} issues={issues} />
-      </div>
+      {compact ? (
+        // GAP-023: below the tablet breakpoint the canvas waveform plus the
+        // five-lane timeline degrade to a stacked list of the same segments.
+        <TimelineListMode projectId={projectId} segments={segments} issues={issues} />
+      ) : (
+        <>
+          <div data-testid="timeline-workspace-waveform">
+            <Waveform projectId={projectId} />
+          </div>
+          <div data-testid="timeline-workspace-timeline">
+            <Timeline projectId={projectId} segments={segments} issues={issues} />
+          </div>
+        </>
+      )}
+      {/* Layout-mode probe for tests: an attribute, never a rendered string. */}
+      <div hidden data-testid="timeline-workspace-layout-mode" data-mode={compact ? 'list' : 'canvas'} />
       <div hidden>
         <span data-testid="timeline-workspace-query-key">{JSON.stringify(queryKeys.timeline.all(projectId))}</span>
       </div>

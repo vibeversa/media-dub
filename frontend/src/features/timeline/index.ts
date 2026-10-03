@@ -4,9 +4,18 @@ export { Waveform, MemoizedWaveform } from './Waveform.js';
 export type { WaveformProps } from './Waveform.js';
 export { Timeline, MemoizedTimeline } from './Timeline.js';
 export type { TimelineProps } from './Timeline.js';
+export { TimelineListMode } from './TimelineListMode.js';
+export type { TimelineListModeProps } from './TimelineListMode.js';
 export { TimelineWorkspace } from './TimelineWorkspace.js';
 export type { TimelineWorkspaceProps } from './TimelineWorkspace.js';
 export { useTimelinePlayerStore } from './playerStore.js';
+export {
+  TIMELINE_LIST_MAX_WIDTH_PX,
+  TIMELINE_LIST_MEDIA_QUERY,
+  reviewStateKey,
+  timelineModeForWidth,
+} from './timelineResponsive.js';
+export type { TimelineLayoutMode } from './timelineResponsive.js';
 export type { PlayRegion, TimelinePlayerState } from './playerStore.js';
 export { fetchPreviewMedia, fetchWaveformPeaks, usePreviewMedia, useWaveformPeaks, invalidateTimelineMedia } from './useTimelineMedia.js';
 export type { PreviewMediaView } from './useTimelineMedia.js';
