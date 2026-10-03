@@ -249,7 +249,7 @@
 
 ### [GAP-021] `/me` missing top-level `timezone`
 - Plan ref: B-9.1 `/me` Response Must Include (Plan B wins)
-- Status: PARTIAL
+- Status: DONE (86f9698; `GET /me` returns a top-level `timezone` sourced from the `timezone` preference, default `UTC`)
 - Priority: P2 (extra round-trip; contract breach)
 - Current state: `MeResponse` (`Api/Models/AuthMeDtos.cs:63`) has user/tenant/roles/permissions/locale/flags/session but no `timezone`; timezone only via `UserPreference:timezone` key (`MeController.cs:GetPreferences/PutPreferences`).
 - Missing: top-level `timezone` sourced from preferences with default, or plan amendment.
@@ -259,7 +259,7 @@
 
 ### [GAP-022] i18n copy debt: 939 hardcoded literals remain
 - Plan ref: B-10.9 (no hardcoded strings) + B-11
-- Status: PARTIAL (ratchet stops growth; baseline not cleared)
+- Status: DONE (1df94fc; baseline 939 -> 0 via `scripts/migrate-hardcoded-copy.mjs` + hand fixes; gate passes in `--strict` mode at zero)
 - Priority: P1 (localization/RTL completeness)
 - Current state: infra DONE (`i18n/{resources,i18n,direction,format,localePreference,useLocale}`, 19 `en` namespaces, `ar`/`ru`, `rtl.css`, `LocaleProvider`); gate is ratchet-only: `scripts/hardcoded-copy-baseline.json` = 939 (`jsx-text:466,user-facing-prop:416,copy-fallback:57`); `frontend.yml` hard-coded-copy + physical-side checks.
 - Missing: per-file migration to keys + `--strict` gate at zero.
@@ -269,7 +269,7 @@
 
 ### [GAP-023] Responsive mobile/tablet layout absent (zero breakpoint utilities)
 - Plan ref: B-11.5 + B-15.8 R4 + B-12.12 timeline degradation
-- Status: MISSING (self-declared by repo tests)
+- Status: DONE (bb83956; timeline degrades to list mode below the 768px tablet breakpoint, mobile nav replaces the sidebar; the audit's negative `responsive-layout.spec.ts`/`visual/screens.spec.ts` do not exist in this tree, so the spec was added as a positive one)
 - Priority: P1 (required UX; timeline/review/playback/export mobile paths)
 - Current state: scan of 71 feature components found ZERO `sm:/md:/lg:/xl:/2xl:` or breakpoint hooks; `e2e/visual/screens.spec.ts:15-19` + `responsive-layout.spec.ts` pin the finding (fail when responsive appears); only `AppShell.tsx:176 hidden md:block` sidebar.
 - Missing: breakpoints + timeline list-degradation on small screens + visual baselines desktop/tablet/mobile × dark/light × LTR/RTL.
@@ -279,7 +279,7 @@
 
 ### [GAP-024] Admin / enrichment / GPU reads unprovisioned in this deployment
 - Plan ref: B-12.19 + B-18.2 + B-19
-- Status: PARTIAL (UI correctly degrades; backend surfaces absent)
+- Status: DONE (ba59c5e; tenants/users/retention/feature-flags/audit-events reads provisioned; local-GPU device health and enrichment runtime reads recorded as explicit out-of-scope in `docs/api-contract.md`)
 - Current state: panels render "not provisioned on this backend yet" (`TenantsPanel.tsx:69`, `UsersRolesPanel.tsx:81`, `FlagsPanel.tsx:78`, `RetentionAuditPanel.tsx:89,150`, `LocalGpuPanel.tsx:129`); enrichment reads 404/501 → `NotAvailableState` (`useEnrichmentQueries.ts`); tenants/users/flags/retention/local-GPU/enrichment reads missing.
 - Missing: provision reads (or pinning scope decision that this deployment excludes them) + backend endpoint per panel.
 - Acceptance criteria: each admin/enrichment panel has a provisioned read or an explicit out-of-scope record; no panel stuck on placeholder in target env.
@@ -288,7 +288,7 @@
 
 ### [GAP-025] Cost preflight is boolean gate, not an estimate surface
 - Plan ref: A-§9 Action 2 + A-§25 Action 6
-- Status: PARTIAL
+- Status: DONE (bd77339; `costEstimateUsd` on the start response + 429 `details` carrying estimate/spend/cap/projected total)
 - Priority: P1 (budget UX; 429 without figure)
 - Current state: `ICostGate.CanProceedAsync` (`ProcessingController.cs:195`, `ProcessingStartService.cs:49-88`); `CostService.{Estimate,EstimatePipeline,PreflightAsync:422}` exist but no estimate returned at start.
 - Missing: `EstimateAsync` surfaced at processing start + before expensive stages; 429 carries budget-vs-estimate.
@@ -298,7 +298,7 @@
 
 ### [GAP-026] `cancel`/`retry` route shape deviates from plan
 - Plan ref: A-§7 (32 endpoints)
-- Status: DEVIATED (acceptable; docs-only)
+- Status: DONE (58beee2; canonical vs compat routes marked in `openapi.v1.json` (`deprecated: true` + cross-reference) and a route-shape errata added to Plan A §7)
 - Priority: P2
 - Current state: plan `POST /projects/{id}/cancel|retry` vs impl `processing/cancel`, `processing/retry` (legacy compat) + `processing/{runId}/cancel|retry` (`ProcessingController.cs:358,418,508,557`). 30/32 endpoints DONE; superset behavior.
 - Missing: keep legacy but document canonical vs compat routes in OpenAPI/plan.
@@ -308,7 +308,7 @@
 
 ### [GAP-027] Contract doc drift: `reviewThreshold` type + `VoicePreviewJob` field names
 - Plan ref: B-8.2.2 + B-8.6.1
-- Status: DEVIATED (code consistent; docs-only)
+- Status: DONE (0b53389; Plan B §8.2.2 example corrected to numeric `reviewThreshold` and §8.6.1 aligned field-for-field with the entity; `docs/api-contract.md` carries the authority table; pinned by `ContractDocDriftTests`)
 - Priority: P2
 - Current state: (a) plan example `reviewThreshold:"Default"` vs validator numeric 0–1 (`ProjectProcessingSettingsValidator.cs:123,243`); (b) plan `RequestedText/VoiceProfileId/FailureCategory/ExpiresAt` vs impl `Text/VoiceId/ErrorCode+ErrorMessage/StartedAt+CompletedAt` (+ extras `RequestedByUserId/IdempotencyKey`), `Domain/Entities/VoicePreviewJob.cs`, migration `20260921115016_AddVoicePreviewJobs.cs`.
 - Missing: support enum-string OR fix plan example; align `VoicePreviewJob` contract doc with impl (or add missing columns).
@@ -318,7 +318,7 @@
 
 ### [GAP-028] Error envelope shape: plan flat vs wire nested
 - Plan ref: B-9.12
-- Status: DEVIATED (implementation authoritative; docs-only)
+- Status: DONE (7d8ce47; Plan B §9.12 now shows the nested envelope, the 9-category→7-kind collapse, and a code→kind table covering all 65 codes; pinned by `ErrorEnvelopeDocTests`)
 - Priority: P2
 - Current state: wire `{error:{code,message,correlationId,details}}` everywhere (`Api/Errors/ApiError.cs`, `Middleware/ErrorResponse.cs`, frontend `httpClient.ts`); 65 codes exhaustive (`ErrorCodes.cs:All`, `normalizeError.ts:errorKindByCode`, `recoveryHintByCode`); `ErrorKind` collapses plan's 9 categories to 7 (documented in `kinds.ts`).
 - Missing: fix plan snippet to nested shape; confirm 7-kind collapse.

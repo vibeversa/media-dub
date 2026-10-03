@@ -144,3 +144,67 @@ backend, Plan B wins frontend.
 - `dotnet test IntegrationTests`: new PG-gated tests pass (`MediaValidationServiceTests` 2, `RetentionHoldTests` 5, `MediaBombTests` 11); ffmpeg-gated mixing tests skip here (no ffmpeg, CI runs them).
 - Pre-existing integration failures unrelated to these gaps (verified identical on baseline via `git stash`): WebApplicationFactory-based admin/export suites answer 401 instead of 403, and `metadata_json`/`jsonb` raw-SQL writes raise PG 42804 (see GAP-013 note).
 - Frontend: `npm run typecheck` and `npm run lint` clean; `node tools/check-api-drift.mjs` clean.
+
+# Third batch — GAP-021..GAP-028
+
+Scope: the eight API/contracts/product gaps below. The DECISIONS block in the
+task was left as a placeholder, so the repo's own decision rules applied (Plan A
+wins backend, Plan B wins frontend/product; `missing_plan.md` §2 ambiguities).
+
+## GAP-021 — top-level `timezone` on `/me` (DONE, 86f9698)
+- Verified: `MeResponse` carried `locale` but no `timezone`; the value existed only under `UserPreference:timezone`.
+- Fix: `MeResponse.Timezone` (after `Locale`), read from the `timezone` preference in one query alongside `locale`, default `UTC` via the pure `MeController.ParseTimezonePreference`; bundle + regenerated client.
+- Tests: `UnitTests/Auth/MeTimezoneTests` (13) plus `MePreferencesTests` asserting the default and the `Europe/Paris` echo. The `MePreferencesTests` assertions are added but the host-based auth suites still fail in this environment (login returns 500 here, verified on baseline).
+
+## GAP-022 — i18n copy debt 939 → 0 (DONE, 1df94fc)
+- Verified: the gate was ratchet-only with `scripts/hardcoded-copy-baseline.json` = 939 (`jsx-text:466, user-facing-prop:416, copy-fallback:57`) across 61 production files.
+- Fix: `scripts/migrate-hardcoded-copy.mjs` — a TypeScript-AST codemod that rewrites `jsx-text` to `{t('ns:key')}`, user-facing prop literals to `t(...)` (template attributes become i18next `{{…}}` interpolations), and prose `??`/`||` fallbacks to `t(...)`, writing the literal verbatim into `frontend/src/i18n/locales/en/<ns>.json` and inserting `useTranslation()` only into functions that can host it. It refuses (and reports) anything it cannot prove, and is idempotent.
+- Because the English value is the original literal, rendered strings — and every existing `getByText` assertion — are unchanged. Three namespaces were added (`admin`, `cost`, `enrichment`) and registered in `resources.ts`.
+- Four findings needed hand fixes: `ChunkErrorBoundary` is a class (React requires `componentDidCatch`), so the copy moved to a new `ChunkErrorFallback` component; `features/dashboard/api.ts`, `features/exports/useOutputs.ts`, and `hooks/useProgressStream.ts` are data-layer modules and resolve through the shared i18next instance (the documented non-React path; `APPROXIMATE_PERCENT_NOTE` became `approximatePercentNote()` so a locale switch after import still reads correctly).
+- Gate: `scripts/hardcoded-copy-baseline.json` rewritten to 0; `node scripts/check-no-hardcoded-copy.mjs` passes **and** `--strict` passes at zero findings.
+
+## GAP-023 — responsive layout (DONE, bb83956)
+- Verified: Tailwind was configured, but production code used exactly one breakpoint class (`AppShell`'s `hidden md:block`). The audit's negative specs (`e2e/visual/screens.spec.ts`, `responsive-layout.spec.ts`) do not exist in this tree, so nothing was inverted; the spec was added as a positive one.
+- Fix: `timelineResponsive.ts` pins the boundary to Tailwind `md` (767 list-mode / 768+ canvas); `useMediaQuery` (matchMedia + `useSyncExternalStore`, no resize handler) drives `TimelineWorkspace`, which renders the new `TimelineListMode` (stacked rows: speaker, time range, review state, review jump) below the breakpoint and the canvas waveform + five-lane timeline above it; `AppShell` gets a `md:hidden` mobile nav and a stacking content column.
+- Tests: `timelineResponsive.test.ts` (4, pure) + `timelineLayout.test.tsx` (2, jsdom with a stubbed `matchMedia`), and `e2e/responsive-layout.spec.ts` (3 viewports). The Playwright suite cannot run in this environment — `e2e/auth.spec.ts` fails identically here on baseline — so the e2e assertions run in CI.
+
+## GAP-024 — admin/enrichment/GPU reads (DONE, ba59c5e)
+- Verified: the panels called `/admin/tenants`, `/admin/users`, `/admin/retention`, `/admin/feature-flags`, `/admin/local-gpu`; none existed, so five panels rendered the "not provisioned" placeholder. Plan B §12.19 lists tenants, users, roles, retention, audit, and feature flags as admin areas.
+- Fix: `AdminScopeReadsService` + DTOs behind `GET /admin/tenants|users|retention|feature-flags|audit-events`, same elevated gate and `admin.access` audit as the other admin reads; `RoleMatrix` entries; OpenAPI schemas/paths; regenerated client. Audit rows deliberately omit `details_json` payloads.
+- Out of scope **by decision**, recorded in `docs/api-contract.md`: local-GPU device health (node-level infrastructure telemetry with no product consumer) and enrichment runtime reads (Plan A §19 future-ready; the stages are not in the 32-endpoint v1 contract). The frontend keeps its 404-tolerant `EmptyState` path for both.
+- Tests: `AdminReadsProvisioningTests` (9) + PG-gated `AdminScopeReadsTests` (2); `OpenApiCoverageTests` route list and count extended; `AdminAuthzTests`/`AdminSseErrorContractTests` route lists extended.
+
+## GAP-025 — cost preflight is an estimate surface (DONE, bd77339)
+- Verified: `CostService.PreflightAsync` returned a `double` the controller discarded, and the budget refusal carried figures only in prose.
+- Fix: `CostPreflightEstimate` (estimate / current spend / cap / decision, all from the same pure `IsOverBudget`) returned by `PreflightEstimateAsync`; `ProcessingController.Start` returns it as `costEstimateUsd` on the 202 and converts an over-budget result into the new `CostBudgetExceededException`, whose `IErrorDetailsProvider` puts `estimateUsd|currentSpendUsd|limitUsd|projectedTotalUsd|dimension` in the 429 body. The old `PreflightAsync` still returns the estimate, so no caller broke.
+- Tests: `CostPreflightSurfaceTests` (9). "Before expensive stages" was not extended: the per-stage gate is `ICostGate` (boolean, frozen contract) and per-segment holds already exist in the translation/TTS workers; adding an estimate to the dispatcher would change a frozen contract for no acceptance criterion.
+
+## GAP-026 — canonical vs compat cancel/retry (DONE, 58beee2)
+- Verified: 30/32 plan endpoints with `processing/{runId}/cancel|retry` (run-scoped) and `processing/cancel|retry` (project-scoped) both present.
+- Fix: the run-scoped pair is documented as canonical in the bundle and the controller; the project-scoped pair is marked `deprecated: true` with a cross-reference to the canonical path, and keeps its frozen operationIds (`cancelActiveProcessingRun`, `retryActiveProcessingRun`) because renaming them would break clients. Plan A §7 carries a route-shape errata table.
+- Tests: `ProcessingRouteCanonicalityTests` (8).
+
+## GAP-027 — contract doc drift (DONE, 0b53389)
+- Fix: Plan B §8.2.2's `reviewThreshold: "Default"` example corrected to `0.4` with an errata (the validator rejects strings, and now the plan's own example is executed by the test suite); §8.6.1's `VoicePreviewJob` list aligned field-for-field with the entity; `docs/api-contract.md` gained the authority table (including `IsTerminal` as computed, and why there is no per-job expiry).
+- Tests: `ContractDocDriftTests` (5) compares the documented field sets with the entity by reflection and runs `HaveValidShape` on the plan's example.
+
+## GAP-028 — error envelope (DONE, 7d8ce47)
+- Verified: the wire is nested everywhere and the frontend maps all 65 codes; Plan B §9.12 still printed the flat shape and nine categories.
+- Fix: §9.12 rewritten with the nested example, the 9→7 kind collapse (auth+authorization share `Auth`; provider-transient failures share `Unknown`), and a code→kind table covering all 65 codes.
+- Tests: `ErrorEnvelopeDocTests` (6) asserts the plan example parses into `ErrorBody` field-for-field (camelCase), that both frontend maps cover every catalog code, and that the old category names survive only inside the errata.
+
+## Third-batch commits
+- GAP-021 86f9698
+- GAP-022 1df94fc
+- GAP-023 bb83956
+- GAP-024 ba59c5e
+- GAP-025 bd77339
+- GAP-026 58beee2
+- GAP-027 0b53389
+- GAP-028 7d8ce47
+
+## Third-batch verification
+- `dotnet build DubbingPlatform.sln`: 0 warnings / 0 errors after every gap.
+- `dotnet test UnitTests`: 3197 passed, 1 failed (`MediaValidationTests.Probe_Real_Files_Via_Ffprobe` — missing `ffprobe`, pre-existing).
+- `dotnet test ContractTests`: 39 passed. `dotnet test IntegrationTests`: new PG-gated tests pass (`AdminScopeReadsTests` 2); the WebApplicationFactory auth suites still fail in this environment (verified identical on baseline via `git stash`).
+- Frontend: `npm run typecheck` and `npm run lint` clean; `vitest` 1840 passed / 2 failed, both identical on baseline (version-stamp env assertions); `node scripts/check-no-hardcoded-copy.mjs` passes in ratchet **and** `--strict` mode at 0 findings; `check-no-hex` and `check-api-drift` clean.
